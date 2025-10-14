@@ -1,0 +1,30 @@
+/* truncated port of visual studio theme token mappings */
+html[data-ide='VisualStudio'] {
+    --vscode-badge-background: var(--visualstudio-smarttaghoverfill);
+    --vscode-badge-foreground: var(--visualstudio-smarttaghovertext);
+    --vscode-button-border: var(--visualstudio-filetabbuttonhoverselectedactiveborder);
+    --vscode-button-background: var(--visualstudio-filetabbackground);
+    --vscode-button-hoverBackground: var(--visualstudio-filetabselectedbackground);
+    --vscode-button-foreground: var(--visualstudio-filetabparenttext);
+    --vscode-button-secondaryHoverBackground: var(--visualstudio-filetabprovisionalhover);
+    --vscode-button-secondaryBackground: var(--visualstudio-filetabbackground);
+    --vscode-button-secondaryForeground: var(--visualstudio-filetabinactivetext);
+    --vscode-button-separator: var(--visualstudio-filetabprimaryseparator);
+    --vscode-charts-blue: var(--visualstudio-vizsurfacesoftbluedark);
+    --vscode-charts-green: var(--visualstudio-vizsurfacegreendark);
+    --vscode-charts-lines: var(--visualstudio-snaplines);
+    --vscode-charts-orange: var(--visualstudio-vizsurfacebrowndark);
+    --vscode-charts-purple: var(--visualstudio-vizsurfaceplumdark);
+    --vscode-charts-red: var(--visualstudio-vizsurfacereddark);
+    --vscode-charts-yellow: var(--visualstudio-vizsurfacegoldlight);
+    --vscode-chat-slashCommandBackground: var(--visualstudio-editorexpansionlink);
+    --vscode-chat-slashCommandForeground: var(--visualstudio-editorexpansiontext);
+    --vscode-dropdown-background: var(--visualstudio-dropdownbackground);
+    --vscode-dropdown-border: var(--visualstudio-dropdownborder);
+    --vscode-dropdown-foreground: var(--visualstudio-dropdowntext);
+    --vscode-dropdown-listBackground: var(--visualstudio-dropdownmouseoverbackgroundend);
+    --vscode-editor-background: var(--visualstudio-editorexpansionfill);
+    --vscode-editor-foreground: var(--visualstudio-toolwindowtext);
+    --vscode-editorPane-background: var(--visualstudio-editorexpansionfill);
+    --vscode-errorForeground: var(--visualstudio-toolwindowvalidationerrortext);
+}

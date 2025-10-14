@@ -1,0 +1,263 @@
+/* copied */
+:root {
+	--hl-gray-0: #bdd4e3;
+	--hl-gray-1: #8fa1b3;
+	--hl-gray-2: #c0c5ce;
+	--hl-gray-4: #4f5b66;
+	--hl-gray-5: #96b5b4;
+	--hl-gray-6: #969896;
+	--hl-dark-green: #359448;
+	--hl-dark-blue-1: #329af0;
+	--hl-dark-blue-2: #268bd2;
+	--hl-dark-blue-3: #35a5ff;
+	--hl-dark-yellow: #ebcb8b;
+	--hl-dark-red: #bf616a;
+	--hl-blue: #72c3fc;
+	--hl-yellow: #fff3bf;
+	--hl-red: #ffb0af;
+	--hl-green-1: #d3f9d8;
+	--hl-green-2: #a3be8c;
+	--hl-purple: #b48ead;
+	--hl-orange: #d08770;
+	--hl-brown: #ab7967;
+	--hl-black: #2b303b;
+	--hl-white: #f2f4f8;
+	--hl-bg-red: #bf616a;
+	--hl-bg-dark-red: #350b10;
+	--hl-bg-dark-green: #0e2414;
+	--hl-scip-identifier: #859900;
+}
+
+.hljs-keyword,
+.hljs-literal,
+.hljs-symbol,
+.hljs-name {
+	color: #569cd6;
+}
+
+.hljs-link {
+	color: #569cd6;
+	text-decoration: underline;
+}
+
+.hljs-built_in,
+.hljs-type {
+	color: #4ec9b0;
+}
+
+.hljs-number,
+.hljs-class {
+	color: #b8d7a3;
+}
+
+.hljs-string,
+.hljs-meta-string {
+	color: #d69d85;
+}
+
+.hljs-regexp,
+.hljs-template-tag {
+	color: #9a5334;
+}
+
+.hljs-subst,
+.hljs-function,
+.hljs-title,
+.hljs-params,
+.hljs-formula {
+	color: #dcdcdc;
+}
+
+.hljs-comment,
+.hljs-quote {
+	color: #57a64a;
+}
+
+.hljs-doctag {
+	color: #608b4e;
+}
+
+.hljs-meta,
+.hljs-meta-keyword,
+.hljs-tag {
+	color: #9b9b9b;
+}
+
+.hljs-variable,
+.hljs-template-variable {
+	color: #bd63c5;
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-builtin-name {
+	color: #9cdcfe;
+}
+
+.hljs-section {
+	color: #ffd700;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+
+.hljs-bullet,
+.hljs-selector-tag,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+	color: #d7ba7d;
+}
+
+.hljs-addition {
+	background-color: #024c00;
+	color: #d9f2d8;
+}
+
+.hljs-deletion {
+	background-color: #4c0000;
+	color: #fecccc;
+}
+
+.hl-source,
+.hl-text {
+	color: var(--hl-gray-2);
+}
+
+.hl-variable.hl-parameter.hl-function {
+	color: var(--hl-gray-0);
+}
+
+.hl-punctuation.hl-definition {
+	color: var(--hl-gray-0);
+}
+
+.hl-comment,
+.hl-punctuation.hl-definition.hl-comment {
+	color: var(--hl-dark-green);
+}
+
+.hl-keyword.hl-operator {
+	color: var(--hl-dark-blue-1);
+}
+
+.hl-keyword {
+	color: var(--hl-dark-blue-3);
+}
+
+.hl-variable {
+	color: var(--hl-blue);
+}
+
+.hl-entity.hl-name.hl-function,
+.hl-meta.hl-require,
+.hl-support.hl-function.hl-any-method,
+.hl-variable.hl-function {
+	color: var(--hl-yellow);
+}
+
+.hl-support.hl-class,
+.hl-entity.hl-name.hl-class,
+.hl-meta.hl-class {
+	color: var(--hl-blue);
+}
+
+.hl-entity.hl-other.hl-inherited-class {
+	color: var(--hl-red);
+}
+
+.hl-keyword.hl-other.hl-special-method {
+	color: var(--hl-gray-1);
+}
+
+.hl-storage {
+	color: var(--hl-dark-blue-1);
+}
+
+.hl-support.hl-function {
+	color: var(--hl-yellow);
+}
+
+.hl-string,
+.hl-constant.hl-other.hl-symbol {
+	color: var(--hl-red);
+}
+
+.hl-string.hl-regexp {
+	color: var(--hl-gray-5);
+}
+
+.hl-constant.hl-character.hl-escape {
+	color: var(--hl-gray-5);
+}
+
+.hl-constant {
+	color: var(--hl-dark-blue-1);
+}
+
+.hl-constant.hl-numeric {
+	color: var(--hl-green-1);
+}
+
+.hl-constant.hl-other.hl-color {
+	color: var(--hl-gray-5);
+}
+
+.hl-entity.hl-name.hl-tag {
+	color: var(--hl-dark-blue-1);
+}
+
+.hl-entity.hl-other.hl-attribute-name {
+	color: var(--hl-blue);
+}
+
+.hl-entity.hl-other.hl-attribute-name.hl-id,
+.hl-punctuation.hl-definition.hl-entity {
+	color: var(--hl-gray-1);
+}
+
+.hl-meta.hl-selector {
+	color: var(--hl-purple);
+}
+
+.hl-markup.hl-heading,
+.hl-punctuation.hl-definition.hl-heading,
+.hl-entity.hl-name.hl-section {
+	color: var(--hl-gray-1);
+}
+
+.hl-keyword.hl-other.hl-unit {
+	color: var(--hl-orange);
+}
+
+.hl-markup.hl-raw.hl-inline {
+	color: var(--hl-green-2);
+	/* Links */
+}
+
+.hl-string.hl-other.hl-link {
+	color: var(--hl-dark-red);
+}
+
+.hl-meta.hl-link {
+	color: var(--hl-orange);
+}
+
+.hl-meta.hl-image {
+	color: var(--hl-orange);
+}
+
+.hl-markup.hl-list {
+	color: var(--hl-dark-red);
+}
+
+.hl-punctuation.hl-section.hl-embedded,
+.hl-variable.hl-interpolation {
+	color: var(--hl-yellow);
+}

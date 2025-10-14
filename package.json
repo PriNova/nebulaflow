@@ -1,0 +1,41 @@
+{
+  "name": "amp-editor",
+  "displayName": "Amp Workflow Editor",
+  "version": "0.0.1",
+  "publisher": "prinova",
+  "engines": {
+    "vscode": ">=1.90.0"
+  },
+  "main": "dist/extension.js",
+  "activationEvents": [
+    "onCommand:ampEditor.openWorkflow"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "ampEditor.openWorkflow",
+        "title": "Amp: Open Workflow Editor"
+      }
+    ]
+  },
+  "scripts": {
+    "build:webview": "vite build --config webview/vite.config.mts",
+    "build:ext": "tsc -p .",
+    "build": "npm run build:webview && npm run build:ext"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.1.4",
+    "lucide-react": "^0.460.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.3.3",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8",
+    "vscode": "^1.1.47"
+  }
+}
