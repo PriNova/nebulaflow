@@ -73,8 +73,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         <div
                             key={node.id}
                             className={clsx(
-                                'tw-flex tw-flex-col tw-gap-2 tw-p-2 tw-rounded tw-bg-[var(--vscode-sideBar-dropBackground)]',
-                                'tw-border-2',
+                                'tw-flex tw-flex-col tw-gap-1 tw-px-2 tw-py-1 tw-rounded tw-bg-[var(--vscode-sideBar-dropBackground)]',
+                                'tw-border',
                                 getBorderColorClass(node.id)
                             )}
                         >
@@ -85,7 +85,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                 onValueChange={value => setOpenItemId(value || '')}
                             >
                                 <AccordionItem value={node.id}>
-                                    <AccordionTrigger>
+                                    <AccordionTrigger className="tw-text-sm tw-h-6 tw-py-[.1rem]">
                                         <div className="tw-flex tw-items-center">
                                             <div className="tw-w-4 tw-mr-2">
                                                 {node.id === executingNodeId && (
@@ -129,6 +129,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                     node.id === pendingApprovalNodeId && (
                                                         <div className="tw-flex tw-w-full tw-gap-2 tw-mt-2 tw-justify-center">
                                                             <Button
+                                                                size="sm"
                                                                 onClick={() =>
                                                                     onApprove(
                                                                         node.id,
@@ -146,6 +147,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                                 Approve
                                                             </Button>
                                                             <Button
+                                                                size="sm"
                                                                 onClick={() => onApprove(node.id, false)}
                                                                 variant="secondary"
                                                                 style={{

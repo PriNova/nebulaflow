@@ -2,10 +2,7 @@
 import plugin from 'tailwindcss/plugin'
 
 export default {
-    content: {
-        relative: true,
-        files: ['**/*.{ts,tsx,css}'],
-    },
+    content: ['./**/*.{ts,tsx,html}', '!./node_modules/**/*'],
     prefix: 'tw-',
     theme: {
         extend: {
@@ -106,4 +103,4 @@ export default {
             )
         }),
     ],
-}
+}  

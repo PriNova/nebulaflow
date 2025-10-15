@@ -45,18 +45,7 @@ export const DialogContent: React.FC<DialogContentProps> = ({ children, classNam
         <div
             role="button"
             tabIndex={0}
-            style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: 'rgba(0,0,0,0.5)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 1000,
-            }}
+            className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-[rgba(0,0,0,0.35)] tw-backdrop-blur-sm"
             onClick={() => context.setOpen(false)}
             onKeyDown={e => {
                 if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
@@ -66,10 +55,14 @@ export const DialogContent: React.FC<DialogContentProps> = ({ children, classNam
             }}
         >
             <div
-                className={className}
+                className={[
+                    'tw-bg-popover tw-text-popover-foreground tw-border tw-border-border tw-rounded-lg tw-shadow-lg tw-p-4',
+                    className || '',
+                ].join(' ')}
                 onClick={e => e.stopPropagation()}
                 onKeyDown={e => e.stopPropagation()}
-                style={{ background: 'white', padding: '20px', borderRadius: '8px', maxWidth: '500px' }}
+                role="dialog"
+                aria-modal="true"
             >
                 {children}
             </div>
@@ -78,9 +71,9 @@ export const DialogContent: React.FC<DialogContentProps> = ({ children, classNam
 }
 
 export const DialogHeader: React.FC<DialogHeaderProps> = ({ children, className }) => {
-    return <div className={className}>{children}</div>
+    return <div className={['tw-mb-4', className || ''].join(' ')}>{children}</div>
 }
 
 export const DialogTitle: React.FC<DialogTitleProps> = ({ children, className }) => {
-    return <h2 className={className}>{children}</h2>
+    return <h2 className={['tw-text-lg tw-font-semibold', className || ''].join(' ')}>{children}</h2>
 }

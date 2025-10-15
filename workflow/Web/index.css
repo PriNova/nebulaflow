@@ -1,7 +1,40 @@
 @import '@vscode/codicons/dist/codicon';
+@import '@xyflow/react/dist/style.css';
 @import url(./utils/highlight.css);
 @import url(./ui/shadcn/shadcn.css);
 @import url(./themes/index.css);
+
+/* React Flow controls and handles */
+.react-flow__controls-button {
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+.react-flow__controls-button:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+  color: var(--vscode-button-secondaryForeground);
+  cursor: pointer;
+}
+.react-flow__attribution {
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--vscode-editor-background);
+  border: 2px solid var(--vscode-editor-foreground);
+}
+.react-flow__handle-top, .react-flow__handle-bottom { margin-left: -7px; }
+.react-flow__handle-right, .react-flow__handle-left { margin-top: -7px; }
+.react-flow__node.selected { z-index: 10 !important; }
+.react-flow__selection {
+  background: rgba(9, 9, 9, 0.1);
+  border: 1px solid var(--vscode-focusBorder);
+}
+.rf-controls { display: flex; flex-direction: column; }
 
 :root {
     --code-background: #222222;

@@ -153,12 +153,13 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                             <Popover open={open} onOpenChange={setOpen}>
                                 <PopoverTrigger asChild>
                                     <Button
-                                        variant="secondary"
-                                        role="combobox"
-                                        aria-controls="model-menu"
-                                        aria-expanded={open}
+                                    variant="secondary"
+                                    size="sm"
+                                    role="combobox"
+                                    aria-controls="model-menu"
+                                    aria-expanded={open}
                                         className="tw-w-full justify-between"
-                                    >
+                >
                                         {selectedModel?.id ||
                                             (node as LLMNode).data.model?.id ||
                                             'Select a model'}
@@ -283,7 +284,8 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                 <div className="tw-flex tw-flex-col tw-gap-2">
                     <div className="tw-flex tw-gap-2">
                         <Button
-                            className="tw-w-full tw-px-4 tw-py-2 tw-bg-red-500 tw-text-white tw-rounded hover:tw-bg-red-600"
+                            size="sm"
+                            className="tw-w-full tw-bg-red-500 tw-text-white hover:tw-bg-red-600"
                             onClick={() => onUpdate(node.id, { content: '' })}
                             title="Clear content"
                             variant={'secondary'}
@@ -326,7 +328,7 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
             {node.type === NodeType.ACCUMULATOR && (
                 <div className="tw-flex tw-flex-col tw-gap-4">
                     <div>
-                        <Button variant="secondary" onClick={handleSaveCustomNode} className="tw-w-full">
+                        <Button variant="secondary" size="sm" onClick={handleSaveCustomNode} className="tw-w-full">
                             <Save className="tw-mr-2" size={14} />
                             Save as Custom Node
                         </Button>
@@ -359,7 +361,7 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
             {node.type === NodeType.VARIABLE && (
                 <div className="tw-flex tw-flex-col tw-gap-4">
                     <div>
-                        <Button variant="secondary" onClick={handleSaveCustomNode} className="tw-w-full">
+                        <Button variant="secondary" size="sm" onClick={handleSaveCustomNode} className="tw-w-full">
                             <Save className="tw-mr-2" size={14} />
                             Save as Custom Node
                         </Button>

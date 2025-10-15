@@ -1,11 +1,10 @@
 import { Background, Controls, ReactFlow, SelectionMode } from '@xyflow/react'
-import '@xyflow/react/dist/style.css'
 import type React from 'react'
 import { useMemo, useState } from 'react'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../services/Protocol'
 import type { GenericVSCodeWrapper } from '../utils/vscode'
 import { CustomOrderedEdgeComponent } from './CustomOrderedEdge'
-import styles from './Flow.module.css'
+// styles moved to global index.css
 import { HelpModal } from './HelpModal'
 import { RightSidebar } from './RightSidebar'
 import { WorkflowSidebar } from './WorkflowSidebar'
@@ -172,7 +171,7 @@ export const Flow: React.FC<{
                             fitView
                         >
                             <Background color="transparent" />
-                            <Controls className={styles.controls}>
+                            <Controls className="rf-controls">
                                 <button
                                     type="button"
                                     className="react-flow__controls-button"
