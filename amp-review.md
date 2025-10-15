@@ -1,88 +1,71 @@
-## High-level summary
-This change removes the component-scoped `Flow.module.css`, migrates all React-Flow–specific styles to the global `index.css`, and cleans up the build pipeline by dropping the `postcss-nested` plugin.  
-Several TSX files are updated to reference the new global classes and to make minor UI tweaks (mostly Tailwind sizing).  
-Tailwind configuration is simplified, and shadcn dialogs are refactored to use Tailwind utility classes instead of large inline‐style blobs.
+## High-level summary  
+* A brand asset (`amp-mark.svg`) is added.  
+* `LLM_Node.tsx` now imports that asset, shows it in the node header, and changes the node label from **“LLM”** to **“Amp Agent”**. No behavior outside the UI is touched.
 
 ---
 
-## Tour of changes
-Start with `workflow/Web/index.css`.  
-This file now hosts all React-Flow overrides that used to live in `Flow.module.css`, and its structure explains:
+## Tour of changes  
 
-1. Why `Flow.module.css` is deleted.  
-2. Why `postcss.config.js` no longer needs `postcss-nested`.  
-3. Why `Flow.tsx` and other components switch class names.
-
-Understanding the new global CSS first makes the remaining diffs straightforward.
+Start with `components/nodes/LLM_Node.tsx`.  
+That file is the consumer of the new SVG, it reveals the visual/UX intent of the change, and it is the only code file whose logic was touched. After understanding it, the addition of the SVG is self-explanatory.
 
 ---
 
-## File level review
+## File level review  
 
-### `workflow/Web/index.css`
-* Added `@import '@xyflow/react/dist/style.css'` – guarantees base React-Flow styles are present after removing the import from `Flow.tsx`.
-* Migrated all rules from `Flow.module.css`, flattened (no nesting) so the removal of `postcss-nested` is safe.
-* `.react-flow__selection` background changed from the VS Code variable
-  `rgba(var(--vscode-focusBorder-rgb), 0.1)` to a hard-coded `rgba(9, 9, 9, 0.1)`.  
-  ➜  Regression: loses theming and no longer respects dark/light focus colour.
-* New helper `.rf-controls` replicates previous `.controls` rule.
+### `workflow/Web/components/nodes/LLM_Node.tsx`
 
-Recommendation  
-• Restore the variable-based colour to keep theme compatibility or introduce a CSS variable fallback chain.  
-• Consider adding a comment that these selectors *must* stay global (they are not prefixed with `tw-`) to avoid future accidental purging by Tailwind.
+**What changed**
 
-### `workflow/Web/components/Flow.module.css`  (deleted)
-* Intentional deletion after migration. OK.
+1. `ampMark` SVG is imported.
+2. An `<img>` is added to the node title bar (`width/height = 14px`).
+3. Text label was renamed from “LLM” to “Amp Agent”.
 
-### `workflow/Web/components/Flow.tsx`
-* Removed `@xyflow/react/dist/style.css` import – now done globally.
-* Replaced `styles.controls` with literal `"rf-controls"`.
-  – Good: avoids the unused CSS-module;  
-  – Risk: if `rf-controls` is miss-typed (it is `.rf-controls` in CSS, same case) compilation won’t warn. Unit test would help.
-* Comment clarifies change.
+**Correctness & build**  
+* Bundlers treat bare SVG imports in two main ways:  
+  * As **URL strings** (Vite/CRA default) – works with `<img src={ampMark} …/>`.  
+  * As **React components** when `@svgr/webpack` or a Vite SVGR plugin is enabled.  
+  Verify which mode your build uses. If SVGR is enabled, you need `import { ReactComponent as AmpMark } from '../../assets/amp-mark.svg'` or `import ampMark from '../../assets/amp-mark.svg?url'`.
 
-### `workflow/Web/components/PropertyEditor.tsx`
-* Consistent use of `size="sm"` and removal of redundant Tailwind utility paddings.  
-* No logic changes – safe.
+* The relative path (`../../assets/amp-mark.svg`) is correct from `components/nodes/`.
 
-Potential nit: there are still literal Tailwind classes (`tw-w-full`) mixed with shadcn props (`size`, `variant`). Agree but keep consistent across project.
+**Accessibility**  
+* Alt text `"Amp"` is vague. Recommend `"Amp Agent logo"` for screen readers.
 
-### `workflow/Web/components/RightSidebar.tsx`
-* Padding/border reduced:  
-  – `tw-gap-2` → `tw-gap-1`,  
-  – `border-2` → `border`.  
-  Visual only, no functional impact.
-* Adds `size="sm"` to approve/deny buttons – good for visual consistency.
+**UI review**  
+* Title bar uses `display: flex` and then manually shifts the middle div with `transform: 'translateX(-6%)'`.  
+  That magic constant existed before, but adding an icon makes the required offset different on various screen widths. Consider instead:
+  ```jsx
+  <div className="tw-flex tw-items-center tw-justify-center tw-gap-1 tw-flex-grow">
+      <img … />
+      <span>Amp Agent</span>
+  </div>
+  ```
+  This removes the negative translate and stays centered automatically.
 
-### `workflow/Web/postcss.config.js`
-* Dropped `'postcss-nested'` plugin.  
-  Given no remaining nested rules, safe.  
-  – Verify no other CSS files still rely on nesting (search CI step).
+**Consistency / API**  
+* Other code may still rely on a node type or name `"LLM"`. Make sure only the display label changed, not the identifier that flows through back-end or drag-drop configs. If any logic uses the inner text (unlikely but worth grepping), update it accordingly.
 
-### `workflow/Web/tailwind.config.mjs`
-* `content` array simplified and widened to include `html`, exclude `node_modules`.
-* Removed `css` glob. Because only prefix-`tw-` classes inside `.css` files *might* now be omitted from scanning, ensure none exist (current index.css doesn’t use them, so fine).
+### `workflow/Web/assets/amp-mark.svg`
 
-Trailing whitespace fixed at EOF.
+**What changed**
 
-### `workflow/Web/ui/shadcn/ui/dialog.tsx`
-* Replaced huge inline overlay style with Tailwind utilities (`tw-fixed tw-inset-0 … tw-backdrop-blur-sm`).  
-  – Smaller bundle, easier theming.  
-* Adds `role="dialog"` and `aria-modal="true"` to content – accessibility ⬆︎.
-* Drops `maxWidth: "500px"` inline style.  
-  – Could cause dialogs to stretch on large screens. Consider re-adding via class (`tw-max-w-lg`).  
-* ClassName concatenation uses `['...', className || ''].join(' ')`. Works, but using `clsx` (already in deps) would be safer for falsy values.
+* New SVG, 5 lines, simple 21×21 icon, filled white.
 
-### Misc. TSX tweaks
-`size="sm"` added to several `<Button>` instances – no issues.
+**Code / security / performance review**  
+* SVG is tiny (≈0.4 KB); no performance concern.
+* Paths are hard-coded `fill="white"`. If the header background is also white the icon will disappear. Either:
+  * Remove `fill` so CSS can set `fill: currentColor`, or
+  * Add a CSS class and change the fill via `currentColor`. That will integrate better with theming and dark mode.
+
+* The root element already has `width`, `height`, and `viewBox`. Good.
+
+* No inline scripts or external references -> no SVG-XSS risk.
 
 ---
 
-## Overall assessment
-A well-executed consolidation of styles with minor visual tweaks, reduced dependencies, and improved accessibility.
+### No other files touched
 
-Key follow-ups
-1. Bring back variable-based colour for `.react-flow__selection`.
-2. Confirm no nested CSS remains; otherwise re-enable `postcss-nested`.
-3. Consider max-width on dialogs and switch to `clsx` for class composition.
-4. Add tests/linters to detect stale CSS-module references (`styles.*`).
+---
+
+Overall the change is straightforward UI polish. Only build-pipeline verification (SVG handling) and small a11y / theming tweaks are recommended.

@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react'
 import type React from 'react'
+import ampMark from '../../assets/amp-mark.svg'
 import type { Model } from '../../services/Protocol'
 import {
     type BaseNodeData,
@@ -56,8 +57,9 @@ export const LLMNode: React.FC<BaseNodeProps> = ({ data, selected }) => (
                     alignItems: 'center',
                 }}
             >
+                <img src={ampMark} alt="Amp" style={{ width: '14px', height: '14px', marginRight: '0.25rem' }} />
                 <div className="tw-text-center tw-flex-grow" style={{ transform: 'translateX(-6%)' }}>
-                    LLM
+                    Amp Agent
                 </div>
             </div>
             <div className="tw-flex tw-items-center tw-justify-center">
