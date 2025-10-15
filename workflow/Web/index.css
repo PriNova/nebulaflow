@@ -50,6 +50,13 @@
     --border-width: none;
 }
 
+/* 3D spin helpers for AmpSpinningLogo */
+@keyframes spin-x { from { transform: rotateX(0deg); } to { transform: rotateX(360deg); } }
+@keyframes spin-y { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
+.perspective-800 { perspective: 800px; }
+.spin-x { animation: spin-x 24s linear infinite; transform-style: preserve-3d; }
+.spin-y { animation: spin-y 24s linear infinite; transform-style: preserve-3d; }
+
 html,
 body {
     margin: 0;

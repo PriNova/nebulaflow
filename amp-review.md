@@ -1,89 +1,101 @@
 ## High-level summary
-This patch improves the development experience for the VS Code web-view that lives in `workflow/Web`:
+This change introduces a decorative, spinning “Amp” background logo that quietly animates behind the React-Flow canvas.
 
-1. Adds a **background VS Code task** that knows when the web-view bundler is “ready”.
-2. Re-implements `scripts/start-webview-watch.js` so it emits explicit *start/ready* markers, relays output, and shuts down cleanly.
-3. Makes the extension auto-reload the HTML inside the `Workflow` web-view whenever the generated files change during development.
-4. Tweaks Tailwind and Vite configs to make watch-mode more efficient and avoid output loops.
+Key points  
+• New component `AmpSpinningLogo.tsx` (controls sizing, axis and opacity).  
+• `Flow.tsx` now measures the central pane with a `ResizeObserver` and conditionally renders the logo behind the flow graph.  
+• `index.css` adds keyframes and helper utility classes for 3-D spin effects.
 
-No production-time behaviour changes; all additions are Dev-Mode only.
+No business logic is affected; the update is purely visual.
 
 ## Tour of changes
-Start in `scripts/start-webview-watch.js`.  
-The new task in `.vscode/tasks.json` and the reload logic in `workflow/Application/register.ts` both rely on the messages emitted by this script, so understanding the script first clarifies the rest of the diff.
+Start with `AmpSpinningLogo.tsx` – it is self-contained, shows all public props, the sizing math, and the assumptions that the other files rely on. Once understood, proceed to the changes in `Flow.tsx` to see how the component is embedded and how pane size is detected, then finally glance at `index.css` for the animation helpers.
 
 ## File level review
 
-### `.vscode/tasks.json`
-Changes  
-• Mark task as `"isBackground": true`.  
-• Adds a custom *background problem-matcher* looking for the lines emitted by the node helper.
+### `workflow/Web/components/AmpSpinningLogo.tsx`
+What changed  
+• Brand-new component; props let callers pick size, opacity, axis, etc.  
+• Computes size as `min(width,height) * scale`, clamps to ≥0 then floors.  
+• Renders absolutely-positioned `<img>` that spins on X, Y or Z axis.
 
 Review  
-✔ Correctly uses `background.activeOnStart` + `beginsPattern`/`endsPattern`.  
-✔ Uses a minimal regexp `.` — fine because only the begin & end patterns matter.  
-⚠️  A single trailing newline is required for VS Code to catch the marker; `console.log()` in the helper satisfies this.  
-⚠️  Consider adding `"detail": "Starts Vite watcher for web-view"` for clarity in the tasks UI.
+1. Correctness / type safety  
+   • `scale` comment says “portion of min(width,height), default 0.6” – matches code.  
+   • `axis` is restricted to `'x' | 'y' | 'z'`, good.  
+   • `size` is always integer and non-negative → no negative CSS lengths.
 
-### `scripts/start-webview-watch.js`
-Changes  
-• Rewritten from fire-and-forget to an interactive helper:  
-  – Emits `WEBVIEW_WATCH_START`/`WEBVIEW_WATCH_READY`.  
-  – Pipes child `stdout`/`stderr` to parent so the terminal shows Vite output.  
-  – Detects readiness on either “built in …” or “watching for changes”.  
-  – Cleans up on `SIGINT`, `SIGTERM`, or parent exit.
+2. Asset import  
+   • `ampMark` is imported directly. Depending on the bundler (Vite/Webpack) SVG import may default to an object, not a URL. If this repo already imports SVGs as URLs elsewhere it is fine, otherwise change to `import ampMark from '../assets/amp-mark.svg?url'`.
 
-Review  
-Correctness & behaviour
-✔ Emits markers expected by the problem matcher.  
-✔ Keeps the child attached (`detached: false`) so VS Code can kill it all with the task.  
-✔ Propagates exit code to parent.
+3. Rendering  
+   • Wrapper `div` has `pointerEvents: 'none'` => logo never blocks interactions – good.  
+   • Alt text “Amp” OK. Consider more descriptive alt or `aria-hidden="true"` if purely decorative to avoid noise for screen readers.
 
-Edge cases / improvements
-1. Windows `SIGTERM` — Node translates it to a kill message but underlying processes may ignore it. You might fall back to `taskkill /T /F /PID child.pid` on win32.
-2. `readyEmitted` race: if Vite prints “watching for changes” before any “built in …” lines you’ll still fire ok; good.
-3. If Vite ever changes its output wording the regexp may fail. Extract to constants and add comments.
-4. `child.kill('SIGTERM')` in `terminate` can throw on already-closed handles; you already guard with `try {}` – good.
+4. Performance / re-renders  
+   • Component is cheap; only recalculates `size` on prop change. No issues.
 
-### `workflow/Application/register.ts`
-Changes  
-• Extracts a `render()` helper that builds the HTML.  
-• In development mode, sets up a `FileSystemWatcher` on `dist/webviews/**` and debounces re-rendering.  
-• Disposes watcher when the panel closes.
+5. Security  
+   • No user input is interpolated into styles; safe.
 
-Review  
-✔ Uses `RelativePattern` so the watcher works regardless of workspace root.  
-✔ Debounce avoids globs of updates from Vite.  
-✔ `150 ms` is conservative; feels snappy.
+6. CSS coupling  
+   • Relies on global classes `spin-x`, `spin-y`, `tw-animate-spin`, `perspective-800`. Those are added in `index.css`; ok.
 
-Potential issues / suggestions
-1. Missing error handling around `vscode.workspace.fs.readFile`. If file is deleted between build & read, panel would show nothing. Consider try/catch logging.  
-2. When multiple panels are open you create one watcher per panel. Maybe share a singleton watcher keyed by `context.extensionMode`.  
-3. For security, still replaces `{cspSource}` – good.
+Minor suggestions  
+• Expose a `duration` prop instead of hardcoding `24s`.  
+• Use `will-change: transform` on the `<img>` to hint GPU acceleration.
 
-### `workflow/Web/tailwind.config.mjs`
-Changes  
-• Replaces legacy array syntax with the recommended object `{ relative: true, files: ['**/*.{ts,tsx}'] }`.
+### `workflow/Web/components/Flow.tsx`
+What changed  
+• Imports and embeds `AmpSpinningLogo`.  
+• Adds `ResizeObserver` to measure centre pane → stores `{w, h}` in state.  
+• Wraps existing `<ReactFlow>` in an absolutely-positioned layer (`z-index 1`) and places the logo underneath (`z-index 0`).
 
 Review  
-⚠️  You dropped `html` from the glob. If `workflow.html` contains Tailwind classes they will no longer be included in the purge set, leading to missing styles in production. Add it back unless you are 100 % sure the HTML file does not use Tailwind classes.
+1. ResizeObserver lifecycle  
+   • Correctly disconnects in cleanup.  
+   • It does **not** unobserve on every invocation; however `disconnect()` stops all observations so this is fine.
 
-### `workflow/Web/vite.config.mts`
-Changes  
-• `assetsDir: '.'` keeps js/css next to `workflow.html` – good for VS Code web-views.  
-• Adds `watch.exclude` to avoid rebuild loops on the generated output.  
-• Adds Rollup watch filters and `entryFileNames: '[name].js'`.
+2. State updates throttling  
+   • `ResizeObserver` callback may fire frequently during window resize; currently every callback triggers a React state update. Consider debounce (`requestAnimationFrame` or 60-fps guard) to avoid excessive re-renders, though impact should be minimal for most users.
+
+3. Conditional render logic  
+   • Checks `centerSize.w > 0 && centerSize.h > 0` before rendering logo, avoiding NaN/0. Good.
+
+4. Layering / z-index  
+   • Parent `div` has `position: relative`; inner absolute layers with `z-indexes` chosen such that logo does not block flow interactions – correct.
+
+5. Imports  
+   • `useEffect`, `useRef` added to import list; compile passes.
+
+6. Accessibility / keyboard nav  
+   • No change in tab order; logo has `pointer-events: none` so focusability isn’t affected.
+
+7. Performance  
+   • The added logo is a single SVG element with CS-only animation (no JS) – negligible cost.
+
+### `workflow/Web/index.css`
+What changed  
+• Added keyframes `spin-x`/`spin-y`, helper classes `.perspective-800`, `.spin-x`, `.spin-y`.
 
 Review  
-✔ Avoids recursive rebuilds that previously pegged the CPU.  
-✔ `include: ['**']` combined with explicit `exclude` is broad; check notebooks or readme files are not mistakenly watched.  
-✔ `assetsDir: '.'` means flat output; ensure no bundle names clash.  
-⚠️  If `sourcemap: true` in dev, the `.map` files are emitted to `'.'` too. Confirm the web-view HTML uses correct `sources` paths.
+1. Vendor prefixes  
+   • Modern browsers accept these properties un-prefixed; fine.  
+   • `perspective` is undefined on the element but `.perspective-800` attaches to parent. All good.
 
-## Overall recommendations
-1. Confirm Tailwind still generates CSS for any classes present in plain HTML templates.  
-2. Consider cross-platform termination tweaks for Windows.  
-3. Share a single FS watcher across multiple panels to save resources.  
-4. Add errors logs around file-reads to avoid blank panels during rapid rebuilds.
+2. Animation duration  
+   • Class sets `animation: spin-x 24s linear infinite` which matches component default. If component ever changes hard-coded duration, we’ll need to keep parity.
 
-Otherwise the patch is well factored, improves DX, and keeps production mode untouched.
+3. Namespace conflict  
+   • `.spin-x` and `.spin-y` are generic names that could collide with future classes; consider `amp-spin-x` to stay scoped.
+
+4. `transform-style: preserve-3d`  
+   • Necessary for 3-D rotation to show thickness; fine.
+
+Security / CSS performance  
+No injected content; nothing unsafe.
+
+## Overall assessment
+The feature is implemented cleanly, minimally invasive to existing logic, and safe. Just beware of SVG import expectations, potential rapid ResizeObserver updates, and consider alt text / aria-hidden tweaks for accessibility.
+
+No blocking issues.

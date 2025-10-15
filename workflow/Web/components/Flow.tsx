@@ -1,8 +1,9 @@
 import { Background, Controls, ReactFlow, SelectionMode } from '@xyflow/react'
 import type React from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../services/Protocol'
 import type { GenericVSCodeWrapper } from '../utils/vscode'
+import { AmpSpinningLogo } from './AmpSpinningLogo'
 import { CustomOrderedEdgeComponent } from './CustomOrderedEdge'
 // styles moved to global index.css
 import { HelpModal } from './HelpModal'
@@ -113,6 +114,25 @@ export const Flow: React.FC<{
         return sorted.map(node => ({ ...node, data: { ...node.data } }))
     }, [nodesWithState, edges])
 
+    // Measure center pane for background canvas sizing
+    const centerRef = useRef<HTMLDivElement | null>(null)
+    const [centerSize, setCenterSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
+    useEffect(() => {
+        const el = centerRef.current
+        if (!el) return
+        const ro = new ResizeObserver(entries => {
+            for (const entry of entries) {
+                const cr = entry.contentRect
+                setCenterSize({
+                    w: Math.max(0, Math.floor(cr.width)),
+                    h: Math.max(0, Math.floor(cr.height)),
+                })
+            }
+        })
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [])
+
     return (
         <div className="tw-flex tw-h-screen tw-w-full tw-border-2 tw-border-solid tw-border-[var(--vscode-panel-border)] tw-text-[14px] tw-overflow-hidden">
             <div
@@ -148,41 +168,58 @@ export const Flow: React.FC<{
                 tabIndex={0}
             >
                 <div className="tw-flex tw-flex-1 tw-h-full">
-                    <div className="tw-flex-1 tw-bg-[var(--vscode-editor-background)] tw-h-full">
-                        <ReactFlow
-                            nodes={nodesWithState}
-                            edges={orderedEdges}
-                            onNodesChange={onNodesChange}
-                            onEdgesChange={onEdgesChange}
-                            onEdgesDelete={onEdgesDelete}
-                            onConnect={onConnect}
-                            onNodeClick={onNodeClick}
-                            onNodeDragStart={onNodeDragStart}
-                            deleteKeyCode={['Backspace', 'Delete']}
-                            nodeTypes={nodeTypes}
-                            selectionMode={SelectionMode.Partial}
-                            selectionOnDrag={true}
-                            selectionKeyCode="Shift"
-                            edgeTypes={{
-                                'ordered-edge': props => (
-                                    <CustomOrderedEdgeComponent {...props} edges={orderedEdges} />
-                                ),
-                            }}
-                            fitView
-                        >
-                            <Background color="transparent" />
-                            <Controls className="rf-controls">
-                                <button
-                                    type="button"
-                                    className="react-flow__controls-button"
-                                    onClick={() => setIsHelpOpen(true)}
-                                    title="Help"
-                                >
-                                    ?
-                                </button>
-                            </Controls>
-                            <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
-                        </ReactFlow>
+                    <div
+                        ref={centerRef}
+                        className="tw-relative tw-flex-1 tw-bg-[var(--vscode-editor-background)] tw-h-full"
+                    >
+                        {/* Background: Spinning Amp logo */}
+                        {centerSize.w > 0 && centerSize.h > 0 ? (
+                            <AmpSpinningLogo
+                                width={centerSize.w}
+                                height={centerSize.h}
+                                scale={0.66}
+                                axis="y"
+                                opacity={0.12}
+                                className="tw-z-0"
+                            />
+                        ) : null}
+                        {/* ReactFlow overlay */}
+                        <div className="tw-absolute tw-inset-0 tw-z-[1]">
+                            <ReactFlow
+                                nodes={nodesWithState}
+                                edges={orderedEdges}
+                                onNodesChange={onNodesChange}
+                                onEdgesChange={onEdgesChange}
+                                onEdgesDelete={onEdgesDelete}
+                                onConnect={onConnect}
+                                onNodeClick={onNodeClick}
+                                onNodeDragStart={onNodeDragStart}
+                                deleteKeyCode={['Backspace', 'Delete']}
+                                nodeTypes={nodeTypes}
+                                selectionMode={SelectionMode.Partial}
+                                selectionOnDrag={true}
+                                selectionKeyCode="Shift"
+                                edgeTypes={{
+                                    'ordered-edge': props => (
+                                        <CustomOrderedEdgeComponent {...props} edges={orderedEdges} />
+                                    ),
+                                }}
+                                fitView
+                            >
+                                <Background color="transparent" />
+                                <Controls className="rf-controls">
+                                    <button
+                                        type="button"
+                                        className="react-flow__controls-button"
+                                        onClick={() => setIsHelpOpen(true)}
+                                        title="Help"
+                                    >
+                                        ?
+                                    </button>
+                                </Controls>
+                                <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+                            </ReactFlow>
+                        </div>
                     </div>
                     <div
                         className="tw-w-2 hover:tw-w-2 tw-bg-[var(--vscode-panel-border)] hover:tw-bg-[var(--vscode-textLink-activeForeground)] tw-cursor-ew-resize tw-select-none tw-transition-colors tw-transition-width tw-shadow-sm"
