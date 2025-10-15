@@ -1,5 +1,5 @@
 import type React from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/shadcn/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/shadcn/ui/dialog'
 
 interface HelpModalProps {
     isOpen: boolean

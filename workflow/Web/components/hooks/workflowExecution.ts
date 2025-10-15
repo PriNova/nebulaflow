@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
-import type { GenericVSCodeWrapper } from '../../../utils/vscode'
-import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/WorkflowProtocol'
+import type { GenericVSCodeWrapper } from '../../../webview/utils/vscode'
+import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
 import type { Edge } from '../CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
 

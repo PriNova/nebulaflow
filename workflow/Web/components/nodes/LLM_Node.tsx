@@ -1,6 +1,6 @@
 import { Handle, Position } from '@xyflow/react'
 import type React from 'react'
-import type { Model } from '../../services/WorkflowProtocol'
+import type { Model } from '../../services/Protocol'
 import {
     type BaseNodeData,
     type BaseNodeProps,

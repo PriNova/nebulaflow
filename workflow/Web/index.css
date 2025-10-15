@@ -1,13 +1,9 @@
 @import '@vscode/codicons/dist/codicon';
 @import url(./utils/highlight.css);
-@import url(./components/shadcn/shadcn.css);
+@import url(./ui/shadcn/shadcn.css);
 @import url(./themes/index.css);
 
-
-
 :root {
-    /* Our syntax highlighter expects a dark code background color, regardless of the VS Code color
-    theme. */
     --code-background: #222222;
     --code-foreground: #ffffff;
 }
@@ -18,7 +14,6 @@
     font-family: var(--vscode-font-family);
     color: var(--vscode-sideBar-foreground);
     background-color: var(--vscode-sideBar-background);
-    /* Override VS Code Webview Toolkit elements */
     --border-width: none;
 }
 

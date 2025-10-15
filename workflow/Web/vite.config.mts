@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => ({
     base: './',
     plugins: [react()],
     build: {
-        outDir: resolve(__dirname, '../dist/webviews'),
+        outDir: resolve(__dirname, '../../dist/webviews'),
         emptyOutDir: false,
         sourcemap: mode === 'development',
         minify: mode !== 'development',

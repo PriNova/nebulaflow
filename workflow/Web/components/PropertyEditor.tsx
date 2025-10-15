@@ -1,8 +1,8 @@
 import { Save } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useState } from 'react'
-import { Button } from '../../components/shadcn/ui/button'
-import { Checkbox } from '../../components/shadcn/ui/checkbox'
+import { Button } from '../ui/shadcn/ui/button'
+import { Checkbox } from '../ui/shadcn/ui/checkbox'
 import {
     Command,
     CommandEmpty,
@@ -10,12 +10,12 @@ import {
     CommandInput,
     CommandItem,
     CommandList,
-} from '../../components/shadcn/ui/command'
-import { Input } from '../../components/shadcn/ui/input'
-import { Label } from '../../components/shadcn/ui/label'
-import { Popover, PopoverContent, PopoverTrigger } from '../../components/shadcn/ui/popover'
-import { Slider } from '../../components/shadcn/ui/slider'
-import { Textarea } from '../../components/shadcn/ui/textarea'
+} from '../ui/shadcn/ui/command'
+import { Input } from '../ui/shadcn/ui/input'
+import { Label } from '../ui/shadcn/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/shadcn/ui/popover'
+import { Slider } from '../ui/shadcn/ui/slider'
+import { Textarea } from '../ui/shadcn/ui/textarea'
 import type { AccumulatorNode } from './nodes/Accumulator_Node'
 import type { LLMNode } from './nodes/LLM_Node'
 import type { LoopStartNode } from './nodes/LoopStart_Node'

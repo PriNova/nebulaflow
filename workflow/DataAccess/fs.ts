@@ -1,5 +1,5 @@
 import * as vscode from 'vscode'
-import type { WorkflowNodes } from '../protocol/WorkflowProtocol'
+import type { WorkflowNodes } from '../Core/models'
 
 const WORKFLOWS_DIR = '.sourcegraph/workflows'
 const NODES_DIR = '.sourcegraph/nodes'

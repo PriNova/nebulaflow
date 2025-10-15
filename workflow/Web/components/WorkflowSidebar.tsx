@@ -1,15 +1,10 @@
 import { CircleStop, Edit, File, Play, Save, Trash2 } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useState } from 'react'
-import {
-    Accordion,
-    AccordionContent,
-    AccordionItem,
-    AccordionTrigger,
-} from '../../components/shadcn/ui/accordion'
-import { Button } from '../../components/shadcn/ui/button'
-import { Input } from '../../components/shadcn/ui/input'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/shadcn/ui/tooltip'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/shadcn/ui/accordion'
+import { Button } from '../ui/shadcn/ui/button'
+import { Input } from '../ui/shadcn/ui/input'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/shadcn/ui/tooltip'
 import { HelpModal } from './HelpModal'
 import { PropertyEditor } from './PropertyEditor'
 import { NodeType, type WorkflowNodes } from './nodes/Nodes'

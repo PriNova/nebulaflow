@@ -1,14 +1,14 @@
 import * as vscode from 'vscode'
-import type { ExtensionToWorkflow } from '../protocol/WorkflowProtocol'
+import { processGraphComposition } from '../../Core/engine/node-sorting'
+import type { ExtensionToWorkflow } from '../../Core/models'
 import {
     type Edge,
     type IfElseNode,
     NodeType,
     type WorkflowNode,
     type WorkflowNodes,
-} from '../protocol/WorkflowProtocol'
-import { processGraphComposition } from './node-sorting'
-import { expandHome, execute as shellExecute } from './shell'
+} from '../../Core/models'
+import { expandHome, execute as shellExecute } from '../../DataAccess/shell'
 
 interface IndexedEdges {
     bySource: Map<string, Edge[]>

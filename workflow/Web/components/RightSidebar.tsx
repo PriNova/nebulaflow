@@ -1,14 +1,9 @@
 import clsx from 'clsx'
 import { Loader2Icon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import {
-    Accordion,
-    AccordionContent,
-    AccordionItem,
-    AccordionTrigger,
-} from '../../components/shadcn/ui/accordion'
-import { Button } from '../../components/shadcn/ui/button'
-import { Textarea } from '../../components/shadcn/ui/textarea'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/shadcn/ui/accordion'
+import { Button } from '../ui/shadcn/ui/button'
+import { Textarea } from '../ui/shadcn/ui/textarea'
 import { NodeType, type WorkflowNodes } from './nodes/Nodes'
 
 interface RightSidebarProps {

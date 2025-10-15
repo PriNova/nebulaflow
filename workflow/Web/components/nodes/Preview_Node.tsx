@@ -1,6 +1,6 @@
 import { Handle, Position } from '@xyflow/react'
 import type React from 'react'
-import { Textarea } from '../../../components/shadcn/ui/textarea'
+import { Textarea } from '../../ui/shadcn/ui/textarea'
 import {
     type BaseNodeData,
     type BaseNodeProps,

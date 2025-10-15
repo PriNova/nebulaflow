@@ -1,5 +1,5 @@
-import { NodeType, type WorkflowNodes } from '../protocol/WorkflowProtocol'
-import type { Edge } from '../protocol/WorkflowProtocol'
+import { NodeType, type WorkflowNodes } from '../models'
+import type { Edge } from '../models'
 
 interface IndexedOrder {
     bySourceTarget: Map<string, number>

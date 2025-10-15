@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { processGraphComposition } from '../../../../src/engine/node-sorting'
-import type { Edge as ProtocolEdge } from '../../../../src/protocol/WorkflowProtocol'
+import { processGraphComposition } from '../../../Core/engine/node-sorting'
+import type { Edge as ProtocolEdge } from '../../../Core/models'
 import type { Edge as FlowEdge } from '../CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
 
