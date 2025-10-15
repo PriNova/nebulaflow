@@ -57,7 +57,11 @@ export const LLMNode: React.FC<BaseNodeProps> = ({ data, selected }) => (
                     alignItems: 'center',
                 }}
             >
-                <img src={ampMark} alt="Amp" style={{ width: '14px', height: '14px', marginRight: '0.25rem' }} />
+                <img
+                    src={ampMark}
+                    alt="Amp"
+                    style={{ width: '14px', height: '14px', marginRight: '0.25rem' }}
+                />
                 <div className="tw-text-center tw-flex-grow" style={{ transform: 'translateX(-6%)' }}>
                     Amp Agent
                 </div>

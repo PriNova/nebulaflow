@@ -34,7 +34,21 @@
             "options": {
                 "cwd": "${workspaceFolder}"
             },
-            "problemMatcher": []
+            "isBackground": true,
+            "problemMatcher": [
+                {
+                    "owner": "custom",
+                    "fileLocation": "autoDetect",
+                    "pattern": {
+                        "regexp": "."
+                    },
+                    "background": {
+                        "activeOnStart": true,
+                        "beginsPattern": "^WEBVIEW_WATCH_START$",
+                        "endsPattern": "^WEBVIEW_WATCH_READY$"
+                    }
+                }
+            ]
         }
     ]
 }

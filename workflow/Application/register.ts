@@ -151,12 +151,34 @@ export function activate(context: vscode.ExtensionContext): void {
 
         const webviewPath = vscode.Uri.joinPath(context.extensionUri, 'dist/webviews')
         const root = vscode.Uri.joinPath(webviewPath, 'workflow.html')
-        const bytes = await vscode.workspace.fs.readFile(root)
-        const decoded = new TextDecoder('utf-8').decode(bytes)
-        const resources = panel.webview.asWebviewUri(webviewPath)
-        panel.webview.html = decoded
-            .replaceAll('./', `${resources.toString()}/`)
-            .replaceAll('{cspSource}', panel.webview.cspSource)
+
+        async function render() {
+            const bytes = await vscode.workspace.fs.readFile(root)
+            const decoded = new TextDecoder('utf-8').decode(bytes)
+            const resources = panel.webview.asWebviewUri(webviewPath)
+            panel.webview.html = decoded
+                .replaceAll('./', `${resources.toString()}/`)
+                .replaceAll('{cspSource}', panel.webview.cspSource)
+        }
+
+        await render()
+
+        if (context.extensionMode === vscode.ExtensionMode.Development) {
+            const watcher = vscode.workspace.createFileSystemWatcher(
+                new vscode.RelativePattern(webviewPath, '**/*')
+            )
+            const debounced = (() => {
+                let timeout: NodeJS.Timeout | undefined
+                return () => {
+                    clearTimeout(timeout)
+                    timeout = setTimeout(() => void render(), 150)
+                }
+            })()
+            watcher.onDidChange(debounced)
+            watcher.onDidCreate(debounced)
+            watcher.onDidDelete(debounced)
+            panel.onDidDispose(() => watcher.dispose())
+        }
     })
 
     context.subscriptions.push(disposable)
