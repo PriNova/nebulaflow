@@ -3,11 +3,7 @@
 @import url(./components/shadcn/shadcn.css);
 @import url(./themes/index.css);
 
-@font-face {
-    font-family: cody-icons;
-    font-display: block;
-    src: url('../resources/cody-icons.woff') format('woff');
-}
+
 
 :root {
     /* Our syntax highlighter expects a dark code background color, regardless of the VS Code color

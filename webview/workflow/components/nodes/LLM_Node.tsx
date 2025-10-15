@@ -1,7 +1,14 @@
 import { Handle, Position } from '@xyflow/react'
 import type React from 'react'
-import { type BaseNodeData, type BaseNodeProps, NodeType, type WorkflowNode, getBorderColor, getNodeStyle } from './Nodes'
 import type { Model } from '../../services/WorkflowProtocol'
+import {
+    type BaseNodeData,
+    type BaseNodeProps,
+    NodeType,
+    type WorkflowNode,
+    getBorderColor,
+    getNodeStyle,
+} from './Nodes'
 
 export type LLMNode = Omit<WorkflowNode, 'data'> & {
     type: NodeType.LLM
@@ -14,13 +21,41 @@ export type LLMNode = Omit<WorkflowNode, 'data'> & {
 }
 
 export const LLMNode: React.FC<BaseNodeProps> = ({ data, selected }) => (
-    <div style={getNodeStyle(NodeType.LLM, data.moving, selected, data.executing, data.error, data.active, data.interrupted)}>
+    <div
+        style={getNodeStyle(
+            NodeType.LLM,
+            data.moving,
+            selected,
+            data.executing,
+            data.error,
+            data.active,
+            data.interrupted
+        )}
+    >
         <Handle type="target" position={Position.Top} />
         <div className="tw-flex tw-flex-col">
-            <div className="tw-flex tw-items-center tw-justify-center tw-py-1 tw-mb-2 tw-rounded-t-sm tw-font-bold" style={{
-                background: `linear-gradient(to top, #1e1e1e, ${getBorderColor(NodeType.LLM, { error: data.error, executing: data.executing, moving: data.moving, selected, interrupted: data.interrupted, active: data.active })}`,
-                color: 'var(--vscode-dropdown-foreground)', marginLeft: '-0.5rem', marginRight: '-0.5rem', marginTop: '-0.5rem', paddingLeft: '0.2rem', paddingRight: '0.2rem', display: 'flex', flexDirection: 'row', alignItems: 'center',
-            }}>
+            <div
+                className="tw-flex tw-items-center tw-justify-center tw-py-1 tw-mb-2 tw-rounded-t-sm tw-font-bold"
+                style={{
+                    background: `linear-gradient(to top, #1e1e1e, ${getBorderColor(NodeType.LLM, {
+                        error: data.error,
+                        executing: data.executing,
+                        moving: data.moving,
+                        selected,
+                        interrupted: data.interrupted,
+                        active: data.active,
+                    })}`,
+                    color: 'var(--vscode-dropdown-foreground)',
+                    marginLeft: '-0.5rem',
+                    marginRight: '-0.5rem',
+                    marginTop: '-0.5rem',
+                    paddingLeft: '0.2rem',
+                    paddingRight: '0.2rem',
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                }}
+            >
                 <div className="tw-text-center tw-flex-grow" style={{ transform: 'translateX(-6%)' }}>
                     LLM
                 </div>

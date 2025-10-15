@@ -1,0 +1,40 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "npm: build",
+            "type": "npm",
+            "script": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "npm: build:ext",
+            "type": "npm",
+            "script": "build:ext",
+            "problemMatcher": ["$tsc"]
+        },
+        {
+            "label": "npm: build:webview",
+            "type": "npm",
+            "script": "build:webview"
+        },
+        {
+            "label": "npm: watch:webview",
+            "type": "npm",
+            "script": "watch:webview",
+            "problemMatcher": []
+        },
+        {
+            "label": "dev: start-webview-watch",
+            "type": "process",
+            "dependsOrder": "sequence",
+            "dependsOn": ["npm: build:ext"],
+            "command": "node",
+            "args": ["scripts/start-webview-watch.js"],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

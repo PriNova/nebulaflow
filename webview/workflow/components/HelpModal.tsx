@@ -1,7 +1,10 @@
 import type React from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/shadcn/ui/dialog'
 
-interface HelpModalProps { isOpen: boolean; onClose: () => void }
+interface HelpModalProps {
+    isOpen: boolean
+    onClose: () => void
+}
 
 export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
     return (

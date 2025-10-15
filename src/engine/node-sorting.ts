@@ -19,11 +19,19 @@ function getNodesConnectedByDirection(
         .filter(Boolean) as WorkflowNodes[]
 }
 
-function getChildNodesFrom(sourceNodeId: string, nodes: WorkflowNodes[], edges: Edge[]): WorkflowNodes[] {
+function getChildNodesFrom(
+    sourceNodeId: string,
+    nodes: WorkflowNodes[],
+    edges: Edge[]
+): WorkflowNodes[] {
     return getNodesConnectedByDirection(sourceNodeId, nodes, edges, 'child')
 }
 
-function getParentNodesFrom(targetNodeId: string, nodes: WorkflowNodes[], edges: Edge[]): WorkflowNodes[] {
+function getParentNodesFrom(
+    targetNodeId: string,
+    nodes: WorkflowNodes[],
+    edges: Edge[]
+): WorkflowNodes[] {
     return getNodesConnectedByDirection(targetNodeId, nodes, edges, 'parent')
 }
 
@@ -77,7 +85,9 @@ function kahnSortbyOrderedEdges(activeNodes: WorkflowNodes[], activeEdges: Edge[
         inDegree.set(edge.target, currentDegree + 1)
     }
     const queue: WorkflowNodes[] = activeNodes.filter(node => inDegree.get(node.id) === 0)
-    queue.sort((a, b) => getNodePriority(a, edgeIndex, activeEdges) - getNodePriority(b, edgeIndex, activeEdges))
+    queue.sort(
+        (a, b) => getNodePriority(a, edgeIndex, activeEdges) - getNodePriority(b, edgeIndex, activeEdges)
+    )
 
     const sortedNodes: WorkflowNodes[] = []
 
@@ -111,16 +121,27 @@ function kahnSortbyOrderedEdges(activeNodes: WorkflowNodes[], activeEdges: Edge[
             }
         }
 
-        queue.sort((a, b) => getNodePriority(a, edgeIndex, activeEdges) - getNodePriority(b, edgeIndex, activeEdges))
+        queue.sort(
+            (a, b) =>
+                getNodePriority(a, edgeIndex, activeEdges) - getNodePriority(b, edgeIndex, activeEdges)
+        )
     }
     return sortedNodes
 }
 
-function findPreLoopNodes(loopStart: WorkflowNodes, nodes: WorkflowNodes[], edges: Edge[]): WorkflowNodes[] {
+function findPreLoopNodes(
+    loopStart: WorkflowNodes,
+    nodes: WorkflowNodes[],
+    edges: Edge[]
+): WorkflowNodes[] {
     const preLoopNodes = new Set<WorkflowNodes>()
 
     function explorePreLoopNodes(node: WorkflowNodes): void {
-        if (node.type === NodeType.LOOP_START || node.type === NodeType.LOOP_END || preLoopNodes.has(node)) {
+        if (
+            node.type === NodeType.LOOP_START ||
+            node.type === NodeType.LOOP_END ||
+            preLoopNodes.has(node)
+        ) {
             return
         }
         preLoopNodes.add(node)
@@ -160,7 +181,12 @@ function findLoopNodes(
 
         const childNodes = getChildNodesFrom(currentNode.id, nodes, edges)
         for (const childNode of childNodes) {
-            if (childNode && childNode.type !== NodeType.LOOP_END && !loopNodes.has(childNode) && !preLoopNodes.has(childNode.id)) {
+            if (
+                childNode &&
+                childNode.type !== NodeType.LOOP_END &&
+                !loopNodes.has(childNode) &&
+                !preLoopNodes.has(childNode.id)
+            ) {
                 loopNodes.add(childNode)
                 loopQueue.push(childNode)
             }
@@ -168,7 +194,12 @@ function findLoopNodes(
 
         const parentNodes = getParentNodesFrom(currentNode.id, nodes, edges)
         for (const parentNode of parentNodes) {
-            if (parentNode && parentNode.type !== NodeType.LOOP_START && !loopNodes.has(parentNode) && !preLoopNodes.has(parentNode.id)) {
+            if (
+                parentNode &&
+                parentNode.type !== NodeType.LOOP_START &&
+                !loopNodes.has(parentNode) &&
+                !preLoopNodes.has(parentNode.id)
+            ) {
                 loopNodes.add(parentNode)
                 loopQueue.push(parentNode)
             }
@@ -181,7 +212,11 @@ function findLoopNodes(
     return kahnSortedLoopNodes
 }
 
-function findPostLoopNodes(loopEnd: WorkflowNodes, nodes: WorkflowNodes[], edges: Edge[]): WorkflowNodes[] {
+function findPostLoopNodes(
+    loopEnd: WorkflowNodes,
+    nodes: WorkflowNodes[],
+    edges: Edge[]
+): WorkflowNodes[] {
     const postLoopNodes = new Set<WorkflowNodes>()
     const postLoopQueue = [loopEnd]
 
@@ -191,13 +226,23 @@ function findPostLoopNodes(loopEnd: WorkflowNodes, nodes: WorkflowNodes[], edges
         const parentNodes = getParentNodesFrom(currentNode.id, nodes, edges)
 
         for (const childNode of childNodes) {
-            if (childNode && childNode.type !== NodeType.LOOP_END && !postLoopNodes.has(childNode) && childNode.type !== NodeType.LOOP_START) {
+            if (
+                childNode &&
+                childNode.type !== NodeType.LOOP_END &&
+                !postLoopNodes.has(childNode) &&
+                childNode.type !== NodeType.LOOP_START
+            ) {
                 postLoopNodes.add(childNode)
                 postLoopQueue.push(childNode)
             }
         }
         for (const parentNode of parentNodes) {
-            if (parentNode && parentNode.type !== NodeType.LOOP_END && !postLoopNodes.has(parentNode) && parentNode.type !== NodeType.LOOP_START) {
+            if (
+                parentNode &&
+                parentNode.type !== NodeType.LOOP_END &&
+                !postLoopNodes.has(parentNode) &&
+                parentNode.type !== NodeType.LOOP_START
+            ) {
                 postLoopNodes.add(parentNode)
                 postLoopQueue.push(parentNode)
             }
@@ -216,7 +261,11 @@ export function processGraphComposition(
 ): WorkflowNodes[] {
     const processedNodes = nodes.map(node => ({ ...node, data: { ...node.data } }))
     const activeNodes = processedNodes.filter(node => node.data.active !== false)
-    const activeEdges = edges.filter(edge => activeNodes.some(node => node.id === edge.source) && activeNodes.some(node => node.id === edge.target))
+    const activeEdges = edges.filter(
+        edge =>
+            activeNodes.some(node => node.id === edge.source) &&
+            activeNodes.some(node => node.id === edge.target)
+    )
 
     const loopStartNodes = activeNodes.filter(node => node.type === NodeType.LOOP_START)
 
@@ -257,7 +306,9 @@ function findStronglyConnectedComponents(nodes: WorkflowNodes[], edges: Edge[]):
         state.onStack = true
         nodeStates.set(node.id, state)
 
-        const children = getChildNodesFrom(node.id, nodes, edges).filter(node => !(node.type === NodeType.LOOP_START || node.type === NodeType.LOOP_END))
+        const children = getChildNodesFrom(node.id, nodes, edges).filter(
+            node => !(node.type === NodeType.LOOP_START || node.type === NodeType.LOOP_END)
+        )
         for (const child of children) {
             const childState = nodeStates.get(child.id)
             if (!childState) {
@@ -328,11 +379,20 @@ function findRelatedNodeOfType(
     return undefined
 }
 
-function findLoopEndForLoopStart(loopStart: WorkflowNodes, nodes: WorkflowNodes[], edges: Edge[]): WorkflowNodes | undefined {
-    return findRelatedNodeOfType(loopStart, nodes, edges, NodeType.LOOP_END, 'source', NodeType.LOOP_START)
+function findLoopEndForLoopStart(
+    loopStart: WorkflowNodes,
+    nodes: WorkflowNodes[],
+    edges: Edge[]
+): WorkflowNodes | undefined {
+    return findRelatedNodeOfType(
+        loopStart,
+        nodes,
+        edges,
+        NodeType.LOOP_END,
+        'source',
+        NodeType.LOOP_START
+    )
 }
-
-const CONTROL_FLOW_NODES = new Set([NodeType.LOOP_START, NodeType.LOOP_END])
 
 function processLoopWithCycles(
     nodes: WorkflowNodes[],
@@ -394,13 +454,11 @@ function getLoopIterations(
     )
 
     if (iterationOverrideEdges.length === 0) {
-        // @ts-expect-error: loopStart will have data.iterations when type is LOOP_START
         return (loopStart as any).data.iterations
     }
 
     const sourceNode = nodes.find(n => n.id === iterationOverrideEdges[0].source)
     const overrideValue = Number.parseInt(sourceNode?.data.content || '', 10)
 
-    // @ts-expect-error: loopStart will have data.iterations when type is LOOP_START
     return !Number.isNaN(overrideValue) ? overrideValue : (loopStart as any).data.iterations
 }

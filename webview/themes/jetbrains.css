@@ -397,3 +397,4 @@ html[data-ide='JetBrains'] {
     --vscode-scrollbar-shadow: var(--jetbrains-ScrollBar-thumbShadow);
     --vscode-scrollbarSlider-activeBackground: var(--jetbrains-ScrollBar-trackHighlight);
     --vscode-scrollbarSlider-background: var(--jetbrains-ScrollBar-track);
+}

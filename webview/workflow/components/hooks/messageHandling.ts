@@ -1,8 +1,8 @@
 import { useCallback, useEffect } from 'react'
+import type { GenericVSCodeWrapper } from '../../../utils/vscode'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/WorkflowProtocol'
 import type { Edge } from '../../workflow/components/CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
-import type { GenericVSCodeWrapper } from '../../../utils/vscode'
 
 export const useMessageHandler = (
     nodes: WorkflowNodes[],
@@ -20,9 +20,16 @@ export const useMessageHandler = (
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>,
     setCustomNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>
 ) => {
-    const batchUpdateNodeResults = useCallback((updates: Map<string, string>) => { setNodeResults(prev => new Map([...prev, ...updates])) }, [setNodeResults])
+    const batchUpdateNodeResults = useCallback(
+        (updates: Map<string, string>) => {
+            setNodeResults(prev => new Map([...prev, ...updates]))
+        },
+        [setNodeResults]
+    )
 
-    useEffect(() => { vscodeAPI.postMessage({ type: 'get_models' } as any) }, [vscodeAPI])
+    useEffect(() => {
+        vscodeAPI.postMessage({ type: 'get_models' } as any)
+    }, [vscodeAPI])
 
     useEffect(() => {
         const messageHandler = (event: MessageEvent<ExtensionToWorkflow>) => {
@@ -40,36 +47,79 @@ export const useMessageHandler = (
                 case 'node_execution_status': {
                     const { nodeId, status, result } = event.data.data as any
                     if (nodeId && status) {
-                        if (status === 'interrupted') { setInterruptedNodeId(nodeId) }
-                        if (status === 'pending_approval') { setPendingApprovalNodeId(nodeId) }
-                        else if (status === 'running') {
+                        if (status === 'interrupted') {
+                            setInterruptedNodeId(nodeId)
+                        }
+                        if (status === 'pending_approval') {
+                            setPendingApprovalNodeId(nodeId)
+                        } else if (status === 'running') {
                             setExecutingNodeId(nodeId)
-                            setNodeErrors(prev => { const updated = new Map(prev); updated.delete(nodeId); return updated })
+                            setNodeErrors(prev => {
+                                const updated = new Map(prev)
+                                updated.delete(nodeId)
+                                return updated
+                            })
                         } else if (status === 'error') {
                             setExecutingNodeId(null)
                             setNodeErrors(prev => new Map(prev).set(nodeId, result ?? ''))
                         } else if (status === 'completed') {
                             setExecutingNodeId(null)
                             const node = nodes.find(n => n.id === nodeId)
-                            if (node?.type === NodeType.PREVIEW) { onNodeUpdate(node.id, { content: result as any }) }
-                        } else { setExecutingNodeId(null) }
+                            if (node?.type === NodeType.PREVIEW) {
+                                onNodeUpdate(node.id, { content: result as any })
+                            }
+                        } else {
+                            setExecutingNodeId(null)
+                        }
                         setNodeResults(prev => new Map(prev).set(nodeId, result ?? ''))
                     }
                     break
                 }
-                case 'execution_started': setIsExecuting(true); break
-                case 'execution_completed': setIsExecuting(false); break
+                case 'execution_started':
+                    setIsExecuting(true)
+                    break
+                case 'execution_completed':
+                    setIsExecuting(false)
+                    break
                 case 'token_count': {
                     const { count, nodeId } = event.data.data as any
                     const updates = new Map([[`${nodeId}_tokens`, String(count)]])
                     batchUpdateNodeResults(updates)
                     break
                 }
-                case 'models_loaded': { const models = event.data.data as any; if (models) { setModels(models) } break }
-                case 'provide_custom_nodes': { const customNodes = event.data.data as any; if (customNodes) { setCustomNodes(customNodes as any) } break }
+                case 'models_loaded': {
+                    const models = event.data.data as any
+                    if (models) {
+                        setModels(models)
+                    }
+                    break
+                }
+                case 'provide_custom_nodes': {
+                    const customNodes = event.data.data as any
+                    if (customNodes) {
+                        setCustomNodes(customNodes as any)
+                    }
+                    break
+                }
             }
         }
         const off = vscodeAPI.onMessage(messageHandler as any)
         return () => off()
-    }, [nodes, onNodeUpdate, setEdges, setExecutingNodeId, setInterruptedNodeId, setIsExecuting, setNodeErrors, setNodeResults, setNodes, calculatePreviewNodeTokens, setPendingApprovalNodeId, batchUpdateNodeResults, setModels, setCustomNodes, vscodeAPI])
+    }, [
+        nodes,
+        onNodeUpdate,
+        setEdges,
+        setExecutingNodeId,
+        setInterruptedNodeId,
+        setIsExecuting,
+        setNodeErrors,
+        setNodeResults,
+        setNodes,
+        calculatePreviewNodeTokens,
+        setPendingApprovalNodeId,
+        batchUpdateNodeResults,
+        setModels,
+        setCustomNodes,
+        vscodeAPI,
+    ])
 }

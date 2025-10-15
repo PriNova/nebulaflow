@@ -96,7 +96,11 @@ export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
         case NodeType.SEARCH_CONTEXT:
             return { ...node, id, data: { ...node.data, local_remote: false } } as SearchContextNode
         case NodeType.IF_ELSE:
-            return { ...node, id, data: { ...node.data, truePathActive: false, falsePathActive: false } } as IfElseNode
+            return {
+                ...node,
+                id,
+                data: { ...node.data, truePathActive: false, falsePathActive: false },
+            } as IfElseNode
         case NodeType.LOOP_START:
             return { ...node, id, data: { ...node.data, overrideIterations: false } } as LoopStartNode
         default:
@@ -114,32 +118,68 @@ export const createEdge = (sourceNode: WorkflowNode, targetNode: WorkflowNode): 
 
 export const defaultWorkflow = (() => {
     const nodes = [
-        createNode({ type: NodeType.CLI, data: { title: 'Git Diff', content: 'git diff', active: true }, position: { x: 0, y: 0 } }),
+        createNode({
+            type: NodeType.CLI,
+            data: { title: 'Git Diff', content: 'git diff', active: true },
+            position: { x: 0, y: 0 },
+        }),
         createNode({
             type: NodeType.LLM,
-            data: { title: 'Generate Commit Message', content: 'Generate a commit message for the following git diff: ${1}', active: true, temperature: 0.0, maxTokens: 1000, model: undefined },
+            data: {
+                title: 'Generate Commit Message',
+                content: 'Generate a commit message for the following git diff: ${1}',
+                active: true,
+                temperature: 0.0,
+                maxTokens: 1000,
+                model: undefined,
+            },
             position: { x: 0, y: 100 },
         }),
-        createNode({ type: NodeType.CLI, data: { title: 'Git Commit', content: 'git commit -m "${1}"', active: true }, position: { x: 0, y: 200 } }),
+        createNode({
+            type: NodeType.CLI,
+            data: { title: 'Git Commit', content: 'git commit -m "${1}"', active: true },
+            position: { x: 0, y: 200 },
+        }),
     ]
     return { nodes, edges: [createEdge(nodes[0], nodes[1]), createEdge(nodes[1], nodes[2])] }
 })()
 
 export const getBorderColor = (
     type: NodeType,
-    { error, executing, moving, selected, interrupted, active }: { error?: boolean; executing?: boolean; moving?: boolean; selected?: boolean; interrupted?: boolean; active?: boolean }
+    {
+        error,
+        executing,
+        moving,
+        selected,
+        interrupted,
+        active,
+    }: {
+        error?: boolean
+        executing?: boolean
+        moving?: boolean
+        selected?: boolean
+        interrupted?: boolean
+        active?: boolean
+    }
 ) => {
-    if (active === false) { return 'var(--vscode-disabledForeground)' }
+    if (active === false) {
+        return 'var(--vscode-disabledForeground)'
+    }
     if (interrupted) return 'var(--vscode-charts-orange)'
     if (error) return 'var(--vscode-inputValidation-errorBorder)'
     if (executing) return 'var(--vscode-charts-yellow)'
     if (selected || moving) return 'var(--vscode-testing-iconPassed)'
     switch (type) {
-        case NodeType.PREVIEW: return '#aa0000'
-        case NodeType.CLI: return 'var(--vscode-textLink-foreground)'
-        case NodeType.LLM: return 'var(--vscode-symbolIcon-functionForeground)'
-        case NodeType.INPUT: return 'var(--vscode-input-foreground)'
-        default: return 'var(--vscode-foreground)'
+        case NodeType.PREVIEW:
+            return '#aa0000'
+        case NodeType.CLI:
+            return 'var(--vscode-textLink-foreground)'
+        case NodeType.LLM:
+            return 'var(--vscode-symbolIcon-functionForeground)'
+        case NodeType.INPUT:
+            return 'var(--vscode-input-foreground)'
+        default:
+            return 'var(--vscode-foreground)'
     }
 }
 
@@ -154,7 +194,9 @@ export const getNodeStyle = (
 ) => ({
     padding: '0.5rem',
     borderRadius: '0.25rem',
-    backgroundColor: error ? 'var(--vscode-inputValidation-errorBackground)' : 'var(--vscode-dropdown-background)',
+    backgroundColor: error
+        ? 'var(--vscode-inputValidation-errorBackground)'
+        : 'var(--vscode-dropdown-background)',
     color: 'var(--vscode-dropdown-foreground)',
     border: `2px solid ${getBorderColor(type, { error, executing, moving, interrupted, selected })}`,
     opacity: !active ? '0.4' : '1',

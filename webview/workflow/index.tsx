@@ -3,8 +3,8 @@ import ReactDOM from 'react-dom/client'
 
 import '../index.css'
 import { ReactFlowProvider } from '@xyflow/react'
-import { WorkflowApp } from './WorkflowApp'
 import { getGenericVSCodeAPI } from '../utils/vscode'
+import { WorkflowApp } from './WorkflowApp'
 
 ReactDOM.createRoot(document.querySelector('#root') as HTMLElement).render(
     <React.StrictMode>

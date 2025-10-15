@@ -1,0 +1,18 @@
+:root { --toolbar-button-font-size: 12px; }
+
+.button,
+.button + aside {
+    font-size: var(--toolbar-button-font-size);
+    line-height: var(--toolbar-button-font-size);
+}
+
+.button { user-select: none; border-radius: 3px; --padding-y: 2px; --padding-x: 3px; padding: var(--padding-y) var(--padding-x); --icon-size: 16px; --gap: 2px; gap: var(--gap); flex-shrink: 0; }
+.button:enabled { cursor: pointer; }
+.button > svg { flex-shrink: 0; width: var(--icon-size); height: var(--icon-size); stroke-width: 1.5px; }
+.buttonPrimary { color: var(--vscode-button-foreground); background-color: var(--vscode-button-background); }
+.buttonSecondary { opacity: .6; color: var(--vscode-input-foreground); background-color: unset; }
+.buttonSecondary:enabled:is(:hover, :focus-within) { opacity: 1; }
+.buttonNoIconStart { padding-left: calc(2*var(--padding-x)); }
+.buttonNoIconEnd { padding-right: calc(2*var(--padding-x)); }
+.button:disabled { opacity: .5; }
+.buttonSecondary.button:disabled { opacity: .7; }

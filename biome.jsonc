@@ -1,0 +1,63 @@
+{
+    "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+    "organizeImports": {
+        "enabled": true
+    },
+    "linter": {
+        "enabled": true,
+        "rules": {
+            "recommended": true,
+            "suspicious": {
+                "noExplicitAny": "off",
+                "noRedeclare": "off"
+            },
+            "style": {
+                "noNonNullAssertion": "off",
+                "noParameterAssign": "off",
+                "useTemplate": "off",
+                "useNodejsImportProtocol": "error",
+                "useImportType": "error",
+                "useExportType": "error"
+            },
+            "correctness": {
+                "noUnusedImports": "error"
+            },
+            "complexity": {
+                "noUselessTernary": "error"
+            }
+        }
+    },
+    "formatter": {
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineWidth": 105
+    },
+    "javascript": {
+        "formatter": {
+            "semicolons": "asNeeded",
+            "quoteStyle": "single",
+            "arrowParentheses": "asNeeded",
+            "trailingComma": "es5"
+        }
+    },
+    "files": {
+        "ignore": ["node_modules/", "dist/", "build/"]
+    },
+    "overrides": [
+        {
+            "include": ["**/*.test.ts", "**/*.test.tsx"],
+            "linter": {
+                "rules": {
+                    "suspicious": {
+                        "noFocusedTests": "warn"
+                    }
+                }
+            }
+        }
+    ],
+    "vcs": {
+        "enabled": true,
+        "clientKind": "git",
+        "useIgnoreFile": true
+    }
+}

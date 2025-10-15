@@ -106,7 +106,9 @@ export type WorkflowNodes =
     | IfElseNode
 
 // Messaging protocol (webview <-> extension)
-interface BaseWorkflowMessage { type: string }
+interface BaseWorkflowMessage {
+    type: string
+}
 
 interface WorkflowPayload {
     nodes?: WorkflowNodes[]

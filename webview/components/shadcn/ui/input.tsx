@@ -1,8 +1,26 @@
 import * as React from 'react'
+import { cn } from '../utils'
 
-interface InputProps extends React.ComponentProps<'input'> { variant?: 'default' | 'search' }
+interface InputProps extends React.ComponentProps<'input'> {
+    variant?: 'default' | 'search'
+}
 
-export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, type, ...props }, ref) => {
-    return <input ref={ref} type={type} className={className} {...props} />
-})
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(
+    ({ className, type, variant = 'default', ...props }, ref) => {
+        return (
+            <input
+                ref={ref}
+                type={type}
+                className={cn(
+                    'tw-flex tw-h-10 tw-w-full tw-rounded-md tw-border tw-border-input tw-bg-background tw-px-3 tw-py-2 tw-text-base tw-ring-offset-background file:tw-border-0 file:tw-bg-transparent file:tw-text-sm file:tw-font-medium file:tw-text-foreground placeholder:tw-text-muted-foreground focus-visible:tw-outline-none disabled:tw-cursor-not-allowed disabled:tw-opacity-50 md:tw-text-sm',
+                    variant === 'default' &&
+                        'focus-visible:tw-ring-2 focus-visible:tw-ring-ring focus-visible:tw-ring-offset-2',
+                    variant === 'search' && 'tw-border-border focus-visible:tw-border-white',
+                    className
+                )}
+                {...props}
+            />
+        )
+    }
+)
 Input.displayName = 'Input'

@@ -24,6 +24,9 @@ export const CustomOrderedEdgeComponent: React.FC<OrderedEdgeProps> = ({
     return (
         <>
             <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
+            <circle r="7" fill="rgb(255, 136, 0)">
+                <animateMotion dur="3s" repeatCount="indefinite" path={edgePath} calcMode="linear" />
+            </circle>
             {typeof orderNumber === 'number' && (
                 <text
                     x={0}

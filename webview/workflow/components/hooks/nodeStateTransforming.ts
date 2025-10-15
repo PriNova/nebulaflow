@@ -22,7 +22,9 @@ export const useNodeStateTransformation = (
             for (const node of nodes) {
                 if (node.data.active === false) {
                     const dependentInactiveNodes = getInactiveNodes(edges, node.id)
-                    for (const id of dependentInactiveNodes) { inactiveSet.add(id) }
+                    for (const id of dependentInactiveNodes) {
+                        inactiveSet.add(id)
+                    }
                 }
             }
         }
@@ -39,11 +41,36 @@ export const useNodeStateTransformation = (
             const nodeHasError = nodeErrors.has(nodeId)
             const nodeResult = nodeResults.get(nodeId)
             const nodeIsActive = !allInactiveNodes.has(nodeId) && node.data.active !== false
-            const tokenCount = node.type === NodeType.PREVIEW ? Number.parseInt(nodeResults.get(`${nodeId}_tokens`) || '0', 10) : undefined
+            const tokenCount =
+                node.type === NodeType.PREVIEW
+                    ? Number.parseInt(nodeResults.get(`${nodeId}_tokens`) || '0', 10)
+                    : undefined
 
-            return { ...node, selected: nodeIsSelected, data: { ...node.data, moving: nodeIsMoving, executing: nodeIsExecuting, interrupted: nodeIsInterrupted, error: nodeHasError, result: nodeResult, active: nodeIsActive, tokenCount } }
+            return {
+                ...node,
+                selected: nodeIsSelected,
+                data: {
+                    ...node.data,
+                    moving: nodeIsMoving,
+                    executing: nodeIsExecuting,
+                    interrupted: nodeIsInterrupted,
+                    error: nodeHasError,
+                    result: nodeResult,
+                    active: nodeIsActive,
+                    tokenCount,
+                },
+            }
         })
-    }, [nodes, selectedNodeIds, movingNodeId, executingNodeId, nodeErrors, nodeResults, interruptedNodeId, allInactiveNodes])
+    }, [
+        nodes,
+        selectedNodeIds,
+        movingNodeId,
+        executingNodeId,
+        nodeErrors,
+        nodeResults,
+        interruptedNodeId,
+        allInactiveNodes,
+    ])
 }
 
 export function getInactiveNodes(edges: Edge[], startNodeId: string): Set<string> {
@@ -53,7 +80,9 @@ export function getInactiveNodes(edges: Edge[], startNodeId: string): Set<string
         const currentId = queue.shift()!
         inactiveNodes.add(currentId)
         for (const edge of edges) {
-            if (edge.source === currentId && !inactiveNodes.has(edge.target)) { queue.push(edge.target) }
+            if (edge.source === currentId && !inactiveNodes.has(edge.target)) {
+                queue.push(edge.target)
+            }
         }
     }
     return inactiveNodes

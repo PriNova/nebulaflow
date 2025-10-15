@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react'
+import type { GenericVSCodeWrapper } from '../../../utils/vscode'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/WorkflowProtocol'
 import type { Edge } from '../../workflow/components/CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
-import type { GenericVSCodeWrapper } from '../../../utils/vscode'
 
 export const useWorkflowExecution = (
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>,
@@ -30,14 +30,25 @@ export const useWorkflowExecution = (
     }, [setEdges, setNodes])
 
     const onExecute = useCallback(() => {
-        const invalidNodes = nodes.filter(node => node.type === NodeType.LLM && (!node.data.content || node.data.content.trim() === ''))
+        const invalidNodes = nodes.filter(
+            node => node.type === NodeType.LLM && (!node.data.content || node.data.content.trim() === '')
+        )
         if (invalidNodes.length > 0) {
             const newErrors = new Map<string, string>()
-            for (const node of invalidNodes) { newErrors.set(node.id, node.type === NodeType.CLI ? 'Command field is required' : 'Prompt field is required') }
+            for (const node of invalidNodes) {
+                newErrors.set(
+                    node.id,
+                    node.type === NodeType.CLI ? 'Command field is required' : 'Prompt field is required'
+                )
+            }
             setNodeErrors(newErrors)
             return
         }
-        const updatedNodes = nodes.map(node => node.type === NodeType.PREVIEW ? { ...node, data: { ...node.data, content: '', tokenCount: 0 } } : node)
+        const updatedNodes = nodes.map(node =>
+            node.type === NodeType.PREVIEW
+                ? { ...node, data: { ...node.data, content: '', tokenCount: 0 } }
+                : node
+        )
         setNodes(updatedNodes)
         setNodeResults(new Map())
         setNodeErrors(new Map())
@@ -57,5 +68,19 @@ export const useWorkflowExecution = (
         }
     }, [abortController, vscodeAPI])
 
-    return { isExecuting, executingNodeId, nodeErrors, nodeResults, interruptedNodeId, onExecute, onAbort, resetExecutionState, setExecutingNodeId, setIsExecuting, setInterruptedNodeId, setNodeResults, setNodeErrors }
+    return {
+        isExecuting,
+        executingNodeId,
+        nodeErrors,
+        nodeResults,
+        interruptedNodeId,
+        onExecute,
+        onAbort,
+        resetExecutionState,
+        setExecutingNodeId,
+        setIsExecuting,
+        setInterruptedNodeId,
+        setNodeResults,
+        setNodeErrors,
+    }
 }

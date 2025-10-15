@@ -1,0 +1,109 @@
+/** @type {import('tailwindcss').Config} */
+import plugin from 'tailwindcss/plugin'
+
+export default {
+    content: {
+        relative: true,
+        files: ['**/*.{ts,tsx,css}'],
+    },
+    prefix: 'tw-',
+    theme: {
+        extend: {
+            fontSize: {
+                lg: 'calc(var(--vscode-font-size) * 15 / 13)',
+                md: 'var(--vscode-font-size)',
+                sm: 'calc(calc(12/13)*var(--vscode-font-size))',
+                xs: 'calc(calc(11/13)*var(--vscode-font-size))',
+                xxs: 'calc(calc(10/13)*var(--vscode-font-size))',
+            },
+            colors: {
+                border: 'var(--vscode-dropdown-border)',
+                ring: 'var(--vscode-focusBorder)',
+                background: 'var(--vscode-editor-background)',
+                foreground: 'var(--vscode-foreground)',
+                input: {
+                    foreground: 'var(--vscode-input-foreground)',
+                    background: 'var(--vscode-input-background)',
+                    border: 'var(--vscode-input-border)',
+                },
+                button: {
+                    background: {
+                        DEFAULT: 'var(--vscode-button-background)',
+                        hover: 'var(--vscode-button-hoverBackground)',
+                    },
+                    foreground: 'var(--vscode-button-foreground)',
+                    border: 'var(--vscode-button-border, transparent)',
+                    secondary: {
+                        background: {
+                            DEFAULT: 'var(--vscode-button-secondaryBackground)',
+                            hover: 'var(--vscode-button-secondaryHoverBackground)',
+                        },
+                        foreground: 'var(--vscode-button-secondaryForeground)',
+                    },
+                },
+                sidebar: {
+                    background: 'var(--vscode-sideBar-background)',
+                    foreground: 'var(--vscode-sideBar-foreground)',
+                },
+                muted: {
+                    DEFAULT: 'var(--vscode-input-background)',
+                    transparent: 'color-mix(in lch, currentColor 15%, transparent)',
+                    foreground: 'var(--vscode-input-placeholderForeground)',
+                },
+                accent: {
+                    DEFAULT: 'var(--vscode-list-activeSelectionBackground)',
+                    foreground: 'var(--vscode-list-activeSelectionForeground)',
+                },
+                popover: {
+                    DEFAULT: 'var(--vscode-quickInput-background)',
+                    foreground: 'var(--vscode-dropdown-foreground)',
+                },
+                link: {
+                    DEFAULT: 'var(--vscode-textLink-foreground)',
+                    hover: 'var(--vscode-textLink-activeForeground)',
+                },
+                current: {
+                    DEFAULT: 'currentColor',
+                    25: 'color-mix(in lch, currentColor 25%, transparent)',
+                },
+                badge: {
+                    border: 'var(--vscode-contrastBorder)',
+                    foreground: 'var(--vscode-badge-foreground)',
+                    background: 'var(--vscode-badge-background)',
+                },
+                code: {
+                    background: 'var(--code-background)',
+                    foreground: 'var(--code-foreground)',
+                },
+            },
+            borderRadius: {
+                lg: '6px',
+                md: '4px',
+                sm: '2px',
+            },
+            keyframes: {
+                'accordion-down': {
+                    from: { height: '0' },
+                    to: { height: 'var(--radix-accordion-content-height)' },
+                },
+                'accordion-up': {
+                    from: { height: 'var(--radix-accordion-content-height)' },
+                    to: { height: '0' },
+                },
+            },
+            animation: {
+                'accordion-down': 'accordion-down 0.15s ease-out',
+                'accordion-up': 'accordion-up 0.15s ease-out',
+            },
+        },
+    },
+    plugins: [
+        plugin(({ addVariant }) => {
+            addVariant('high-contrast-dark', 'body[data-vscode-theme-kind="vscode-high-contrast"] &')
+            addVariant(
+                'high-contrast-light',
+                'body[data-vscode-theme-kind="vscode-high-contrast-light"] &'
+            )
+        }),
+    ],
+}

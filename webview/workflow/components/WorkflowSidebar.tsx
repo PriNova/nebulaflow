@@ -1,7 +1,12 @@
+import { CircleStop, Edit, File, Play, Save, Trash2 } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useState } from 'react'
-import { CircleStop, Edit, File, Play, Save, Trash2 } from 'lucide-react'
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../../components/shadcn/ui/accordion'
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from '../../components/shadcn/ui/accordion'
 import { Button } from '../../components/shadcn/ui/button'
 import { Input } from '../../components/shadcn/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/shadcn/ui/tooltip'
@@ -60,7 +65,11 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
     onDeleteCustomNode,
     onRenameCustomNode,
 }) => {
-    const handleSave = async (): Promise<void> => { if (onSave) { onSave() } }
+    const handleSave = async (): Promise<void> => {
+        if (onSave) {
+            onSave()
+        }
+    }
 
     const [propertyEditorOpen, setPropertyEditorOpen] = useState<string | undefined>(undefined)
     const [isHelpOpen, setIsHelpOpen] = useState(false)
@@ -68,132 +77,246 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
     const [newNodeTitle, setNewNodeTitle] = useState<string>('')
 
     useEffect(() => {
-        if (selectedNode) { setPropertyEditorOpen('property_editor') }
-        if (!selectedNode) { setPropertyEditorOpen(undefined) }
+        if (selectedNode) {
+            setPropertyEditorOpen('property_editor')
+        }
+        if (!selectedNode) {
+            setPropertyEditorOpen(undefined)
+        }
     }, [selectedNode])
 
-    const handleRenameClick = (nodeTitle: string) => { setRenamingNode(nodeTitle); setNewNodeTitle(nodeTitle) }
-    const handleRenameConfirm = (oldNodeTitle: string) => {
-        if (onRenameCustomNode && newNodeTitle) { onRenameCustomNode(oldNodeTitle, newNodeTitle); setRenamingNode(null); setNewNodeTitle('') }
+    const handleRenameClick = (nodeTitle: string) => {
+        setRenamingNode(nodeTitle)
+        setNewNodeTitle(nodeTitle)
     }
-    const handleRenameCancel = () => { setRenamingNode(null); setNewNodeTitle('') }
+    const handleRenameConfirm = (oldNodeTitle: string) => {
+        if (onRenameCustomNode && newNodeTitle) {
+            onRenameCustomNode(oldNodeTitle, newNodeTitle)
+            setRenamingNode(null)
+            setNewNodeTitle('')
+        }
+    }
+    const handleRenameCancel = () => {
+        setRenamingNode(null)
+        setNewNodeTitle('')
+    }
 
-    const customNodesByType: CustomNodesByType = customNodes.reduce((acc: CustomNodesByType, node: WorkflowNodes) => {
-        const type = node.type || NodeType.CLI
-        if (!acc[type]) { acc[type] = [] }
-        acc[type]?.push(node)
-        return acc
-    }, {})
+    const customNodesByType: CustomNodesByType = customNodes.reduce(
+        (acc: CustomNodesByType, node: WorkflowNodes) => {
+            const type = node.type || NodeType.CLI
+            if (!acc[type]) {
+                acc[type] = []
+            }
+            acc[type]?.push(node)
+            return acc
+        },
+        {}
+    )
 
     return (
         <div className="tw-w-full tw-border-r tw-border-border tw-h-full tw-bg-sidebar-background tw-p-4">
-            <div className="tw-flex tw-flex-col tw-gap-2 tw-mb-2">
-                <div className="tw-flex tw-flex-row tw-gap-2">
+            <div className="tw-flex tw-flex-col tw-gap-1 tw-mb-1">
+                <div className="tw-flex tw-flex-row tw-gap-1">
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <Button variant="outline" className="tw-flex-1" onClick={onLoad}><File size={18} /></Button>
+                            <Button variant="outline" size="sm" className="tw-flex-1" onClick={onLoad}>
+                                <File size={18} />
+                            </Button>
                         </TooltipTrigger>
                         <TooltipContent>Open Workflow</TooltipContent>
                     </Tooltip>
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <Button variant="outline" className="tw-flex-1" onClick={handleSave}><Save size={18} /></Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="tw-flex-1"
+                                onClick={handleSave}
+                            >
+                                <Save size={18} />
+                            </Button>
                         </TooltipTrigger>
                         <TooltipContent>Save Workflow</TooltipContent>
                     </Tooltip>
                 </div>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <Button variant="outline" className="tw-flex-1" onClick={isExecuting ? onAbort : onExecute}>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="tw-flex-1"
+                            onClick={isExecuting ? onAbort : onExecute}
+                        >
                             {isExecuting ? <CircleStop size={18} /> : <Play size={18} />}
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent>{isExecuting ? 'Stop Execution' : 'Start Execution'}</TooltipContent>
                 </Tooltip>
-                <Button variant="outline" className="tw-w-full" onClick={onClear}>Clear Workflow</Button>
-                <Button variant="outline" className="tw-w-full" onClick={() => setIsHelpOpen(true)}>Show Help</Button>
+                <Button variant="outline" size="sm" className="tw-w-full" onClick={onClear}>
+                    Clear Workflow
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="tw-w-full"
+                    onClick={() => setIsHelpOpen(true)}
+                >
+                    Show Help
+                </Button>
             </div>
 
             <div className="tw-my-4 tw-border-t tw-border-border" />
 
             <Accordion type="single" collapsible>
                 <AccordionItem value="cli">
-                    <AccordionTrigger>Shell Nodes</AccordionTrigger>
+                    <AccordionTrigger className="tw-text-sm">Shell Nodes</AccordionTrigger>
                     <AccordionContent>
                         <div className="tw-flex tw-flex-col tw-gap-2">
-                            <Button onClick={() => onNodeAdd('Shell Command', NodeType.CLI)} className="tw-flex-1" style={{ ...buttonStyle }}
-                                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--vscode-button-secondaryHoverBackground)' }}
-                                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent' }}>
+                            <Button
+                                onClick={() => onNodeAdd('Shell Command', NodeType.CLI)}
+                                className="tw-flex-1"
+                                style={{ ...buttonStyle }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.backgroundColor =
+                                        'var(--vscode-button-secondaryHoverBackground)'
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.backgroundColor = 'transparent'
+                                }}
+                            >
                                 Shell
                             </Button>
                         </div>
                     </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="llm">
-                    <AccordionTrigger>LLM Nodes</AccordionTrigger>
+                    <AccordionTrigger className="tw-text-sm">LLM Nodes</AccordionTrigger>
                     <AccordionContent>
                         <div className="tw-flex tw-flex-col tw-gap-2">
-                            <Button onClick={() => onNodeAdd('LLM', NodeType.LLM)} className="tw-flex-1" style={{ ...buttonStyle }}
-                                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--vscode-button-secondaryHoverBackground)' }}
-                                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent' }}>
+                            <Button
+                                onClick={() => onNodeAdd('LLM', NodeType.LLM)}
+                                className="tw-flex-1"
+                                style={{ ...buttonStyle }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.backgroundColor =
+                                        'var(--vscode-button-secondaryHoverBackground)'
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.backgroundColor = 'transparent'
+                                }}
+                            >
                                 LLM
                             </Button>
                         </div>
                     </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="preview">
-                    <AccordionTrigger>Preview Nodes</AccordionTrigger>
+                    <AccordionTrigger className="tw-text-sm">Preview Nodes</AccordionTrigger>
                     <AccordionContent>
                         <div className="tw-flex tw-flex-col tw-gap-2">
-                            <Button onClick={() => onNodeAdd('Preview', NodeType.PREVIEW)} className="tw-flex-1" style={{ ...buttonStyle }}
-                                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--vscode-button-secondaryHoverBackground)' }}
-                                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent' }}>
+                            <Button
+                                onClick={() => onNodeAdd('Preview', NodeType.PREVIEW)}
+                                className="tw-flex-1"
+                                style={{ ...buttonStyle }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.backgroundColor =
+                                        'var(--vscode-button-secondaryHoverBackground)'
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.backgroundColor = 'transparent'
+                                }}
+                            >
                                 Preview
                             </Button>
                         </div>
                     </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="input">
-                    <AccordionTrigger>Text Nodes</AccordionTrigger>
+                    <AccordionTrigger className="tw-text-sm">Text Nodes</AccordionTrigger>
                     <AccordionContent>
                         <div className="tw-flex tw-flex-col tw-gap-2">
-                            <Button onClick={() => onNodeAdd('Text', NodeType.INPUT)} className="tw-flex-1" style={{ ...buttonStyle }}
-                                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--vscode-button-secondaryHoverBackground)' }}
-                                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent' }}>
+                            <Button
+                                onClick={() => onNodeAdd('Text', NodeType.INPUT)}
+                                className="tw-flex-1"
+                                style={{ ...buttonStyle }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.backgroundColor =
+                                        'var(--vscode-button-secondaryHoverBackground)'
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.backgroundColor = 'transparent'
+                                }}
+                            >
                                 Text
                             </Button>
-                            <Button onClick={() => onNodeAdd('Accumulator', NodeType.ACCUMULATOR)} className="tw-flex-1" style={{ ...buttonStyle }}
-                                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--vscode-button-secondaryHoverBackground)' }}
-                                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent' }}>
+                            <Button
+                                onClick={() => onNodeAdd('Accumulator', NodeType.ACCUMULATOR)}
+                                className="tw-flex-1"
+                                style={{ ...buttonStyle }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.backgroundColor =
+                                        'var(--vscode-button-secondaryHoverBackground)'
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.backgroundColor = 'transparent'
+                                }}
+                            >
                                 Accumulator
                             </Button>
-                            <Button onClick={() => onNodeAdd('Variable', NodeType.VARIABLE)} className="tw-flex-1" style={{ ...buttonStyle }}
-                                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--vscode-button-secondaryHoverBackground)' }}
-                                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent' }}>
+                            <Button
+                                onClick={() => onNodeAdd('Variable', NodeType.VARIABLE)}
+                                className="tw-flex-1"
+                                style={{ ...buttonStyle }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.backgroundColor =
+                                        'var(--vscode-button-secondaryHoverBackground)'
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.backgroundColor = 'transparent'
+                                }}
+                            >
                                 Variable
                             </Button>
                         </div>
                     </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="conditionals">
-                    <AccordionTrigger>Conditionals</AccordionTrigger>
+                    <AccordionTrigger className="tw-text-sm">Conditionals</AccordionTrigger>
                     <AccordionContent>
                         <div className="tw-flex tw-flex-col tw-gap-2">
-                            <Button onClick={() => onNodeAdd('If/Else', NodeType.IF_ELSE)} className="tw-flex-1" style={{ ...buttonStyle }}
-                                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--vscode-button-secondaryHoverBackground)' }}
-                                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent' }}>
+                            <Button
+                                onClick={() => onNodeAdd('If/Else', NodeType.IF_ELSE)}
+                                className="tw-flex-1"
+                                style={{ ...buttonStyle }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.backgroundColor =
+                                        'var(--vscode-button-secondaryHoverBackground)'
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.backgroundColor = 'transparent'
+                                }}
+                            >
                                 If/Else
                             </Button>
                         </div>
                     </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="context">
-                    <AccordionTrigger>Context Nodes</AccordionTrigger>
+                    <AccordionTrigger className="tw-text-sm">Context Nodes</AccordionTrigger>
                     <AccordionContent>
                         <div className="tw-flex tw-flex-col tw-gap-2">
-                            <Button onClick={() => onNodeAdd('Search Context', NodeType.SEARCH_CONTEXT)} className="tw-flex-1" style={{ ...buttonStyle }}
-                                onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--vscode-button-secondaryHoverBackground)' }}
-                                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent' }}>
+                            <Button
+                                onClick={() => onNodeAdd('Search Context', NodeType.SEARCH_CONTEXT)}
+                                className="tw-flex-1"
+                                style={{ ...buttonStyle }}
+                                onMouseEnter={e => {
+                                    e.currentTarget.style.backgroundColor =
+                                        'var(--vscode-button-secondaryHoverBackground)'
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.backgroundColor = 'transparent'
+                                }}
+                            >
                                 Search Context
                             </Button>
                         </div>
@@ -201,14 +324,34 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                 </AccordionItem>
             </Accordion>
 
-            <div className="tw-mt-4">
-                {selectedNode && (
-                    <>
-                        <h3 className="tw-text-lg tw-font-semibold tw-mb-2">Properties</h3>
-                        <PropertyEditor node={selectedNode} onUpdate={onNodeUpdate!} models={models} onSaveCustomNode={onSaveCustomNode} />
-                    </>
-                )}
-            </div>
+            <Accordion
+                type="single"
+                value={propertyEditorOpen}
+                onValueChange={setPropertyEditorOpen}
+                collapsible
+            >
+                <div className="tw-my-4 tw-border-t tw-border-border" />
+                <AccordionItem value="property_editor">
+                    <AccordionTrigger className="tw-text-sm">Property Editor</AccordionTrigger>
+                    <AccordionContent>
+                        <div className="tw-p-2">
+                            {selectedNode ? (
+                                <PropertyEditor
+                                    node={selectedNode}
+                                    onUpdate={onNodeUpdate!}
+                                    models={models}
+                                    onSaveCustomNode={onSaveCustomNode}
+                                />
+                            ) : (
+                                <p className="tw-text-sm tw-text-muted-foreground tw-mt-2">
+                                    Select a node to edit its properties
+                                </p>
+                            )}
+                        </div>
+                        <div className="tw-my-4 tw-border-t tw-border-border" />
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
 
             {Object.entries(customNodesByType).length > 0 && (
                 <div className="tw-mt-4">
@@ -218,23 +361,63 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                             <h4 className="tw-text-md tw-font-medium tw-mb-2">{type}</h4>
                             <ul className="tw-space-y-1">
                                 {nodes?.map(node => (
-                                    <li key={node.data.title} className="tw-flex tw-items-center tw-justify-between">
-                                        <button className="tw-flex-1 tw-text-left tw-px-2 tw-py-1 hover:tw-bg-[var(--vscode-button-secondaryHoverBackground)]" style={buttonStyle} onClick={() => onNodeAdd(node)}>
+                                    <li
+                                        key={node.data.title}
+                                        className="tw-flex tw-items-center tw-justify-between"
+                                    >
+                                        <button
+                                            type="button"
+                                            className="tw-flex-1 tw-text-left tw-px-2 tw-py-1 hover:tw-bg-[var(--vscode-button-secondaryHoverBackground)]"
+                                            style={buttonStyle}
+                                            onClick={() => onNodeAdd(node)}
+                                        >
                                             <span className="tw-truncate">{node.data.title}</span>
                                         </button>
                                         <div className="tw-ml-2 tw-flex tw-flex-row tw-gap-1">
                                             {renamingNode === node.data.title ? (
                                                 <div className="tw-flex tw-flex-row tw-gap-1">
-                                                    <Input value={newNodeTitle} onChange={e => setNewNodeTitle(e.target.value)} className="tw-h-6 tw-text-sm" />
-                                                    <Button variant="secondary" className="tw-h-6 tw-px-2 tw-text-sm" onClick={() => handleRenameConfirm(node.data.title)}>Save</Button>
-                                                    <Button variant="secondary" className="tw-h-6 tw-px-2 tw-text-sm" onClick={handleRenameCancel}>Cancel</Button>
+                                                    <Input
+                                                        value={newNodeTitle}
+                                                        onChange={e => setNewNodeTitle(e.target.value)}
+                                                        className="tw-h-6 tw-text-sm"
+                                                    />
+                                                    <Button
+                                                        variant="secondary"
+                                                        className="tw-h-6 tw-px-2 tw-text-sm"
+                                                        onClick={() =>
+                                                            handleRenameConfirm(node.data.title)
+                                                        }
+                                                    >
+                                                        Save
+                                                    </Button>
+                                                    <Button
+                                                        variant="secondary"
+                                                        className="tw-h-6 tw-px-2 tw-text-sm"
+                                                        onClick={handleRenameCancel}
+                                                    >
+                                                        Cancel
+                                                    </Button>
                                                 </div>
                                             ) : (
                                                 <>
-                                                    <Button variant="secondary" className="tw-h-6 tw-px-2" title="Rename" onClick={() => handleRenameClick(node.data.title)}>
+                                                    <Button
+                                                        variant="secondary"
+                                                        className="tw-h-6 tw-px-2"
+                                                        title="Rename"
+                                                        onClick={() =>
+                                                            handleRenameClick(node.data.title)
+                                                        }
+                                                    >
                                                         <Edit size={14} />
                                                     </Button>
-                                                    <Button variant="secondary" className="tw-h-6 tw-px-2" title="Delete" onClick={() => onDeleteCustomNode(node.data.title)}>
+                                                    <Button
+                                                        variant="secondary"
+                                                        className="tw-h-6 tw-px-2"
+                                                        title="Delete"
+                                                        onClick={() =>
+                                                            onDeleteCustomNode(node.data.title)
+                                                        }
+                                                    >
                                                         <Trash2 size={14} />
                                                     </Button>
                                                 </>

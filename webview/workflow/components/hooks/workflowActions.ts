@@ -1,8 +1,8 @@
 import { useCallback } from 'react'
+import type { GenericVSCodeWrapper } from '../../../utils/vscode'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/WorkflowProtocol'
 import type { Edge } from '../../workflow/components/CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
-import type { GenericVSCodeWrapper } from '../../../utils/vscode'
 
 export const useWorkflowActions = (
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>,
@@ -17,15 +17,23 @@ export const useWorkflowActions = (
         vscodeAPI.postMessage({ type: 'save_workflow', data: workflowData } as any)
     }, [nodes, edges, vscodeAPI])
 
-    const onLoad = useCallback(() => { vscodeAPI.postMessage({ type: 'load_workflow' } as any) }, [vscodeAPI])
-
-    const calculatePreviewNodeTokens = useCallback((nodes: WorkflowNodes[]) => {
-        for (const node of nodes) {
-            if (node.type === NodeType.PREVIEW && node.data.content) {
-                vscodeAPI.postMessage({ type: 'calculate_tokens', data: { text: node.data.content, nodeId: node.id } } as any)
-            }
-        }
+    const onLoad = useCallback(() => {
+        vscodeAPI.postMessage({ type: 'load_workflow' } as any)
     }, [vscodeAPI])
+
+    const calculatePreviewNodeTokens = useCallback(
+        (nodes: WorkflowNodes[]) => {
+            for (const node of nodes) {
+                if (node.type === NodeType.PREVIEW && node.data.content) {
+                    vscodeAPI.postMessage({
+                        type: 'calculate_tokens',
+                        data: { text: node.data.content, nodeId: node.id },
+                    } as any)
+                }
+            }
+        },
+        [vscodeAPI]
+    )
 
     const handleNodeApproval = (nodeId: string, approved: boolean, modifiedCommand?: string) => {
         if (approved) {

@@ -1,8 +1,14 @@
 import * as vscode from 'vscode'
 import type { ExtensionToWorkflow } from '../protocol/WorkflowProtocol'
-import { NodeType, type WorkflowNodes, type Edge, type WorkflowNode, type IfElseNode } from '../protocol/WorkflowProtocol'
+import {
+    type Edge,
+    type IfElseNode,
+    NodeType,
+    type WorkflowNode,
+    type WorkflowNodes,
+} from '../protocol/WorkflowProtocol'
 import { processGraphComposition } from './node-sorting'
-import { execute as shellExecute, expandHome } from './shell'
+import { expandHome, execute as shellExecute } from './shell'
 
 interface IndexedEdges {
     bySource: Map<string, Edge[]>
@@ -55,11 +61,20 @@ export async function executeWorkflow(
     await webview.postMessage({ type: 'execution_started' } as ExtensionToWorkflow)
 
     for (const node of sortedNodes) {
-        const shouldSkip = Array.from(context.ifelseSkipPaths?.values() ?? []).some(skipNodes => skipNodes.has(node.id))
-        if (shouldSkip) { continue }
-        if (allInactiveNodes.has(node.id)) { continue }
+        const shouldSkip = Array.from(context.ifelseSkipPaths?.values() ?? []).some(skipNodes =>
+            skipNodes.has(node.id)
+        )
+        if (shouldSkip) {
+            continue
+        }
+        if (allInactiveNodes.has(node.id)) {
+            continue
+        }
 
-        await webview.postMessage({ type: 'node_execution_status', data: { nodeId: node.id, status: 'running' } } as ExtensionToWorkflow)
+        await webview.postMessage({
+            type: 'node_execution_status',
+            data: { nodeId: node.id, status: 'running' },
+        } as ExtensionToWorkflow)
 
         let result: string | string[] = ''
         try {
@@ -69,7 +84,10 @@ export async function executeWorkflow(
                     break
                 }
                 case NodeType.LLM: {
-                    await webview.postMessage({ type: 'node_execution_status', data: { nodeId: node.id, status: 'error', result: 'LLM unavailable' } } as ExtensionToWorkflow)
+                    await webview.postMessage({
+                        type: 'node_execution_status',
+                        data: { nodeId: node.id, status: 'error', result: 'LLM unavailable' },
+                    } as ExtensionToWorkflow)
                     await webview.postMessage({ type: 'execution_completed' } as ExtensionToWorkflow)
                     return
                 }
@@ -99,11 +117,13 @@ export async function executeWorkflow(
                 }
                 case NodeType.ACCUMULATOR: {
                     const inputs = combineParentOutputsByConnectionOrder(node.id, context)
-                    const inputValue = node.data.content ? replaceIndexedInputs(node.data.content, inputs, context) : ''
-                    // @ts-expect-error: variableName exists for accumulator nodes
+                    const inputValue = node.data.content
+                        ? replaceIndexedInputs(node.data.content, inputs, context)
+                        : ''
                     const variableName = (node as any).data.variableName as string
                     const initialValue = (node as any).data.initialValue as string | undefined
-                    let accumulatedValue = context.accumulatorValues?.get(variableName) || initialValue || ''
+                    let accumulatedValue =
+                        context.accumulatorValues?.get(variableName) || initialValue || ''
                     accumulatedValue += '\n' + inputValue
                     context.accumulatorValues?.set(variableName, accumulatedValue)
                     result = accumulatedValue
@@ -115,7 +135,9 @@ export async function executeWorkflow(
                 }
                 case NodeType.VARIABLE: {
                     const inputs = combineParentOutputsByConnectionOrder(node.id, context)
-                    const inputValue = node.data.content ? replaceIndexedInputs(node.data.content, inputs, context) : ''
+                    const inputValue = node.data.content
+                        ? replaceIndexedInputs(node.data.content, inputs, context)
+                        : ''
                     const variableName = (node as any).data.variableName as string
                     const initialValue = (node as any).data.initialValue as string | undefined
                     let variableValue = context.variableValues?.get(variableName) || initialValue || ''
@@ -129,19 +151,28 @@ export async function executeWorkflow(
             }
         } catch (error: unknown) {
             if (abortSignal.aborted) {
-                await webview.postMessage({ type: 'node_execution_status', data: { nodeId: node.id, status: 'interrupted' } } as ExtensionToWorkflow)
+                await webview.postMessage({
+                    type: 'node_execution_status',
+                    data: { nodeId: node.id, status: 'interrupted' },
+                } as ExtensionToWorkflow)
                 return
             }
             const errorMessage = error instanceof Error ? error.message : String(error)
             const status = errorMessage.includes('aborted') ? 'interrupted' : 'error'
             void vscode.window.showErrorMessage(`Node Error: ${errorMessage}`)
-            await webview.postMessage({ type: 'node_execution_status', data: { nodeId: node.id, status, result: errorMessage } } as ExtensionToWorkflow)
+            await webview.postMessage({
+                type: 'node_execution_status',
+                data: { nodeId: node.id, status, result: errorMessage },
+            } as ExtensionToWorkflow)
             await webview.postMessage({ type: 'execution_completed' } as ExtensionToWorkflow)
             return
         }
 
         context.nodeOutputs.set(node.id, result)
-        await webview.postMessage({ type: 'node_execution_status', data: { nodeId: node.id, status: 'completed', result } } as ExtensionToWorkflow)
+        await webview.postMessage({
+            type: 'node_execution_status',
+            data: { nodeId: node.id, status: 'completed', result },
+        } as ExtensionToWorkflow)
     }
 
     await webview.postMessage({ type: 'execution_completed' } as ExtensionToWorkflow)
@@ -168,29 +199,49 @@ export function createEdgeIndex(edges: Edge[]): IndexedEdges {
     return { bySource, byTarget, byId }
 }
 
-export function replaceIndexedInputs(template: string, parentOutputs: string[], context?: IndexedExecutionContext): string {
+export function replaceIndexedInputs(
+    template: string,
+    parentOutputs: string[],
+    context?: IndexedExecutionContext
+): string {
     let result = template.replace(/\${(\d+)}(?!\w)/g, (_match, index) => {
         const adjustedIndex = Number.parseInt(index, 10) - 1
-        return adjustedIndex >= 0 && adjustedIndex < parentOutputs.length ? parentOutputs[adjustedIndex] : ''
+        return adjustedIndex >= 0 && adjustedIndex < parentOutputs.length
+            ? parentOutputs[adjustedIndex]
+            : ''
     })
 
     if (context) {
         for (const [, loopState] of context.loopStates) {
-            result = result.replace(new RegExp(`\\$\{${loopState.variable}}(?!\\w)`, 'g'), String(loopState.currentIteration))
+            result = result.replace(
+                new RegExp(`\\$\{${loopState.variable}}(?!\\w)`, 'g'),
+                String(loopState.currentIteration)
+            )
         }
-        const accumulatorVars = context.accumulatorValues ? Array.from(context.accumulatorValues.keys()) : []
+        const accumulatorVars = context.accumulatorValues
+            ? Array.from(context.accumulatorValues.keys())
+            : []
         for (const varName of accumulatorVars) {
-            result = result.replace(new RegExp(`\\$\{${varName}}(?!\\w)`, 'g'), context.accumulatorValues?.get(varName) || '')
+            result = result.replace(
+                new RegExp(`\\$\{${varName}}(?!\\w)`, 'g'),
+                context.accumulatorValues?.get(varName) || ''
+            )
         }
         const variableVars = context.variableValues ? Array.from(context.variableValues.keys()) : []
         for (const varName of variableVars) {
-            result = result.replace(new RegExp(`\\$\{${varName}}(?!\\w)`, 'g'), context.variableValues?.get(varName) || '')
+            result = result.replace(
+                new RegExp(`\\$\{${varName}}(?!\\w)`, 'g'),
+                context.variableValues?.get(varName) || ''
+            )
         }
     }
     return result
 }
 
-export function combineParentOutputsByConnectionOrder(nodeId: string, context?: IndexedExecutionContext): string[] {
+export function combineParentOutputsByConnectionOrder(
+    nodeId: string,
+    context?: IndexedExecutionContext
+): string[] {
     const parentEdges = context?.edgeIndex.byTarget.get(nodeId) || []
     return parentEdges
         .map(edge => {
@@ -223,7 +274,10 @@ export async function executeCLINode(
     let filteredCommand = expandHome(command) || ''
 
     if (node.data.needsUserApproval) {
-        await webview.postMessage({ type: 'node_execution_status', data: { nodeId: node.id, status: 'pending_approval', result: `${filteredCommand}` } } as ExtensionToWorkflow)
+        await webview.postMessage({
+            type: 'node_execution_status',
+            data: { nodeId: node.id, status: 'pending_approval', result: `${filteredCommand}` },
+        } as ExtensionToWorkflow)
         const approval = await approvalHandler(node.id)
         if (approval.command) {
             filteredCommand = approval.command
@@ -248,12 +302,19 @@ export async function executeCLINode(
     }
 }
 
-async function executePreviewNode(nodeId: string, webview: vscode.Webview, context: IndexedExecutionContext): Promise<string> {
+async function executePreviewNode(
+    nodeId: string,
+    webview: vscode.Webview,
+    context: IndexedExecutionContext
+): Promise<string> {
     const input = combineParentOutputsByConnectionOrder(nodeId, context).join('\n')
     const processedInput = replaceIndexedInputs(input, [], context)
     const trimmedInput = processedInput.trim()
     const tokenCount = trimmedInput.length
-    await webview.postMessage({ type: 'token_count', data: { nodeId, count: tokenCount } } as ExtensionToWorkflow)
+    await webview.postMessage({
+        type: 'token_count',
+        data: { nodeId, count: tokenCount },
+    } as ExtensionToWorkflow)
     return trimmedInput
 }
 
@@ -263,7 +324,10 @@ async function executeInputNode(node: WorkflowNode, context: IndexedExecutionCon
     return text.trim()
 }
 
-async function executeIfElseNode(context: IndexedExecutionContext, node: WorkflowNode | IfElseNode): Promise<string> {
+async function executeIfElseNode(
+    context: IndexedExecutionContext,
+    node: WorkflowNode | IfElseNode
+): Promise<string> {
     let result = ''
     const parentEdges = context.edgeIndex.byTarget.get(node.id) || []
     let cliNode: WorkflowNodes | undefined
@@ -285,7 +349,9 @@ async function executeIfElseNode(context: IndexedExecutionContext, node: Workflo
         result = context.nodeOutputs.get(cliNode.id) as string
     } else {
         const inputs = combineParentOutputsByConnectionOrder(node.id, context)
-        const condition = node.data.content ? replaceIndexedInputs(node.data.content, inputs, context) : ''
+        const condition = node.data.content
+            ? replaceIndexedInputs(node.data.content, inputs, context)
+            : ''
         const [leftSide, operator, rightSide] = condition.trim().split(/\s+(===|!==)\s+/)
         hasResult = operator === '===' ? leftSide === rightSide : leftSide !== rightSide
         result = hasResult ? 'true' : 'false'
@@ -335,7 +401,10 @@ export function sanitizeForShell(input: string): string {
     return sanitized
 }
 
-async function executeLoopStartNode(node: WorkflowNodes, context: IndexedExecutionContext): Promise<string> {
+async function executeLoopStartNode(
+    node: WorkflowNodes,
+    context: IndexedExecutionContext
+): Promise<string> {
     const getInputsByHandle = (handleType: string) =>
         combineParentOutputsByConnectionOrder(node.id, {
             ...context,
@@ -344,7 +413,9 @@ async function executeLoopStartNode(node: WorkflowNodes, context: IndexedExecuti
                 byTarget: new Map([
                     [
                         node.id,
-                        (context.edgeIndex.byTarget.get(node.id) || []).filter(edge => edge.targetHandle === handleType),
+                        (context.edgeIndex.byTarget.get(node.id) || []).filter(
+                            edge => edge.targetHandle === handleType
+                        ),
                     ],
                 ]),
             },
@@ -356,11 +427,17 @@ async function executeLoopStartNode(node: WorkflowNodes, context: IndexedExecuti
     let loopState = context.loopStates.get(node.id)
 
     if (!loopState) {
-        const maxIterations = iterationOverrides.length > 0 ? Number.parseInt(iterationOverrides[0], 10) || (node as any).data.iterations : (node as any).data.iterations
+        const maxIterations =
+            iterationOverrides.length > 0
+                ? Number.parseInt(iterationOverrides[0], 10) || (node as any).data.iterations
+                : (node as any).data.iterations
         loopState = { currentIteration: 0, maxIterations, variable: (node as any).data.loopVariable }
         context.loopStates.set(node.id, loopState)
     } else if (loopState.currentIteration < loopState.maxIterations - 1) {
-        context.loopStates.set(node.id, { ...loopState, currentIteration: loopState.currentIteration + 1 })
+        context.loopStates.set(node.id, {
+            ...loopState,
+            currentIteration: loopState.currentIteration + 1,
+        })
     }
     return mainInputs.join('\n')
 }

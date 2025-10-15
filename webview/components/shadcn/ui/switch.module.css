@@ -1,0 +1,3 @@
+.switch-thumb {
+    &[data-state='checked'] { transform: translateX(10px); }
+}
