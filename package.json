@@ -29,34 +29,35 @@
         "build": "npm run -s typecheck && npm run -s build:webview && npm run -s build:ext"
     },
     "dependencies": {
+        "@radix-ui/react-accordion": "^1.1.2",
+        "@radix-ui/react-checkbox": "^1.0.4",
+        "@radix-ui/react-label": "^2.0.2",
+        "@radix-ui/react-popover": "^1.1.2",
+        "@radix-ui/react-slot": "^1.0.2",
+        "@radix-ui/react-switch": "^1.0.3",
+        "@radix-ui/react-tooltip": "^1.0.7",
         "@vscode/codicons": "^0.0.36",
         "@xyflow/react": "^12.1.4",
+        "class-variance-authority": "^0.7.0",
         "clsx": "^2.1.1",
         "lucide-react": "^0.460.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
-        "uuid": "^10.0.0",
-        "@radix-ui/react-accordion": "^1.1.2",
-        "@radix-ui/react-popover": "^1.1.2",
-        "@radix-ui/react-tooltip": "^1.0.7",
-        "@radix-ui/react-switch": "^1.0.3",
-        "@radix-ui/react-slot": "^1.0.2",
-        "class-variance-authority": "^0.7.0",
-        "@radix-ui/react-checkbox": "^1.0.4",
-        "@radix-ui/react-label": "^2.0.2"
+        "uuid": "^10.0.0"
     },
     "devDependencies": {
+        "@biomejs/biome": "1.7.2",
+        "@sourcegraph/tsconfig": "^4.0.1",
         "@types/node": "^20.11.30",
         "@types/react": "^18.2.66",
         "@types/react-dom": "^18.2.22",
+        "@types/uuid": "^10.0.0",
         "@types/vscode": "^1.90.0",
         "@vitejs/plugin-react": "^4.3.3",
-        "typescript": "^5.6.3",
-        "vite": "^5.4.8",
-        "@biomejs/biome": "1.7.2",
-        "@sourcegraph/tsconfig": "^4.0.1",
-        "tailwindcss": "^3.4.13",
         "postcss": "^8.4.47",
-        "postcss-nested": "^6.0.1"
+        "postcss-nested": "^6.0.1",
+        "tailwindcss": "^3.4.13",
+        "typescript": "^5.6.3",
+        "vite": "^5.4.8"
     }
 }

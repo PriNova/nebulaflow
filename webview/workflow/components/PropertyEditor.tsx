@@ -172,14 +172,13 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                                         />
                                         <CommandList className="tw-max-h-[200px] tw-overflow-y-auto">
                                             <CommandEmpty>No models found.</CommandEmpty>
-                                            <CommandGroup
-                                                heading="Available Models"
-                                                className="[&_[cmdk-group-heading]]:tw-font-semibold [&_[cmdk-group-heading]]:tw-text-[var(--vscode-editor-foreground)] [&_[cmdk-group-heading]]:tw-bg-[var(--vscode-editor-selectionBackground)] [&_[cmdk-group-heading]]:tw-px-2 [&_[cmdk-group-heading]]:tw-py-1"
-                                            >
+                                            <CommandGroup className="[&_[cmdk-group-heading]]:tw-font-semibold [&_[cmdk-group-heading]]:tw-text-[var(--vscode-editor-foreground)] [&_[cmdk-group-heading]]:tw-bg-[var(--vscode-editor-selectionBackground)] [&_[cmdk-group-heading]]:tw-px-2 [&_[cmdk-group-heading]]:tw-py-1">
+                                                <div className="tw-font-semibold tw-text-[var(--vscode-editor-foreground)] tw-bg-[var(--vscode-editor-selectionBackground)] tw-px-2 tw-py-1">
+                                                    Available Models
+                                                </div>
                                                 {models.map(model => (
                                                     <CommandItem
                                                         key={model.id}
-                                                        value={model.id}
                                                         onSelect={() => onModelSelect(model)}
                                                     >
                                                         {model.id}

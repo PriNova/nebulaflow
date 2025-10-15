@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { processGraphComposition } from '../../../../src/engine/node-sorting'
-import type { Edge } from '../../components/CustomOrderedEdge'
+import type { Edge as ProtocolEdge } from '../../../../src/protocol/WorkflowProtocol'
+import type { Edge as FlowEdge } from '../CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
 
 export const useNodeStateTransformation = (
@@ -11,7 +12,7 @@ export const useNodeStateTransformation = (
     nodeErrors: Map<string, string>,
     nodeResults: Map<string, string>,
     interruptedNodeId: string | null,
-    edges: Edge[]
+    edges: FlowEdge[]
 ): WorkflowNodes[] => {
     const selectedNodeIds = useMemo(() => new Set(selectedNodes.map(node => node.id)), [selectedNodes])
 
@@ -73,7 +74,7 @@ export const useNodeStateTransformation = (
     ])
 }
 
-export function getInactiveNodes(edges: Edge[], startNodeId: string): Set<string> {
+export function getInactiveNodes(edges: FlowEdge[], startNodeId: string): Set<string> {
     const inactiveNodes = new Set<string>()
     const queue = [startNodeId]
     while (queue.length > 0) {
@@ -88,6 +89,13 @@ export function getInactiveNodes(edges: Edge[], startNodeId: string): Set<string
     return inactiveNodes
 }
 
-export const memoizedTopologicalSort = (nodes: WorkflowNodes[], edges: Edge[]) => {
-    return processGraphComposition(nodes, edges, false)
+export const memoizedTopologicalSort = (nodes: WorkflowNodes[], edges: FlowEdge[]) => {
+    const sanitized: ProtocolEdge[] = edges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: (e as any).sourceHandle ?? undefined,
+        targetHandle: (e as any).targetHandle ?? undefined,
+    }))
+    return processGraphComposition(nodes, sanitized, false)
 }

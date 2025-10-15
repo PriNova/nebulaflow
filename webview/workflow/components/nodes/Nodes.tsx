@@ -40,7 +40,7 @@ export interface BaseNodeProps {
         iterations?: number
         interrupted?: boolean
     }
-    selected?: boolean
+    selected: boolean
 }
 
 export type BaseNodeData = {

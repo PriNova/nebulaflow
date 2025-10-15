@@ -1,6 +1,7 @@
 import type React from 'react'
 
 interface SliderProps {
+    id?: string
     value?: number[]
     onValueChange?: (value: number[]) => void
     min?: number
@@ -10,6 +11,7 @@ interface SliderProps {
 }
 
 export const Slider: React.FC<SliderProps> = ({
+    id,
     value = [0],
     onValueChange,
     min = 0,
@@ -25,6 +27,7 @@ export const Slider: React.FC<SliderProps> = ({
     return (
         <input
             type="range"
+            id={id}
             value={value[0]}
             onChange={handleChange}
             min={min}
