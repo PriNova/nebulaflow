@@ -153,12 +153,19 @@ export function activate(context: vscode.ExtensionContext): void {
         const root = vscode.Uri.joinPath(webviewPath, 'workflow.html')
 
         async function render() {
-            const bytes = await vscode.workspace.fs.readFile(root)
-            const decoded = new TextDecoder('utf-8').decode(bytes)
-            const resources = panel.webview.asWebviewUri(webviewPath)
-            panel.webview.html = decoded
-                .replaceAll('./', `${resources.toString()}/`)
-                .replaceAll('{cspSource}', panel.webview.cspSource)
+            try {
+                const bytes = await vscode.workspace.fs.readFile(root)
+                const decoded = new TextDecoder('utf-8').decode(bytes)
+                const resources = panel.webview.asWebviewUri(webviewPath)
+                panel.webview.html = decoded
+                    .replaceAll('./', `${resources.toString()}/`)
+                    .replaceAll('{cspSource}', panel.webview.cspSource)
+            } catch (err) {
+                const detail = err instanceof Error ? err.message : String(err)
+                void vscode.window.showErrorMessage(
+                    `Amp Workflow Editor: failed to load webview assets. Run \`npm run build\` or \`npm run watch:webview\` and try again. (${detail})`
+                )
+            }
         }
 
         await render()
