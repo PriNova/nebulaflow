@@ -1,8 +1,9 @@
-import { type EdgeChange, addEdge, applyEdgeChanges } from '@xyflow/react'
+import { type Connection, type EdgeChange, addEdge, applyEdgeChanges } from '@xyflow/react'
 import type React from 'react'
 import { useCallback, useMemo } from 'react'
 import type { Edge } from '../../components/CustomOrderedEdge'
 import type { WorkflowNodes } from '../nodes/Nodes'
+import { isValidEdgeConnection } from '../utils/edgeValidation'
 
 interface IndexedOrder {
     bySourceTarget: Map<string, number>
@@ -60,8 +61,11 @@ export const useEdgeOperations = (
     )
 
     const onConnect = useCallback(
-        (params: any) => {
-            setEdges(eds => [...addEdge({ ...params, type: 'smoothstep' } as Edge, eds)])
+        (params: Connection) => {
+            setEdges(eds => {
+                if (!isValidEdgeConnection(params, eds)) return eds
+                return [...addEdge({ ...params, type: 'smoothstep' } as Edge, eds)]
+            })
         },
         [setEdges]
     )

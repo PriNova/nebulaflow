@@ -20,7 +20,7 @@
         "build:webview": "vite build --config workflow/Web/vite.config.mts",
         "watch:webview": "vite build --watch --config workflow/Web/vite.config.mts --mode development",
         "build:ext": "tsc -p .",
-        "typecheck": "tsc -p .",
+        "typecheck": "tsc -p . && tsc -p workflow/Web/tsconfig.json",
         "biome": "biome check --apply --error-on-warnings .",
         "format": "npm run biome",
         "check": "npm run -s typecheck && npm run -s biome",

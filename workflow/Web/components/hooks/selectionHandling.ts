@@ -27,22 +27,19 @@ export const useInteractionHandling = (
     const onNodeClick = useCallback(
         (event: React.MouseEvent, node: WorkflowNodes) => {
             event.stopPropagation()
-            const isModifierPressed = event.ctrlKey || event.metaKey
-            if (isModifierPressed) {
-                setSelectedNodes(prevNodes => {
-                    const isNodeSelected = prevNodes.some(n => n.id === node.id)
-                    if (isNodeSelected) {
-                        const newSelection = prevNodes.filter(n => n.id !== node.id)
-                        if (newSelection.length > 0) {
-                            setActiveNode(current => {
-                                return current?.id === node.id ? newSelection[0] : current
-                            })
-                        } else {
-                            setActiveNode(null)
-                        }
-                        return newSelection
+            if (event.shiftKey) return
+
+            const isModifier = event.ctrlKey || event.metaKey
+            if (isModifier) {
+                setSelectedNodes(prev => {
+                    const isSelected = prev.some(n => n.id === node.id)
+                    if (isSelected) {
+                        const next = prev.filter(n => n.id !== node.id)
+                        setActiveNode(current => (current?.id === node.id ? next[0] ?? null : current))
+                        return next
                     }
-                    return [...prevNodes, node]
+                    setActiveNode(node)
+                    return [...prev, node]
                 })
             } else {
                 setSelectedNodes([node])

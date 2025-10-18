@@ -86,7 +86,7 @@ export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
     const id = uuidv4()
     switch (node.type) {
         case NodeType.CLI:
-            return { ...node, id, needsUserApproval: false } as CLINode
+            return { ...node, id, data: { ...node.data, needsUserApproval: false } } as CLINode
         case NodeType.LLM:
             return { ...node, id } as LLMNode
         case NodeType.PREVIEW:

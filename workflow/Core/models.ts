@@ -1,7 +1,5 @@
 // Local protocol and workflow type definitions for the extension side
 
-export type Model = { id: string; title?: string }
-
 export type Edge = {
     id: string
     source: string
@@ -23,6 +21,15 @@ export enum NodeType {
     VARIABLE = 'variable',
     IF_ELSE = 'if-else',
 }
+
+export class AbortedError extends Error {
+    constructor(message = 'aborted') {
+        super(message)
+        this.name = 'AbortedError'
+    }
+}
+
+export type ApprovalResult = { type: 'approved'; command?: string } | { type: 'aborted' }
 
 export interface BaseNodeData {
     title: string
@@ -48,6 +55,8 @@ export interface WorkflowNode {
     position: { x: number; y: number }
     selected?: boolean
 }
+
+import type { Model } from './Contracts/Protocol'
 
 export interface LLMNode extends WorkflowNode {
     type: NodeType.LLM
@@ -105,133 +114,12 @@ export type WorkflowNodes =
     | VariableNode
     | IfElseNode
 
-// Messaging protocol (webview <-> extension)
-interface BaseWorkflowMessage {
-    type: string
-}
-
-interface WorkflowPayload {
-    nodes?: WorkflowNodes[]
-    edges?: Edge[]
-}
-
-interface NodeExecutionPayload {
-    nodeId: string
-    status: 'running' | 'completed' | 'error' | 'interrupted' | 'pending_approval'
-    result?: string
-    command?: string
-}
-
-// To Extension (from webview)
-export interface OpenExternalLink extends BaseWorkflowMessage {
-    type: 'open_external_link'
-    url: string
-}
-
-export interface SaveWorkflowCommand extends BaseWorkflowMessage {
-    type: 'save_workflow'
-    data: WorkflowPayload
-}
-
-export interface LoadWorkflowCommand extends BaseWorkflowMessage {
-    type: 'load_workflow'
-}
-
-export interface ExecuteWorkflowCommand extends BaseWorkflowMessage {
-    type: 'execute_workflow'
-    data: WorkflowPayload
-}
-
-export interface AbortWorkflowCommand extends BaseWorkflowMessage {
-    type: 'abort_workflow'
-}
-
-export interface GetModelsCommand extends BaseWorkflowMessage {
-    type: 'get_models'
-}
-
-export interface SaveCustomNodeCommand extends BaseWorkflowMessage {
-    type: 'save_customNode'
-    data: WorkflowNodes
-}
-
-export interface DeleteCustomNodeCommand extends BaseWorkflowMessage {
-    type: 'delete_customNode'
-    data: string
-}
-
-export interface RenameCustomNodeCommand extends BaseWorkflowMessage {
-    type: 'rename_customNode'
-    data: { oldNodeTitle: string; newNodeTitle: string }
-}
-
-export interface GetCustomNodesCommand extends BaseWorkflowMessage {
-    type: 'get_custom_nodes'
-}
-
-// From Extension (to webview)
-export interface WorkflowLoadedEvent extends BaseWorkflowMessage {
-    type: 'workflow_loaded'
-    data: WorkflowPayload
-}
-
-export interface ExecutionStartedEvent extends BaseWorkflowMessage {
-    type: 'execution_started'
-}
-
-export interface ExecutionCompletedEvent extends BaseWorkflowMessage {
-    type: 'execution_completed'
-}
-
-export interface NodeExecutionStatusEvent extends BaseWorkflowMessage {
-    type: 'node_execution_status'
-    data: NodeExecutionPayload
-}
-
-export interface CalculateTokensCommand extends BaseWorkflowMessage {
-    type: 'calculate_tokens'
-    data: { text: string; nodeId: string }
-}
-
-export interface TokenCountEvent extends BaseWorkflowMessage {
-    type: 'token_count'
-    data: { count: number; nodeId: string }
-}
-
-export interface NodeApprovalCommand extends BaseWorkflowMessage {
-    type: 'node_approved'
-    data: { nodeId: string; modifiedCommand?: string }
-}
-
-export interface ModelsLoadedEvent extends BaseWorkflowMessage {
-    type: 'models_loaded'
-    data: Model[]
-}
-
-export interface ProvideCustomModelsEvent extends BaseWorkflowMessage {
-    type: 'provide_custom_nodes'
-    data: WorkflowNodes[]
-}
-
-export type WorkflowToExtension =
-    | OpenExternalLink
-    | GetModelsCommand
-    | SaveWorkflowCommand
-    | LoadWorkflowCommand
-    | ExecuteWorkflowCommand
-    | AbortWorkflowCommand
-    | CalculateTokensCommand
-    | NodeApprovalCommand
-    | SaveCustomNodeCommand
-    | DeleteCustomNodeCommand
-    | RenameCustomNodeCommand
-    | GetCustomNodesCommand
-
-export type ExtensionToWorkflow =
-    | ModelsLoadedEvent
-    | WorkflowLoadedEvent
-    | ExecutionStartedEvent
-    | ExecutionCompletedEvent
-    | NodeExecutionStatusEvent
-    | TokenCountEvent
-    | ProvideCustomModelsEvent
+// Re-export shared protocol message contracts (types-only)
+export type {
+    BaseWorkflowMessage,
+    WorkflowPayloadDTO,
+    NodeExecutionPayload,
+    WorkflowToExtension,
+    ExtensionToWorkflow,
+    Model,
+} from './Contracts/Protocol'

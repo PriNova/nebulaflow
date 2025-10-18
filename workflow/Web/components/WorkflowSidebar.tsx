@@ -24,6 +24,7 @@ interface WorkflowSidebarProps {
     onDeleteCustomNode: (nodeId: string) => void
     onRenameCustomNode: (oldNodeTitle: string, newNodeTitle: string) => void
     customNodes: WorkflowNodes[]
+    nodeErrors?: Map<string, string>
 }
 
 type CustomNodesByType = { [key in NodeType]?: WorkflowNodes[] }
@@ -59,6 +60,7 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
     customNodes,
     onDeleteCustomNode,
     onRenameCustomNode,
+    nodeErrors,
 }) => {
     const handleSave = async (): Promise<void> => {
         if (onSave) {
@@ -336,6 +338,7 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                                     onUpdate={onNodeUpdate!}
                                     models={models}
                                     onSaveCustomNode={onSaveCustomNode}
+                                    nodeError={nodeErrors?.get(selectedNode.id)}
                                 />
                             ) : (
                                 <p className="tw-text-sm tw-text-muted-foreground tw-mt-2">

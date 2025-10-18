@@ -1,6 +1,7 @@
 import * as vscode from 'vscode'
 import { processGraphComposition } from '../../Core/engine/node-sorting'
-import type { ExtensionToWorkflow } from '../../Core/models'
+import { AbortedError } from '../../Core/models'
+import type { ApprovalResult, ExtensionToWorkflow } from '../../Core/models'
 import {
     type Edge,
     type IfElseNode,
@@ -9,6 +10,7 @@ import {
     type WorkflowNodes,
 } from '../../Core/models'
 import { expandHome, execute as shellExecute } from '../../DataAccess/shell'
+import { safePost } from '../messaging/safePost'
 
 interface IndexedEdges {
     bySource: Map<string, Edge[]>
@@ -32,7 +34,7 @@ export async function executeWorkflow(
     edges: Edge[],
     webview: vscode.Webview,
     abortSignal: AbortSignal,
-    approvalHandler: (nodeId: string) => Promise<{ command?: string }>
+    approvalHandler: (nodeId: string) => Promise<ApprovalResult>
 ): Promise<void> {
     const edgeIndex = createEdgeIndex(edges)
     const nodeIndex = new Map(nodes.map(node => [node.id, node]))
@@ -58,7 +60,7 @@ export async function executeWorkflow(
     }
     const sortedNodes = processGraphComposition(nodes, edges, true)
 
-    await webview.postMessage({ type: 'execution_started' } as ExtensionToWorkflow)
+    await safePost(webview, { type: 'execution_started' } as ExtensionToWorkflow)
 
     for (const node of sortedNodes) {
         const shouldSkip = Array.from(context.ifelseSkipPaths?.values() ?? []).some(skipNodes =>
@@ -71,7 +73,7 @@ export async function executeWorkflow(
             continue
         }
 
-        await webview.postMessage({
+        await safePost(webview, {
             type: 'node_execution_status',
             data: { nodeId: node.id, status: 'running' },
         } as ExtensionToWorkflow)
@@ -84,11 +86,11 @@ export async function executeWorkflow(
                     break
                 }
                 case NodeType.LLM: {
-                    await webview.postMessage({
+                    await safePost(webview, {
                         type: 'node_execution_status',
                         data: { nodeId: node.id, status: 'error', result: 'LLM unavailable' },
                     } as ExtensionToWorkflow)
-                    await webview.postMessage({ type: 'execution_completed' } as ExtensionToWorkflow)
+                    await safePost(webview, { type: 'execution_completed' } as ExtensionToWorkflow)
                     return
                 }
                 case NodeType.PREVIEW: {
@@ -151,31 +153,44 @@ export async function executeWorkflow(
             }
         } catch (error: unknown) {
             if (abortSignal.aborted) {
-                await webview.postMessage({
+                await safePost(webview, {
                     type: 'node_execution_status',
                     data: { nodeId: node.id, status: 'interrupted' },
                 } as ExtensionToWorkflow)
+                await safePost(webview, { type: 'execution_completed' } as ExtensionToWorkflow)
+                return
+            }
+            if (error instanceof AbortedError) {
+                await safePost(webview, {
+                    type: 'node_execution_status',
+                    data: { nodeId: node.id, status: 'interrupted' },
+                } as ExtensionToWorkflow)
+                await safePost(webview, { type: 'execution_completed' } as ExtensionToWorkflow)
                 return
             }
             const errorMessage = error instanceof Error ? error.message : String(error)
-            const status = errorMessage.includes('aborted') ? 'interrupted' : 'error'
             void vscode.window.showErrorMessage(`Node Error: ${errorMessage}`)
-            await webview.postMessage({
+            await safePost(webview, {
                 type: 'node_execution_status',
-                data: { nodeId: node.id, status, result: errorMessage },
+                data: { nodeId: node.id, status: 'error', result: errorMessage },
             } as ExtensionToWorkflow)
-            await webview.postMessage({ type: 'execution_completed' } as ExtensionToWorkflow)
+            await safePost(webview, { type: 'execution_completed' } as ExtensionToWorkflow)
             return
         }
 
         context.nodeOutputs.set(node.id, result)
-        await webview.postMessage({
+        const safeResult = Array.isArray(result)
+            ? result.join('\n')
+            : typeof result === 'string'
+              ? result
+              : JSON.stringify(result)
+        await safePost(webview, {
             type: 'node_execution_status',
-            data: { nodeId: node.id, status: 'completed', result },
+            data: { nodeId: node.id, status: 'completed', result: safeResult },
         } as ExtensionToWorkflow)
     }
 
-    await webview.postMessage({ type: 'execution_completed' } as ExtensionToWorkflow)
+    await safePost(webview, { type: 'execution_completed' } as ExtensionToWorkflow)
     context.loopStates.clear()
 }
 
@@ -261,7 +276,7 @@ export async function executeCLINode(
     node: WorkflowNodes,
     abortSignal: AbortSignal,
     webview: vscode.Webview,
-    approvalHandler: (nodeId: string) => Promise<{ command?: string }>,
+    approvalHandler: (nodeId: string) => Promise<ApprovalResult>,
     context?: IndexedExecutionContext
 ): Promise<string> {
     abortSignal.throwIfAborted()
@@ -274,12 +289,15 @@ export async function executeCLINode(
     let filteredCommand = expandHome(command) || ''
 
     if (node.data.needsUserApproval) {
-        await webview.postMessage({
+        await safePost(webview, {
             type: 'node_execution_status',
             data: { nodeId: node.id, status: 'pending_approval', result: `${filteredCommand}` },
         } as ExtensionToWorkflow)
         const approval = await approvalHandler(node.id)
-        if (approval.command) {
+        if (approval.type === 'aborted') {
+            throw new AbortedError()
+        }
+        if (approval.type === 'approved' && approval.command) {
             filteredCommand = approval.command
         }
     }
@@ -311,7 +329,7 @@ async function executePreviewNode(
     const processedInput = replaceIndexedInputs(input, [], context)
     const trimmedInput = processedInput.trim()
     const tokenCount = trimmedInput.length
-    await webview.postMessage({
+    await safePost(webview, {
         type: 'token_count',
         data: { nodeId, count: tokenCount },
     } as ExtensionToWorkflow)

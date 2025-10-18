@@ -1,101 +1,54 @@
 ## High-level summary
-This change introduces a decorative, spinning “Amp” background logo that quietly animates behind the React-Flow canvas.
-
-Key points  
-• New component `AmpSpinningLogo.tsx` (controls sizing, axis and opacity).  
-• `Flow.tsx` now measures the central pane with a `ResizeObserver` and conditionally renders the logo behind the flow graph.  
-• `index.css` adds keyframes and helper utility classes for 3-D spin effects.
-
-No business logic is affected; the update is purely visual.
+A single file, `README.md`, has been added.  
+The README introduces the “Amp Workflow Editor” VS Code extension, outlines its architecture, scripts, development workflow, security measures, and troubleshooting steps. No source‐code logic changed.
 
 ## Tour of changes
-Start with `AmpSpinningLogo.tsx` – it is self-contained, shows all public props, the sizing math, and the assumptions that the other files rely on. Once understood, proceed to the changes in `Flow.tsx` to see how the component is embedded and how pane size is detected, then finally glance at `index.css` for the animation helpers.
+Because the only touched file is `README.md`, begin the review at the very top of that file and read straight through. The first section (“Amp Workflow Editor (VS Code Extension)”) already establishes the project scope and links to key source files; understanding those links will contextualise every later section.
 
-## File level review
+## File-level review
 
-### `workflow/Web/components/AmpSpinningLogo.tsx`
+### `README.md`
 What changed  
-• Brand-new component; props let callers pick size, opacity, axis, etc.  
-• Computes size as `min(width,height) * scale`, clamps to ≥0 then floors.  
-• Renders absolutely-positioned `<img>` that spins on X, Y or Z axis.
+• Entire file added (≈160 lines).  
+• Provides quick-start, project structure, architecture, persistence, security, troubleshooting, and contributing guidelines.
 
-Review  
-1. Correctness / type safety  
-   • `scale` comment says “portion of min(width,height), default 0.6” – matches code.  
-   • `axis` is restricted to `'x' | 'y' | 'z'`, good.  
-   • `size` is always integer and non-negative → no negative CSS lengths.
+Review
 
-2. Asset import  
-   • `ampMark` is imported directly. Depending on the bundler (Vite/Webpack) SVG import may default to an object, not a URL. If this repo already imports SVGs as URLs elsewhere it is fine, otherwise change to `import ampMark from '../assets/amp-mark.svg?url'`.
+Correctness & clarity
+1. Broken / fragile line links  
+   – Markdown links such as  
+     `workflow/Application/handlers/ExecuteWorkflow.ts#L88-L95`  
+     will only work in GitHub/GitLab after commit **if the file already exists at those exact line numbers**. Any refactor-induced line shift will silently break the link. Consider linking to permanent anchors (e.g. permalink with commit SHA) or removing the line fragment.
 
-3. Rendering  
-   • Wrapper `div` has `pointerEvents: 'none'` => logo never blocks interactions – good.  
-   • Alt text “Amp” OK. Consider more descriptive alt or `aria-hidden="true"` if purely decorative to avoid noise for screen readers.
+2. “VS Code ≥ 1.90.0”  
+   – VS Code 1.90 has not been released at the time of writing (current stable is 1.87). If 1.90+ APIs are not actually required, downgrade the version requirement (e.g. 1.85). Otherwise add a note that Insiders is needed.
 
-4. Performance / re-renders  
-   • Component is cheap; only recalculates `size` on prop change. No issues.
+3. Shell security wording  
+   – The list of “Dangerous CLI prefixes” is said to be “non-exhaustive” yet the README might be read as exhaustive. Explicitly state that additional validation occurs in code and the list is illustrative only.
 
-5. Security  
-   • No user input is interpolated into styles; safe.
+4. Scripts block  
+   – The JSON snippet shows `"biome": "biome check --apply --error-on-warnings ."`. Because `.`, not `"."`, is passed, Biome will recurse through `node_modules`. Recommend `.` but with an `--ignore-path .gitignore` or similar or restrict to `src` + `workflow`.
 
-6. CSS coupling  
-   • Relies on global classes `spin-x`, `spin-y`, `tw-animate-spin`, `perspective-800`. Those are added in `index.css`; ok.
+5. Watch webview  
+   – `vite build --watch` performs a production build on every change; typical dev flow is `vite dev` or `vite serve`. If intentional (because VS Code webviews can’t consume dev server), add one‐sentence rationale.
 
-Minor suggestions  
-• Expose a `duration` prop instead of hardcoding `24s`.  
-• Use `will-change: transform` on the `<img>` to hint GPU acceleration.
+6. Typo / wording  
+   – “Keep core helpers pure; put side-effects at the boundaries” – good, but add a short pointer to the folder that owns side-effects (Application/DataAccess) to avoid drift.  
+   – “TBD” license: until finalised, many companies treat this as “all rights reserved”. If open source is intended, add a short note (“licence choice pending final approval”).
 
-### `workflow/Web/components/Flow.tsx`
-What changed  
-• Imports and embeds `AmpSpinningLogo`.  
-• Adds `ResizeObserver` to measure centre pane → stores `{w, h}` in state.  
-• Wraps existing `<ReactFlow>` in an absolutely-positioned layer (`z-index 1`) and places the logo underneath (`z-index 0`).
+7. Missing badges  
+   – Optional nicety: add CI, VS Code Marketplace, npm, and license badges at the top.
 
-Review  
-1. ResizeObserver lifecycle  
-   • Correctly disconnects in cleanup.  
-   • It does **not** unobserve on every invocation; however `disconnect()` stops all observations so this is fine.
+Inefficiencies  
+No performance concerns—this is documentation only.
 
-2. State updates throttling  
-   • `ResizeObserver` callback may fire frequently during window resize; currently every callback triggers a React state update. Consider debounce (`requestAnimationFrame` or 60-fps guard) to avoid excessive re-renders, though impact should be minimal for most users.
+Security vulnerabilities  
+No direct code; however, caution readers that shell sanitisation lives in code, not the README, and thus they must still audit `workflow/DataAccess/shell.ts`.
 
-3. Conditional render logic  
-   • Checks `centerSize.w > 0 && centerSize.h > 0` before rendering logo, avoiding NaN/0. Good.
+Other suggestions
+• Provide a one-line “Install from Marketplace” instruction for end users.  
+• Add a “Testing” script (`npm run test`) placeholder even if tests aren’t yet present.  
+• Under “Persistence”, clarify whether versioning beyond `1.x` will add migration steps.  
+• Under “Quick Start”, step 3 implicitly relies on the `preLaunchTask` defined in `.vscode/launch.json`; mention that explicitly so non-VS Code IDEs know what to run.
 
-4. Layering / z-index  
-   • Parent `div` has `position: relative`; inner absolute layers with `z-indexes` chosen such that logo does not block flow interactions – correct.
-
-5. Imports  
-   • `useEffect`, `useRef` added to import list; compile passes.
-
-6. Accessibility / keyboard nav  
-   • No change in tab order; logo has `pointer-events: none` so focusability isn’t affected.
-
-7. Performance  
-   • The added logo is a single SVG element with CS-only animation (no JS) – negligible cost.
-
-### `workflow/Web/index.css`
-What changed  
-• Added keyframes `spin-x`/`spin-y`, helper classes `.perspective-800`, `.spin-x`, `.spin-y`.
-
-Review  
-1. Vendor prefixes  
-   • Modern browsers accept these properties un-prefixed; fine.  
-   • `perspective` is undefined on the element but `.perspective-800` attaches to parent. All good.
-
-2. Animation duration  
-   • Class sets `animation: spin-x 24s linear infinite` which matches component default. If component ever changes hard-coded duration, we’ll need to keep parity.
-
-3. Namespace conflict  
-   • `.spin-x` and `.spin-y` are generic names that could collide with future classes; consider `amp-spin-x` to stay scoped.
-
-4. `transform-style: preserve-3d`  
-   • Necessary for 3-D rotation to show thickness; fine.
-
-Security / CSS performance  
-No injected content; nothing unsafe.
-
-## Overall assessment
-The feature is implemented cleanly, minimally invasive to existing logic, and safe. Just beware of SVG import expectations, potential rapid ResizeObserver updates, and consider alt text / aria-hidden tweaks for accessibility.
-
-No blocking issues.
+Overall this is a strong, detailed README. Addressing the small accuracy and maintenance issues above will reduce future confusion.

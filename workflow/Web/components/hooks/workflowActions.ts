@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
-import type { GenericVSCodeWrapper } from '../../../webview/utils/vscode'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
+import type { GenericVSCodeWrapper } from '../../utils/vscode'
 import type { Edge } from '../CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
 
@@ -41,8 +41,7 @@ export const useWorkflowActions = (
             vscodeAPI.postMessage({ type: 'node_approved', data: { nodeId, modifiedCommand } } as any)
         } else {
             setPendingApprovalNodeId(null)
-            setNodeErrors(prev => new Map(prev).set(nodeId, 'Command execution rejected by user'))
-            setIsExecuting(false)
+            vscodeAPI.postMessage({ type: 'node_rejected', data: { nodeId } } as any)
         }
     }
     return { onSave, onLoad, calculatePreviewNodeTokens, handleNodeApproval }

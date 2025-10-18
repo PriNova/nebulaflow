@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react'
-import type { GenericVSCodeWrapper } from '../../../webview/utils/vscode'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
+import type { GenericVSCodeWrapper } from '../../utils/vscode'
 import type { Edge } from '../CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
 
@@ -18,7 +18,8 @@ export const useMessageHandler = (
     setPendingApprovalNodeId: React.Dispatch<React.SetStateAction<string | null>>,
     setModels: React.Dispatch<React.SetStateAction<{ id: string; title?: string }[]>>,
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>,
-    setCustomNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>
+    setCustomNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>,
+    notify: (p: { type: 'success' | 'error'; text: string }) => void
 ) => {
     const batchUpdateNodeResults = useCallback(
         (updates: Map<string, string>) => {
@@ -42,6 +43,14 @@ export const useMessageHandler = (
                         setEdges(edges as any)
                         setNodeErrors(new Map())
                     }
+                    break
+                }
+                case 'workflow_saved': {
+                    notify({ type: 'success', text: `Saved: ${event.data.data?.path ?? ''}` })
+                    break
+                }
+                case 'workflow_save_failed': {
+                    notify({ type: 'error', text: event.data.data?.error ?? 'Save failed' })
                     break
                 }
                 case 'node_execution_status': {
@@ -121,5 +130,6 @@ export const useMessageHandler = (
         setModels,
         setCustomNodes,
         vscodeAPI,
+        notify,
     ])
 }

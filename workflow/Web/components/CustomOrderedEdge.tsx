@@ -3,11 +3,12 @@ import type { EdgeProps } from '@xyflow/react'
 import type React from 'react'
 import { memo } from 'react'
 
-export type Edge = ReactFlowEdge<any>
+export type EdgeData = { orderNumber?: number }
+
+export type Edge = ReactFlowEdge<EdgeData>
 
 export type OrderedEdgeProps = EdgeProps & {
-    data?: { orderNumber: number }
-    edges: Edge[]
+    data?: EdgeData
 }
 
 export const CustomOrderedEdgeComponent: React.FC<OrderedEdgeProps> = ({

@@ -1,10 +1,11 @@
 import { Background, Controls, ReactFlow, SelectionMode } from '@xyflow/react'
 import type React from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../services/Protocol'
 import type { GenericVSCodeWrapper } from '../utils/vscode'
 import { AmpSpinningLogo } from './AmpSpinningLogo'
 import { CustomOrderedEdgeComponent } from './CustomOrderedEdge'
+import type { Edge } from './CustomOrderedEdge'
 // styles moved to global index.css
 import { HelpModal } from './HelpModal'
 import { RightSidebar } from './RightSidebar'
@@ -18,6 +19,12 @@ import { useRightSidebarResize, useSidebarResize } from './hooks/sidebarResizing
 import { useWorkflowActions } from './hooks/workflowActions'
 import { useWorkflowExecution } from './hooks/workflowExecution'
 import { type WorkflowNodes, defaultWorkflow, nodeTypes } from './nodes/Nodes'
+import { isValidEdgeConnection } from './utils/edgeValidation'
+
+const pruneEdgesForMissingNodes = (eds: Edge[], nodeList: WorkflowNodes[]): Edge[] => {
+    const nodeIds = new Set(nodeList.map(n => n.id))
+    return eds.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+}
 
 export const Flow: React.FC<{
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>
@@ -29,9 +36,27 @@ export const Flow: React.FC<{
     const [pendingApprovalNodeId, setPendingApprovalNodeId] = useState<string | null>(null)
     const [models, setModels] = useState<{ id: string; title?: string }[]>([])
     const [customNodes, setCustomNodes] = useState<WorkflowNodes[]>([])
+    const [banner, setBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+    const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     const [edges, setEdges] = useState(defaultWorkflow.edges)
     const [isHelpOpen, setIsHelpOpen] = useState(false)
+
+    const notify = useCallback((p: { type: 'success' | 'error'; text: string }) => {
+        if (bannerTimerRef.current) {
+            clearTimeout(bannerTimerRef.current)
+        }
+        setBanner(p)
+        bannerTimerRef.current = setTimeout(() => setBanner(null), 3000)
+    }, [])
+
+    useEffect(() => {
+        return () => {
+            if (bannerTimerRef.current) {
+                clearTimeout(bannerTimerRef.current)
+            }
+        }
+    }, [])
 
     const { onEdgesChange, onConnect, onEdgesDelete, orderedEdges } = useEdgeOperations(
         edges,
@@ -86,7 +111,8 @@ export const Flow: React.FC<{
         setPendingApprovalNodeId,
         setModels,
         vscodeAPI,
-        setCustomNodes
+        setCustomNodes,
+        notify
     )
 
     const { sidebarWidth, handleMouseDown } = useSidebarResize()
@@ -95,6 +121,12 @@ export const Flow: React.FC<{
         setSelectedNodes,
         setActiveNode
     )
+
+    const isValidConnection = useCallback((conn: any) => isValidEdgeConnection(conn, edges), [edges])
+
+    useEffect(() => {
+        setEdges(prev => pruneEdgesForMissingNodes(prev, nodes))
+    }, [nodes])
 
     const nodesWithState = useNodeStateTransformation(
         nodes,
@@ -154,6 +186,7 @@ export const Flow: React.FC<{
                     onDeleteCustomNode={onDeleteCustomNode}
                     onRenameCustomNode={onRenameCustomNode}
                     customNodes={customNodes}
+                    nodeErrors={nodeErrors}
                 />
             </div>
             <div
@@ -172,6 +205,17 @@ export const Flow: React.FC<{
                         ref={centerRef}
                         className="tw-relative tw-flex-1 tw-bg-[var(--vscode-editor-background)] tw-h-full"
                     >
+                        {banner && (
+                            <div
+                                className="tw-absolute tw-top-4 tw-left-1/2 tw-transform tw--translate-x-1/2 tw-z-50 tw-px-4 tw-py-2 tw-rounded tw-shadow-lg"
+                                style={{
+                                    backgroundColor: banner.type === 'success' ? '#28a745' : '#dc3545',
+                                    color: '#fff',
+                                }}
+                            >
+                                {banner.text}
+                            </div>
+                        )}
                         {/* Background: Spinning Amp logo */}
                         {centerSize.w > 0 && centerSize.h > 0 ? (
                             <AmpSpinningLogo
@@ -199,10 +243,9 @@ export const Flow: React.FC<{
                                 selectionMode={SelectionMode.Partial}
                                 selectionOnDrag={true}
                                 selectionKeyCode="Shift"
+                                isValidConnection={isValidConnection}
                                 edgeTypes={{
-                                    'ordered-edge': props => (
-                                        <CustomOrderedEdgeComponent {...props} edges={orderedEdges} />
-                                    ),
+                                    'ordered-edge': props => <CustomOrderedEdgeComponent {...props} />,
                                 }}
                                 fitView
                             >

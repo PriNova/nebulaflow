@@ -1,5 +1,6 @@
 import * as vscode from 'vscode'
-import type { ExtensionToWorkflow, WorkflowToExtension } from '../Core/models'
+import { isWorkflowToExtension } from '../Core/Contracts/guards'
+import type { ApprovalResult, ExtensionToWorkflow } from '../Core/models'
 import {
     deleteCustomNode,
     getCustomNodes,
@@ -9,13 +10,36 @@ import {
     saveWorkflow,
 } from '../DataAccess/fs'
 import { executeWorkflow } from './handlers/ExecuteWorkflow'
+import { fromProtocolPayload, toProtocolPayload } from './messaging/converters'
+import { safePost } from './messaging/safePost'
 
 let activeAbortController: AbortController | null = null
-let pendingApprovalResolve: ((value: { command?: string }) => void) | null = null
+let pendingApproval: {
+    resolve: (value: ApprovalResult) => void
+    reject: (error: unknown) => void
+    removeAbortListener?: () => void
+} | null = null
 
-function waitForApproval(_nodeId: string): Promise<{ command?: string }> {
-    return new Promise(resolve => {
-        pendingApprovalResolve = resolve
+function waitForApproval(_nodeId: string): Promise<ApprovalResult> {
+    return new Promise((resolve, reject) => {
+        const current: {
+            resolve: (value: ApprovalResult) => void
+            reject: (error: unknown) => void
+            removeAbortListener?: () => void
+        } = { resolve, reject }
+        const signal = activeAbortController?.signal
+        if (signal) {
+            const onAbort = () => {
+                current.resolve({ type: 'aborted' })
+                if (pendingApproval === current) {
+                    pendingApproval = null
+                }
+                current.removeAbortListener = undefined
+            }
+            signal.addEventListener('abort', onAbort, { once: true })
+            current.removeAbortListener = () => signal.removeEventListener('abort', onAbort)
+        }
+        pendingApproval = current
     })
 }
 
@@ -32,37 +56,83 @@ export function activate(context: vscode.ExtensionContext): void {
             }
         )
 
+        const isDev = context.extensionMode === vscode.ExtensionMode.Development
         panel.webview.onDidReceiveMessage(
-            async (message: WorkflowToExtension) => {
+            async (message: unknown) => {
+                if (!isWorkflowToExtension(message)) {
+                    return
+                }
                 switch (message.type) {
                     case 'get_models': {
-                        await panel.webview.postMessage({
-                            type: 'models_loaded',
-                            data: [],
-                        } as ExtensionToWorkflow)
+                        await safePost(
+                            panel.webview,
+                            { type: 'models_loaded', data: [] } as ExtensionToWorkflow,
+                            { strict: isDev }
+                        )
                         break
                     }
                     case 'save_workflow': {
-                        await saveWorkflow(message.data)
+                        const result = await saveWorkflow(message.data)
+                        if (result && 'uri' in result) {
+                            await safePost(
+                                panel.webview,
+                                {
+                                    type: 'workflow_saved',
+                                    data: { path: result.uri.fsPath },
+                                } as ExtensionToWorkflow,
+                                { strict: isDev }
+                            )
+                        } else if (result && 'error' in result) {
+                            await safePost(
+                                panel.webview,
+                                {
+                                    type: 'workflow_save_failed',
+                                    data: { error: result.error },
+                                } as ExtensionToWorkflow,
+                                { strict: isDev }
+                            )
+                        } else {
+                            await safePost(
+                                panel.webview,
+                                {
+                                    type: 'workflow_save_failed',
+                                    data: { error: 'cancelled' },
+                                } as ExtensionToWorkflow,
+                                { strict: isDev }
+                            )
+                        }
                         break
                     }
                     case 'load_workflow': {
                         const result = await loadWorkflow()
                         if (result) {
-                            await panel.webview.postMessage({
-                                type: 'workflow_loaded',
-                                data: result,
-                            } as ExtensionToWorkflow)
+                            await safePost(
+                                panel.webview,
+                                { type: 'workflow_loaded', data: result } as ExtensionToWorkflow,
+                                { strict: isDev }
+                            )
                         }
                         break
                     }
                     case 'execute_workflow': {
+                        if (activeAbortController) {
+                            void vscode.window.showInformationMessage(
+                                'Amp Workflow Editor: execution already in progress'
+                            )
+                            await safePost(
+                                panel.webview,
+                                { type: 'execution_completed' } as ExtensionToWorkflow,
+                                { strict: isDev }
+                            )
+                            break
+                        }
                         if (message.data?.nodes && message.data?.edges) {
                             activeAbortController = new AbortController()
                             try {
+                                const { nodes, edges } = fromProtocolPayload(message.data)
                                 await executeWorkflow(
-                                    message.data.nodes,
-                                    message.data.edges,
+                                    nodes,
+                                    edges,
                                     panel.webview,
                                     activeAbortController.signal,
                                     waitForApproval
@@ -74,6 +144,11 @@ export function activate(context: vscode.ExtensionContext): void {
                         break
                     }
                     case 'abort_workflow': {
+                        if (pendingApproval) {
+                            pendingApproval.removeAbortListener?.()
+                            pendingApproval.resolve({ type: 'aborted' })
+                            pendingApproval = null
+                        }
                         if (activeAbortController) {
                             activeAbortController.abort()
                             activeAbortController = null
@@ -82,16 +157,32 @@ export function activate(context: vscode.ExtensionContext): void {
                     }
                     case 'calculate_tokens': {
                         const text = message.data.text || ''
-                        await panel.webview.postMessage({
-                            type: 'token_count',
-                            data: { nodeId: message.data.nodeId, count: text.length },
-                        } as ExtensionToWorkflow)
+                        await safePost(
+                            panel.webview,
+                            {
+                                type: 'token_count',
+                                data: { nodeId: message.data.nodeId, count: text.length },
+                            } as ExtensionToWorkflow,
+                            { strict: isDev }
+                        )
                         break
                     }
                     case 'node_approved': {
-                        if (pendingApprovalResolve) {
-                            pendingApprovalResolve({ command: message.data.modifiedCommand })
-                            pendingApprovalResolve = null
+                        if (pendingApproval) {
+                            pendingApproval.removeAbortListener?.()
+                            pendingApproval.resolve({
+                                type: 'approved',
+                                command: message.data.modifiedCommand,
+                            })
+                            pendingApproval = null
+                        }
+                        break
+                    }
+                    case 'node_rejected': {
+                        if (pendingApproval) {
+                            pendingApproval.removeAbortListener?.()
+                            pendingApproval.reject(new Error('Command execution rejected by user'))
+                            pendingApproval = null
                         }
                         break
                     }
@@ -101,38 +192,44 @@ export function activate(context: vscode.ExtensionContext): void {
                         break
                     }
                     case 'save_customNode': {
-                        await saveCustomNode(message.data)
+                        await saveCustomNode(
+                            fromProtocolPayload({ nodes: [message.data], edges: [] }).nodes[0]
+                        )
                         const nodes = await getCustomNodes()
-                        await panel.webview.postMessage({
+                        const msg = {
                             type: 'provide_custom_nodes',
-                            data: nodes,
-                        } as ExtensionToWorkflow)
+                            data: toProtocolPayload({ nodes, edges: [] }).nodes!,
+                        } as ExtensionToWorkflow
+                        await safePost(panel.webview, msg, { strict: isDev })
                         break
                     }
                     case 'get_custom_nodes': {
                         const nodes = await getCustomNodes()
-                        await panel.webview.postMessage({
+                        const msg = {
                             type: 'provide_custom_nodes',
-                            data: nodes,
-                        } as ExtensionToWorkflow)
+                            data: toProtocolPayload({ nodes, edges: [] }).nodes!,
+                        } as ExtensionToWorkflow
+                        await safePost(panel.webview, msg, { strict: isDev })
                         break
                     }
                     case 'delete_customNode': {
                         await deleteCustomNode(message.data)
                         const nodes = await getCustomNodes()
-                        await panel.webview.postMessage({
+                        const msg = {
                             type: 'provide_custom_nodes',
-                            data: nodes,
-                        } as ExtensionToWorkflow)
+                            data: toProtocolPayload({ nodes, edges: [] }).nodes!,
+                        } as ExtensionToWorkflow
+                        await safePost(panel.webview, msg, { strict: isDev })
                         break
                     }
                     case 'rename_customNode': {
                         await renameCustomNode(message.data.oldNodeTitle, message.data.newNodeTitle)
                         const nodes = await getCustomNodes()
-                        await panel.webview.postMessage({
+                        const msg = {
                             type: 'provide_custom_nodes',
-                            data: nodes,
-                        } as ExtensionToWorkflow)
+                            data: toProtocolPayload({ nodes, edges: [] }).nodes!,
+                        } as ExtensionToWorkflow
+                        await safePost(panel.webview, msg, { strict: isDev })
                         break
                     }
                 }

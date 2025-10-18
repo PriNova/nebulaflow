@@ -1,10 +1,41 @@
+import * as path from 'node:path'
 import * as vscode from 'vscode'
-import type { WorkflowNodes } from '../Core/models'
+import type { WorkflowPayloadDTO } from '../Core/Contracts/Protocol'
+import { isWorkflowPayloadDTO } from '../Core/Contracts/guards'
+import { NodeType, type WorkflowNodes } from '../Core/models'
 
 const WORKFLOWS_DIR = '.sourcegraph/workflows'
 const NODES_DIR = '.sourcegraph/nodes'
 
-export async function saveWorkflow(data: any): Promise<void> {
+function isValidPosition(v: any): v is { x: number; y: number } {
+    return v && typeof v.x === 'number' && typeof v.y === 'number'
+}
+
+function isValidCustomNode(n: any): n is WorkflowNodes {
+    return (
+        n &&
+        typeof n === 'object' &&
+        typeof n.type === 'string' &&
+        Object.values(NodeType).includes(n.type) &&
+        n.data &&
+        typeof n.data.title === 'string' &&
+        n.data.title.length > 0 &&
+        isValidPosition(n.position)
+    )
+}
+
+function isSupportedVersion(version: unknown): boolean {
+    if (version === undefined) return true
+    if (typeof version !== 'string') return false
+    if (version === '1.0.0') return true
+    // Accept any 1.x.x version
+    const match = /^1\.\d+\.\d+$/.exec(version)
+    return match !== null
+}
+
+export async function saveWorkflow(
+    data: WorkflowPayloadDTO
+): Promise<{ uri: vscode.Uri } | { error: string } | null> {
     const workspaceRootFsPath = vscode.workspace.workspaceFolders?.[0]?.uri?.path
     const defaultFilePath = workspaceRootFsPath
         ? vscode.Uri.joinPath(vscode.Uri.file(workspaceRootFsPath), WORKFLOWS_DIR + '/workflow.json')
@@ -16,20 +47,32 @@ export async function saveWorkflow(data: any): Promise<void> {
     })
     if (result) {
         try {
-            const parent = vscode.Uri.joinPath(result, '..')
+            const parent = vscode.Uri.file(path.dirname(result.fsPath))
             try {
                 await vscode.workspace.fs.createDirectory(parent)
-            } catch {}
+            } catch (dirError) {
+                const errorMsg = dirError instanceof Error ? dirError.message : String(dirError)
+                console.error('Failed to create workflow directory', {
+                    parent: parent.fsPath,
+                    error: errorMsg,
+                })
+                void vscode.window.showErrorMessage('Failed to create workflow directory')
+                return { error: 'mkdir failed' }
+            }
             const content = Buffer.from(JSON.stringify({ ...data, version: '1.0.0' }, null, 2), 'utf-8')
             await vscode.workspace.fs.writeFile(result, content)
             void vscode.window.showInformationMessage('Workflow saved successfully!')
+            return { uri: result }
         } catch (error) {
-            void vscode.window.showErrorMessage(`Failed to save workflow: ${error}`)
+            const errorMsg = error instanceof Error ? error.message : String(error)
+            void vscode.window.showErrorMessage(`Failed to save workflow: ${errorMsg}`)
+            return { error: errorMsg }
         }
     }
+    return null
 }
 
-export async function loadWorkflow(): Promise<{ nodes: WorkflowNodes[]; edges: any[] } | null> {
+export async function loadWorkflow(): Promise<WorkflowPayloadDTO | null> {
     const workspaceRootFsPath = vscode.workspace.workspaceFolders?.[0]?.uri?.path
     const defaultFilePath = workspaceRootFsPath
         ? vscode.Uri.joinPath(vscode.Uri.file(workspaceRootFsPath), WORKFLOWS_DIR)
@@ -46,8 +89,21 @@ export async function loadWorkflow(): Promise<{ nodes: WorkflowNodes[]; edges: a
         try {
             const content = await vscode.workspace.fs.readFile(result[0])
             const data = JSON.parse(content.toString())
+
+            // Validate version (lenient)
+            if (!isSupportedVersion(data.version)) {
+                void vscode.window.showErrorMessage('Unsupported workflow file version')
+                return null
+            }
+
+            // Validate minimal schema
+            if (!isWorkflowPayloadDTO(data)) {
+                void vscode.window.showErrorMessage('Invalid workflow schema')
+                return null
+            }
+
             void vscode.window.showInformationMessage('Workflow loaded successfully!')
-            return { nodes: data.nodes || [], edges: data.edges || [] }
+            return data
         } catch (error) {
             void vscode.window.showErrorMessage(`Failed to load workflow: ${error}`)
             return null
@@ -74,7 +130,14 @@ export async function getCustomNodes(): Promise<WorkflowNodes[]> {
                 try {
                     const fileUri = vscode.Uri.joinPath(nodesDirUri, filename)
                     const fileData = await vscode.workspace.fs.readFile(fileUri)
-                    const node = JSON.parse(fileData.toString()) as WorkflowNodes
+                    const node = JSON.parse(fileData.toString())
+                    if (!isValidCustomNode(node)) {
+                        console.error(`Invalid custom node schema in "${filename}"`)
+                        vscode.window.showErrorMessage(
+                            `Invalid custom node schema in "${filename}": missing type, title, or position`
+                        )
+                        continue
+                    }
                     nodes.push(node)
                 } catch (error: any) {
                     console.error(`Failed to load custom node "${filename}": ${error?.message}`)
@@ -103,8 +166,17 @@ export async function saveCustomNode(node: WorkflowNodes): Promise<void> {
         try {
             await vscode.workspace.fs.createDirectory(nodesDirUri)
         } catch {}
-        const filename = `${sanitizeFilename(node.data.title)}.json`
-        const fileUri = vscode.Uri.joinPath(nodesDirUri, filename)
+        const fileUri = getNodeFileUri(workspaceRoot, node.data.title)
+        if (await fileExists(fileUri)) {
+            const confirmed = await vscode.window.showWarningMessage(
+                `A custom node named "${node.data.title}" already exists. Overwrite?`,
+                { modal: true },
+                'Overwrite'
+            )
+            if (confirmed !== 'Overwrite') {
+                return
+            }
+        }
         const { id, ...nodeToSave } = node as any
         await vscode.workspace.fs.writeFile(
             fileUri,
@@ -123,6 +195,11 @@ export async function deleteCustomNode(nodeTitle: string): Promise<void> {
             vscode.window.showErrorMessage('No workspace found.')
             return
         }
+        const fileUri = getNodeFileUri(workspaceRoot, nodeTitle)
+        if (!(await fileExists(fileUri))) {
+            vscode.window.showErrorMessage(`Custom node with title "${nodeTitle}" not found.`)
+            return
+        }
         const confirmed = await vscode.window.showWarningMessage(
             `Delete custom node "${nodeTitle}"?`,
             { modal: true },
@@ -131,14 +208,6 @@ export async function deleteCustomNode(nodeTitle: string): Promise<void> {
         if (confirmed !== 'Delete') {
             return
         }
-        const nodesDirUri = vscode.Uri.joinPath(workspaceRoot, NODES_DIR)
-        const files = await vscode.workspace.fs.readDirectory(nodesDirUri)
-        const nodeFile = files.find(([filename]) => filename.startsWith(sanitizeFilename(nodeTitle)))
-        if (!nodeFile) {
-            vscode.window.showErrorMessage(`Custom node with title "${nodeTitle}" not found.`)
-            return
-        }
-        const fileUri = vscode.Uri.joinPath(nodesDirUri, nodeFile[0])
         await vscode.workspace.fs.delete(fileUri)
         vscode.window.showInformationMessage(
             `Custom node with title "${nodeTitle}" deleted successfully.`
@@ -155,27 +224,33 @@ export async function renameCustomNode(oldNodeTitle: string, newNodeTitle: strin
             vscode.window.showErrorMessage('No workspace found.')
             return
         }
-        const nodesDirUri = vscode.Uri.joinPath(workspaceRoot, NODES_DIR)
-        const files = await vscode.workspace.fs.readDirectory(nodesDirUri)
-        const oldNodeFile = files.find(([filename]) =>
-            filename.startsWith(sanitizeFilename(oldNodeTitle))
-        )
-        if (!oldNodeFile) {
+        const oldFileUri = getNodeFileUri(workspaceRoot, oldNodeTitle)
+        if (!(await fileExists(oldFileUri))) {
             vscode.window.showErrorMessage(`Custom node with title "${oldNodeTitle}" not found.`)
             return
         }
-        const oldFileUri = vscode.Uri.joinPath(nodesDirUri, oldNodeFile[0])
         const fileData = await vscode.workspace.fs.readFile(oldFileUri)
         const node = JSON.parse(fileData.toString()) as WorkflowNodes
         node.data.title = newNodeTitle
-        const newFilename = `${sanitizeFilename(newNodeTitle)}.json`
-        const newFileUri = vscode.Uri.joinPath(nodesDirUri, newFilename)
+        const newFileUri = getNodeFileUri(workspaceRoot, newNodeTitle)
+        if (newFileUri.fsPath !== oldFileUri.fsPath && (await fileExists(newFileUri))) {
+            const confirmed = await vscode.window.showWarningMessage(
+                `A custom node named "${newNodeTitle}" already exists. Overwrite?`,
+                { modal: true },
+                'Overwrite'
+            )
+            if (confirmed !== 'Overwrite') {
+                return
+            }
+        }
         const { id, ...nodeToSave } = node as any
         await vscode.workspace.fs.writeFile(
             newFileUri,
             Buffer.from(JSON.stringify(nodeToSave, null, 2), 'utf-8')
         )
-        await vscode.workspace.fs.delete(oldFileUri)
+        if (newFileUri.fsPath !== oldFileUri.fsPath) {
+            await vscode.workspace.fs.delete(oldFileUri)
+        }
         vscode.window.showInformationMessage(
             `Custom node "${oldNodeTitle}" renamed to "${newNodeTitle}" successfully.`
         )
@@ -186,4 +261,19 @@ export async function renameCustomNode(oldNodeTitle: string, newNodeTitle: strin
 
 function sanitizeFilename(name: string): string {
     return name.replace(/[^a-zA-Z0-9_-]/g, '_')
+}
+
+async function fileExists(uri: vscode.Uri): Promise<boolean> {
+    try {
+        await vscode.workspace.fs.stat(uri)
+        return true
+    } catch {
+        return false
+    }
+}
+
+function getNodeFileUri(workspaceRoot: vscode.Uri, title: string): vscode.Uri {
+    const nodesDirUri = vscode.Uri.joinPath(workspaceRoot, NODES_DIR)
+    const filename = `${sanitizeFilename(title)}.json`
+    return vscode.Uri.joinPath(nodesDirUri, filename)
 }

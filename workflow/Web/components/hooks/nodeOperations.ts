@@ -2,8 +2,8 @@ import { type NodeChange, applyNodeChanges, useReactFlow } from '@xyflow/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { unstable_batchedUpdates } from 'react-dom'
 import { v4 as uuidv4 } from 'uuid'
-import type { GenericVSCodeWrapper } from '../../../webview/utils/vscode'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
+import type { GenericVSCodeWrapper } from '../../utils/vscode'
 import type { LLMNode } from '../nodes/LLM_Node'
 import type { LoopStartNode } from '../nodes/LoopStart_Node'
 import { NodeType, type WorkflowNodes, createNode } from '../nodes/Nodes'
@@ -12,6 +12,69 @@ interface IndexedNodes {
     byId: Map<string, WorkflowNodes>
     allIds: string[]
 }
+
+type DraggingPositionChange = Extract<NodeChange, { type: 'position' }> & {
+    dragging?: boolean
+    event?: React.MouseEvent
+    id: string
+}
+
+function isDraggingPositionChange(change: NodeChange): change is DraggingPositionChange {
+    return change.type === 'position' && 'dragging' in change
+}
+
+function cloneNodeData(sourceNode: WorkflowNodes): WorkflowNodes {
+    const baseClone = createNode({
+        type: sourceNode.type,
+        data: {
+            ...sourceNode.data,
+            title: sourceNode.data.title,
+            content: sourceNode.data.content,
+            active: sourceNode.data.active,
+        },
+        position: { x: sourceNode.position.x, y: sourceNode.position.y },
+    }) as WorkflowNodes
+
+    switch (sourceNode.type) {
+        case NodeType.LLM: {
+            const llmSource = sourceNode as LLMNode
+            return {
+                ...baseClone,
+                data: {
+                    ...baseClone.data,
+                    temperature: llmSource.data.temperature,
+                    maxTokens: llmSource.data.maxTokens,
+                    model: llmSource.data.model,
+                },
+            } as LLMNode
+        }
+        case NodeType.LOOP_START: {
+            const loopSource = sourceNode as LoopStartNode
+            return {
+                ...baseClone,
+                data: {
+                    ...baseClone.data,
+                    iterations: loopSource.data.iterations,
+                    loopVariable: loopSource.data.loopVariable,
+                },
+            } as LoopStartNode
+        }
+        case NodeType.CLI:
+        case NodeType.PREVIEW:
+        case NodeType.INPUT:
+        case NodeType.CODY_OUTPUT:
+        case NodeType.LOOP_END:
+        case NodeType.SEARCH_CONTEXT:
+        case NodeType.ACCUMULATOR:
+        case NodeType.VARIABLE:
+        case NodeType.IF_ELSE:
+            return baseClone
+        default:
+            return baseClone
+    }
+}
+
+const AUTO_SELECT_ON_ADD = true
 
 export const useNodeOperations = (
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>,
@@ -32,27 +95,29 @@ export const useNodeOperations = (
 
     const onNodesChange = useCallback(
         (changes: NodeChange[]) => {
-            const dragChange = changes.find(
-                change => change.type === 'position' && 'dragging' in change && (change as any).dragging
-            ) as any
+            const dragChange = changes.find(isDraggingPositionChange)
             if (dragChange?.event?.shiftKey && dragChange.dragging && !movingNodeId) {
                 return
             }
-            if (dragChange) {
+            if (dragChange?.dragging) {
                 setMovingNodeId(dragChange.id)
             } else if (movingNodeId) {
                 setMovingNodeId(null)
             }
             const updatedNodes = applyNodeChanges(changes, nodes) as typeof nodes
             setNodes(updatedNodes)
+
+            // Build fresh index from updated nodes to avoid stale references
+            const updatedIndex = createIndexedNodes(updatedNodes)
+
             if (selectedNodes.length > 0) {
                 const updatedSelectedNodes = selectedNodes
-                    .map(node => indexedNodes.byId.get(node.id))
+                    .map(node => updatedIndex.byId.get(node.id))
                     .filter(Boolean) as WorkflowNodes[]
                 setSelectedNodes(updatedSelectedNodes)
             }
             if (activeNode) {
-                const updatedActiveNode = indexedNodes.byId.get(activeNode.id)
+                const updatedActiveNode = updatedIndex.byId.get(activeNode.id)
                 setActiveNode(updatedActiveNode || null)
             }
         },
@@ -64,7 +129,7 @@ export const useNodeOperations = (
             setNodes,
             setSelectedNodes,
             setActiveNode,
-            indexedNodes,
+            createIndexedNodes,
         ]
     )
 
@@ -73,47 +138,10 @@ export const useNodeOperations = (
             if (event.shiftKey) {
                 const sourceNode = indexedNodes.byId.get(node.id)
                 if (!sourceNode) return
-                const newNode = createNode({
-                    type: sourceNode.type,
-                    data: {
-                        ...sourceNode.data,
-                        title: sourceNode.data.title,
-                        content: sourceNode.data.content,
-                        active: sourceNode.data.active,
-                    },
-                    position: { x: sourceNode.position.x, y: sourceNode.position.y },
-                }) as WorkflowNodes
-                switch (sourceNode.type) {
-                    case NodeType.LLM: {
-                        const llmSource = sourceNode as LLMNode
-                        ;(newNode as any).data = {
-                            ...newNode.data,
-                            temperature: llmSource.data.temperature,
-                            maxTokens: llmSource.data.maxTokens,
-                            model: llmSource.data.model,
-                        }
-                        break
-                    }
-                    case NodeType.CLI:
-                    case NodeType.PREVIEW:
-                    case NodeType.INPUT:
-                    case NodeType.CODY_OUTPUT:
-                    case NodeType.LOOP_START: {
-                        const loopStartData = sourceNode as LoopStartNode
-                        ;(newNode as any).data = {
-                            ...newNode.data,
-                            iterations: (loopStartData as any).data.iterations,
-                            loopVariable: (loopStartData as any).data.loopVariable,
-                        }
-                        break
-                    }
-                    case NodeType.LOOP_END:
-                    case NodeType.SEARCH_CONTEXT:
-                        ;(newNode as any).data.content = sourceNode.data.content
-                        break
-                }
+
+                const newNode = cloneNodeData(sourceNode)
                 setNodes(current => [...current, newNode])
-                setMovingNodeId((newNode as any).id)
+                setMovingNodeId(newNode.id)
                 event.stopPropagation()
             }
         },
@@ -155,12 +183,20 @@ export const useNodeOperations = (
                         break
                 }
                 setNodes(nodes => [...nodes, newNode])
+                if (AUTO_SELECT_ON_ADD) {
+                    setSelectedNodes([newNode])
+                    setActiveNode(newNode)
+                }
             } else {
                 const nodeWithId = { ...nodeOrLabel, id: uuidv4(), position: centerPosition }
                 setNodes(nodes => [...nodes, nodeWithId as any])
+                if (AUTO_SELECT_ON_ADD) {
+                    setSelectedNodes([nodeWithId as any])
+                    setActiveNode(nodeWithId as any)
+                }
             }
         },
-        [flowInstance, setNodes]
+        [flowInstance, setNodes, setSelectedNodes, setActiveNode]
     )
 
     const onNodeUpdate = useCallback(

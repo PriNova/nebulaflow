@@ -28,6 +28,7 @@ interface PropertyEditorProps {
     onUpdate: (nodeId: string, data: Partial<WorkflowNodes['data']>) => void
     models: { id: string; title?: string }[]
     onSaveCustomNode: (node: WorkflowNodes) => void
+    nodeError?: string
 }
 
 export const PropertyEditor: React.FC<PropertyEditorProps> = ({
@@ -35,6 +36,7 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
     onUpdate,
     models,
     onSaveCustomNode,
+    nodeError,
 }) => {
     const [open, setOpen] = useState(false)
     const [selectedModel, setSelectedModel] = useState<{ id: string; title?: string } | undefined>(
@@ -95,7 +97,12 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
             </div>
             {node.type === NodeType.CLI && (
                 <div className="tw-flex tw-flex-col tw-gap-2">
-                    <Button variant="secondary" size="sm" className="tw-w-full">
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleSaveCustomNode}
+                        className="tw-w-full"
+                    >
                         <Save className="tw-mr-2" size={14} />
                         Save as Custom Node
                     </Button>
@@ -108,7 +115,9 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                             onUpdate(node.id, { content: e.target.value })
                         }
                         placeholder="Enter CLI command... (use ${1}, ${2} and so on for positional inputs)"
+                        aria-invalid={!!nodeError}
                     />
+                    {nodeError && <p className="tw-text-xs tw-text-red-500">{nodeError}</p>}
                     <div className="tw-flex tw-items-center tw-space-x-2">
                         <Checkbox
                             id="node-approval"
@@ -131,7 +140,12 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
             )}
             {node.type === NodeType.LLM && (
                 <div className="tw-flex tw-flex-col tw-gap-2">
-                    <Button variant="secondary" size="sm" className="tw-w-full">
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleSaveCustomNode}
+                        className="tw-w-full"
+                    >
                         <Save className="tw-mr-2" size={14} />
                         Save as Custom Node
                     </Button>
@@ -145,7 +159,9 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                                 onUpdate(node.id, { content: e.target.value })
                             }
                             placeholder="Enter LLM prompt... (use ${1}, ${2} and so on for positional inputs)"
+                            aria-invalid={!!nodeError}
                         />
+                        {nodeError && <p className="tw-text-xs tw-text-red-500">{nodeError}</p>}
                     </div>
                     {models && (
                         <div>
@@ -236,7 +252,12 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
             )}
             {node.type === NodeType.INPUT && (
                 <div>
-                    <Button variant="secondary" size="sm" className="tw-w-full">
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleSaveCustomNode}
+                        className="tw-w-full"
+                    >
                         <Save className="tw-mr-2" size={14} />
                         Save as Custom Node
                     </Button>
@@ -254,7 +275,12 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
             )}
             {node.type === NodeType.SEARCH_CONTEXT && (
                 <div className="tw-flex tw-flex-col tw-gap-2">
-                    <Button variant="secondary" size="sm" className="tw-w-full">
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleSaveCustomNode}
+                        className="tw-w-full"
+                    >
                         <Save className="tw-mr-2" size={14} />
                         Save as Custom Node
                     </Button>

@@ -16,6 +16,6 @@
         "jsx": "react-jsx",
         "noUnusedLocals": true
     },
-    "include": ["src", "workflow/Application", "workflow/Core", "workflow/DataAccess"],
-    "exclude": ["node_modules", "webview", "workflow/Web"]
+    "include": ["src", "workflow/**/*.ts", "workflow/**/*.tsx"],
+    "exclude": ["node_modules", "workflow/Web"]
 }

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
-import type { GenericVSCodeWrapper } from '../../../webview/utils/vscode'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
+import type { GenericVSCodeWrapper } from '../../utils/vscode'
 import type { Edge } from '../CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
 
@@ -30,9 +30,12 @@ export const useWorkflowExecution = (
     }, [setEdges, setNodes])
 
     const onExecute = useCallback(() => {
-        const invalidNodes = nodes.filter(
-            node => node.type === NodeType.LLM && (!node.data.content || node.data.content.trim() === '')
-        )
+        const invalidNodes = nodes.filter(node => {
+            const isLLM = node.type === NodeType.LLM
+            const isCLI = node.type === NodeType.CLI
+            const empty = !node.data.content || node.data.content.trim() === ''
+            return (isLLM || isCLI) && empty
+        })
         if (invalidNodes.length > 0) {
             const newErrors = new Map<string, string>()
             for (const node of invalidNodes) {

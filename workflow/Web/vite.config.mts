@@ -8,23 +8,29 @@ export default defineConfig(({ mode }) => ({
     plugins: [react()],
     build: {
         assetsDir: '.',
-        watch: {
-            // Avoid rebuild loops from output changes
-            exclude: [resolve(__dirname, '../../dist/**')],
-        },
+        watch:
+            mode === 'development'
+                ? {
+                      // Avoid rebuild loops from output changes
+                      exclude: [resolve(__dirname, '../../dist/**')],
+                  }
+                : null,
         outDir: resolve(__dirname, '../../dist/webviews'),
         emptyOutDir: false,
         sourcemap: mode === 'development',
         minify: mode !== 'development',
         rollupOptions: {
-            watch: {
-                include: ['**'],
-                exclude: [
-                    resolve(__dirname, '../../node_modules'),
-                    resolve(__dirname, '../../src'),
-                    resolve(__dirname, '../../dist'),
-                ],
-            },
+            watch:
+                mode === 'development'
+                    ? {
+                          include: ['**'],
+                          exclude: [
+                              resolve(__dirname, '../../node_modules'),
+                              resolve(__dirname, '../../src'),
+                              resolve(__dirname, '../../dist'),
+                          ],
+                      }
+                    : undefined,
             output: { entryFileNames: '[name].js' },
             input: {
                 workflow: resolve(__dirname, 'workflow.html'),
