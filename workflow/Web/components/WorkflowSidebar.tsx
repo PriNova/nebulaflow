@@ -298,27 +298,6 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                         </div>
                     </AccordionContent>
                 </AccordionItem>
-                <AccordionItem value="context">
-                    <AccordionTrigger className="tw-text-sm">Context Nodes</AccordionTrigger>
-                    <AccordionContent>
-                        <div className="tw-flex tw-flex-col tw-gap-2">
-                            <Button
-                                onClick={() => onNodeAdd('Search Context', NodeType.SEARCH_CONTEXT)}
-                                className="tw-flex-1"
-                                style={{ ...buttonStyle }}
-                                onMouseEnter={e => {
-                                    e.currentTarget.style.backgroundColor =
-                                        'var(--vscode-button-secondaryHoverBackground)'
-                                }}
-                                onMouseLeave={e => {
-                                    e.currentTarget.style.backgroundColor = 'transparent'
-                                }}
-                            >
-                                Search Context
-                            </Button>
-                        </div>
-                    </AccordionContent>
-                </AccordionItem>
             </Accordion>
 
             <Accordion

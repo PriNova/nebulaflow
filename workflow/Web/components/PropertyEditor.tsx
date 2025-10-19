@@ -20,7 +20,6 @@ import type { AccumulatorNode } from './nodes/Accumulator_Node'
 import type { LLMNode } from './nodes/LLM_Node'
 import type { LoopStartNode } from './nodes/LoopStart_Node'
 import { NodeType, type WorkflowNodes } from './nodes/Nodes'
-import type { SearchContextNode } from './nodes/SearchContext_Node'
 import type { VariableNode } from './nodes/Variable_Node'
 
 interface PropertyEditorProps {
@@ -301,39 +300,6 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                         }
                         placeholder="Enter input text... (use ${1}, ${2} and so on for positional inputs)"
                     />
-                </div>
-            )}
-            {node.type === NodeType.SEARCH_CONTEXT && (
-                <div className="tw-flex tw-flex-col tw-gap-2">
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleSaveCustomNode}
-                        className="tw-w-full"
-                    >
-                        <Save className="tw-mr-2" size={14} />
-                        Save as Custom Node
-                    </Button>
-                    <Label htmlFor="node-input">Context</Label>
-                    <Textarea
-                        id="node-input"
-                        className="tw-min-h-[48px] tw-text-sm tw-py-1"
-                        value={node.data.content || ''}
-                        onChange={(e: { target: { value: any } }) =>
-                            onUpdate(node.id, { content: e.target.value })
-                        }
-                        placeholder="Enter input text... (use ${1}, ${2} and so on for positional inputs)"
-                    />
-                    <div className="tw-flex tw-items-center tw-space-x-2">
-                        <Checkbox
-                            id="context-scope"
-                            checked={(node as SearchContextNode).data.local_remote || false}
-                            onCheckedChange={checked =>
-                                onUpdate(node.id, { local_remote: checked === true })
-                            }
-                        />
-                        <Label htmlFor="context-scope">Use Remote Context</Label>
-                    </div>
                 </div>
             )}
             {node.type === NodeType.PREVIEW && (

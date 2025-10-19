@@ -64,7 +64,6 @@ function cloneNodeData(sourceNode: WorkflowNodes): WorkflowNodes {
         case NodeType.INPUT:
         case NodeType.CODY_OUTPUT:
         case NodeType.LOOP_END:
-        case NodeType.SEARCH_CONTEXT:
         case NodeType.ACCUMULATOR:
         case NodeType.VARIABLE:
         case NodeType.IF_ELSE:
@@ -177,9 +176,6 @@ export const useNodeOperations = (
                         break
                     case NodeType.LOOP_START:
                         ;(newNode as any).data = { ...newNode.data, iterations: 1, loopVariable: 'loop' }
-                        break
-                    case NodeType.SEARCH_CONTEXT:
-                        ;(newNode as any).data = { ...newNode.data, local_remote: false }
                         break
                 }
                 setNodes(nodes => [...nodes, newNode])

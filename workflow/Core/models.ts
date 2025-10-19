@@ -13,7 +13,6 @@ export enum NodeType {
     LLM = 'llm',
     PREVIEW = 'preview',
     INPUT = 'text-format',
-    SEARCH_CONTEXT = 'search-context',
     CODY_OUTPUT = 'cody-output',
     LOOP_START = 'loop-start',
     LOOP_END = 'loop-end',

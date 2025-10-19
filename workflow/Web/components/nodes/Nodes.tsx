@@ -9,7 +9,6 @@ import { LLMNode } from './LLM_Node'
 import { LoopEndNode } from './LoopEnd_Node'
 import { LoopStartNode } from './LoopStart_Node'
 import { PreviewNode } from './Preview_Node'
-import { SearchContextNode } from './SearchContext_Node'
 import { TextNode } from './Text_Node'
 import { VariableNode } from './Variable_Node'
 
@@ -18,7 +17,6 @@ export enum NodeType {
     LLM = 'llm',
     PREVIEW = 'preview',
     INPUT = 'text-format',
-    SEARCH_CONTEXT = 'search-context',
     CODY_OUTPUT = 'cody-output',
     LOOP_START = 'loop-start',
     LOOP_END = 'loop-end',
@@ -74,7 +72,6 @@ export type WorkflowNodes =
     | LLMNode
     | PreviewNode
     | TextNode
-    | SearchContextNode
     | CodyOutputNode
     | LoopStartNode
     | LoopEndNode
@@ -93,8 +90,6 @@ export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
             return { ...node, id } as PreviewNode
         case NodeType.INPUT:
             return { ...node, id } as TextNode
-        case NodeType.SEARCH_CONTEXT:
-            return { ...node, id, data: { ...node.data, local_remote: false } } as SearchContextNode
         case NodeType.IF_ELSE:
             return {
                 ...node,
@@ -209,7 +204,6 @@ export const nodeTypes = {
     [NodeType.LLM]: LLMNode,
     [NodeType.PREVIEW]: PreviewNode,
     [NodeType.INPUT]: TextNode,
-    [NodeType.SEARCH_CONTEXT]: SearchContextNode,
     [NodeType.CODY_OUTPUT]: CodyOutputNode,
     [NodeType.LOOP_START]: LoopStartNode,
     [NodeType.LOOP_END]: LoopEndNode,
