@@ -1,87 +1,65 @@
-## High-level summary  
-This patch removes all support for the “Search Context” node type from the workflow system (backend execution, shared model, React UI, node factory, helpers, and the dedicated node component). All code paths that referenced `NodeType.SEARCH_CONTEXT` have been deleted, and the UI elements that allowed a user to create or edit such nodes are gone.
+## High-level summary
+The diff eliminates the entire “Cody Output” node type from both the backend workflow engine and the React front-end.  
+Key removals:
+• `NodeType.CODY_OUTPUT` enum value.  
+• Execution-time handler case.  
+• React component (`CodyOutput_Node.tsx`), its registrations, and cloning logic.  
+• The related CSS class.  
 
----
+No new logic was added; code was purely deleted or refactored to exclude the node.
 
-## Tour of changes (recommended review order)
-
-1. `workflow/Web/components/nodes/SearchContext_Node.tsx` – the entire component is deleted; this shows the intent of the change most clearly.  
-2. `workflow/Core/models.ts` and `workflow/Web/components/nodes/Nodes.tsx` – `NodeType.SEARCH_CONTEXT` is removed from both enum definitions; this ripples through the rest of the code-base.  
-3. UI removals (`WorkflowSidebar.tsx`, `PropertyEditor.tsx`) – verify no user can add/edit a “Search Context” node any more.  
-4. Helper logic (`hooks/nodeOperations.ts`) – cloning/initialisation adjustments.  
-5. Execution path (`Application/handlers/ExecuteWorkflow.ts`) – runtime support removed.  
-6. Quick project-wide grep for lingering references (outside this diff) – ensure compilation will still succeed.
-
----
+## Tour of changes
+Start the review in `workflow/Core/models.ts`.  
+Once the enum entry is removed, every other change (execution switch, React node registration, cloning, styling) is a mechanical consequence. Verifying the correctness of the enum change first clarifies the cascade.
 
 ## File level review
 
-### `workflow/Application/handlers/ExecuteWorkflow.ts`
-Change  
-• Removed the `SEARCH_CONTEXT` case from the big `switch` (~4 LOC).  
-
-Review  
-✔ Correct, since the node type no longer exists.  
-⚠️ If old workflows can still contain a “search-context” node (e.g. saved JSON, DB records), execution will now fall through to the `default` case and throw `Unknown node type` (or a later error). Consider adding upfront validation / migration to prevent runtime failures.
-
 ### `workflow/Core/models.ts`
 Change  
-• Deleted `SEARCH_CONTEXT` from the authoritative `NodeType` enum.  
+```
+-    CODY_OUTPUT = 'cody-output',
+```  
+1. Correctly removes the enum member.  
+2. Impact assessment: Any persisted workflow JSON that still contains `"type": "cody-output"` will now fail to type-guard or render. A migration strategy or compatibility check should accompany this change; otherwise users will encounter runtime errors or un-typed objects.
 
-Review  
-✔ Keeps shared model in sync with UI removal.  
-⚠️ Be sure that every consumer uses *string* enums (as you do). If we ever switched to numeric enums elsewhere, index shifting would be dangerous—looks fine here.
-
-### `workflow/Web/components/PropertyEditor.tsx`
-Change  
-• Entire JSX block for editing Search-Context nodes removed.  
-
-Review  
-✔ No issues.  
-⚠️ Remember to delete the dangling `import type { SearchContextNode }` to avoid `tsc --noUnusedLocals` warnings (already done).  
-⚠️ Small perf nit: after removal, the surrounding `if` cascade has an empty branch gap—nothing functional, just readability.
-
-### `workflow/Web/components/WorkflowSidebar.tsx`
-Change  
-• Removed accordion section and button that created Search-Context nodes.  
-
-Review  
-✔ Button hovered colour handling code deleted with it – good.  
-⚠️ Confirm accordion `value`s remain unique (`context` removed).
+### `workflow/Application/handlers/ExecuteWorkflow.ts`
+Removed execution branch:
+```
+- case NodeType.CODY_OUTPUT: {
+-     result = ''
+-     break
+- }
+```
+Observations / risks
+• If workflows referencing the node are still present, the switch will now fall through to the default, very likely throwing `Unknown node type` (if such a default exists) or causing an undefined state.  
+• Because the previous implementation returned a benign empty string, consumers will now see a hard failure instead of soft behaviour. This is acceptable only if backward compatibility is no longer required.
 
 ### `workflow/Web/components/hooks/nodeOperations.ts`
-Change  
-• Removed two `SEARCH_CONTEXT` branches:  
-  1. `cloneNodeData`’s switch.  
-  2. `addNode()` initialiser path.  
+Removed cloning logic for the deleted type.  
+Looks correct — the function now simply omits the deleted node.  
 
-Review  
-✔ Logic is consistent with feature removal.  
-🔍 Confirm no other path relies on `local_remote` defaulting.
+Edge case: when duplicating a workflow that still contains obsolete nodes, the `cloneNodeData` helper will hit the `default` branch and throw. Again, a migration plan is required.
+
+### `workflow/Web/components/nodes/CodyOutput_Node.tsx`
+File deleted.  
+Component was stateless and benign; safe to drop as long as it is never referenced.
 
 ### `workflow/Web/components/nodes/Nodes.tsx`
-Change  
-• Removed `SEARCH_CONTEXT` from enum, union type, `createNode`, and `nodeTypes` map.  
+1. Removed import and mapping for `CodyOutputNode`.  
+2. Removed enum entry, union member, and `nodeTypes` registration.
 
-Review  
-✔ All compile-time references removed.  
-⚠️ Be sure to bump any documentation or sample JSON that still mention `"search-context"`; otherwise the UI will refuse to render imported workflows.
+Type-safety:  
+• TypeScript will guarantee no residual references exists in this file, but you should run a project-wide search to ensure no dangling imports elsewhere.
 
-### `workflow/Web/components/nodes/SearchContext_Node.tsx` (deleted)
-Change  
-• Full deletion (56 LOC).  
+### `workflow/Web/index.css`
+Deleted `.cody-chat-error` styles.  
+• If other components rely on that class (not necessarily the Cody Output node), they will lose styling. Perform a search to confirm it is unused.
 
-Review  
-✔ File elimination matches feature removal.  
-🔍 Double-check imports in any Storybook / test files.
+## Additional considerations / recommendations
+1. **Migration path** – Provide a script or startup check to transform any persisted workflows containing `cody-output` to a supported alternative, or fail gracefully with an actionable message.
+2. **Error messaging** – If old nodes slip through, the runtime should throw a descriptive error such as “Cody Output node type is deprecated; please update your workflow.”
+3. **Tests** – Remove or adapt unit / integration tests that referenced this node.
+4. **Documentation** – Update docs and user-facing release notes to mark the node as deprecated/removed.
+5. **CSS cleanup** – Verify no unrelated component still depends on `.cody-chat-error`.
 
----
-
-### Other considerations
-
-1. Data migration: If users might already have workflows containing `"search-context"` nodes, you must provide a migration script or gracefully warn on load and strip/replace them.
-2. Build sanity: run `yarn tsc -b` or equivalent to catch any stray `NodeType.SEARCH_CONTEXT` references.  
-3. Docs: Update README, API docs, and any screenshots/tutorials.
-4. Tests: Remove / rewrite unit & e2e tests that depended on this node.
-
-No security or performance regressions observed—this is a pure feature removal.
+Overall, the change is straightforward and appears correct, provided compatibility issues are addressed.

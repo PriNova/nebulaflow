@@ -97,10 +97,6 @@ export async function executeWorkflow(
                     result = await executeInputNode(node, context)
                     break
                 }
-                case NodeType.CODY_OUTPUT: {
-                    result = ''
-                    break
-                }
                 case NodeType.LOOP_START: {
                     result = await executeLoopStartNode(node, context)
                     break

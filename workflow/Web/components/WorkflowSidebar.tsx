@@ -298,6 +298,89 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                         </div>
                     </AccordionContent>
                 </AccordionItem>
+                {Object.entries(customNodesByType).length > 0 && (
+                    <AccordionItem value="custom_nodes">
+                        <AccordionTrigger className="tw-text-sm">Custom Nodes</AccordionTrigger>
+                        <AccordionContent>
+                            {Object.entries(customNodesByType).map(([type, nodes]) => (
+                                <div key={type} className="tw-mb-2">
+                                    <h4 className="tw-text-sm tw-font-medium tw-mb-1">{type}</h4>
+                                    <ul className="tw-space-y-1">
+                                        {nodes?.map(node => (
+                                            <li
+                                                key={node.id}
+                                                className="tw-flex tw-items-center tw-justify-between"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    className="tw-flex-1 tw-text-left tw-px-2 tw-py-1 hover:tw-bg-[var(--vscode-button-secondaryHoverBackground)]"
+                                                    style={buttonStyle}
+                                                    onClick={() => onNodeAdd(node)}
+                                                >
+                                                    <span className="tw-truncate">
+                                                        {node.data.title}
+                                                    </span>
+                                                </button>
+                                                <div className="tw-ml-2 tw-flex tw-flex-row tw-gap-1">
+                                                    {renamingNode === node.data.title ? (
+                                                        <div className="tw-flex tw-flex-row tw-gap-1">
+                                                            <Input
+                                                                value={newNodeTitle}
+                                                                onChange={e =>
+                                                                    setNewNodeTitle(e.target.value)
+                                                                }
+                                                                className="tw-h-6 tw-text-sm"
+                                                            />
+                                                            <Button
+                                                                variant="secondary"
+                                                                className="tw-h-6 tw-px-2 tw-text-sm"
+                                                                onClick={() =>
+                                                                    handleRenameConfirm(node.data.title)
+                                                                }
+                                                            >
+                                                                Save
+                                                            </Button>
+                                                            <Button
+                                                                variant="secondary"
+                                                                className="tw-h-6 tw-px-2 tw-text-sm"
+                                                                onClick={handleRenameCancel}
+                                                            >
+                                                                Cancel
+                                                            </Button>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <Button
+                                                                variant="secondary"
+                                                                className="tw-h-6 tw-px-2"
+                                                                title="Rename"
+                                                                onClick={() =>
+                                                                    handleRenameClick(node.data.title)
+                                                                }
+                                                            >
+                                                                <Edit size={14} />
+                                                            </Button>
+                                                            <Button
+                                                                variant="secondary"
+                                                                className="tw-h-6 tw-px-2"
+                                                                title="Delete"
+                                                                onClick={() =>
+                                                                    onDeleteCustomNode(node.data.title)
+                                                                }
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ))}
+                        </AccordionContent>
+                    </AccordionItem>
+                )}
             </Accordion>
 
             <Accordion
@@ -329,84 +412,6 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                     </AccordionContent>
                 </AccordionItem>
             </Accordion>
-
-            {Object.entries(customNodesByType).length > 0 && (
-                <div className="tw-mt-4">
-                    <h3 className="tw-text-lg tw-font-semibold tw-mb-2">Custom Nodes</h3>
-                    {Object.entries(customNodesByType).map(([type, nodes]) => (
-                        <div key={type} className="tw-mb-4">
-                            <h4 className="tw-text-md tw-font-medium tw-mb-2">{type}</h4>
-                            <ul className="tw-space-y-1">
-                                {nodes?.map(node => (
-                                    <li
-                                        key={node.data.title}
-                                        className="tw-flex tw-items-center tw-justify-between"
-                                    >
-                                        <button
-                                            type="button"
-                                            className="tw-flex-1 tw-text-left tw-px-2 tw-py-1 hover:tw-bg-[var(--vscode-button-secondaryHoverBackground)]"
-                                            style={buttonStyle}
-                                            onClick={() => onNodeAdd(node)}
-                                        >
-                                            <span className="tw-truncate">{node.data.title}</span>
-                                        </button>
-                                        <div className="tw-ml-2 tw-flex tw-flex-row tw-gap-1">
-                                            {renamingNode === node.data.title ? (
-                                                <div className="tw-flex tw-flex-row tw-gap-1">
-                                                    <Input
-                                                        value={newNodeTitle}
-                                                        onChange={e => setNewNodeTitle(e.target.value)}
-                                                        className="tw-h-6 tw-text-sm"
-                                                    />
-                                                    <Button
-                                                        variant="secondary"
-                                                        className="tw-h-6 tw-px-2 tw-text-sm"
-                                                        onClick={() =>
-                                                            handleRenameConfirm(node.data.title)
-                                                        }
-                                                    >
-                                                        Save
-                                                    </Button>
-                                                    <Button
-                                                        variant="secondary"
-                                                        className="tw-h-6 tw-px-2 tw-text-sm"
-                                                        onClick={handleRenameCancel}
-                                                    >
-                                                        Cancel
-                                                    </Button>
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    <Button
-                                                        variant="secondary"
-                                                        className="tw-h-6 tw-px-2"
-                                                        title="Rename"
-                                                        onClick={() =>
-                                                            handleRenameClick(node.data.title)
-                                                        }
-                                                    >
-                                                        <Edit size={14} />
-                                                    </Button>
-                                                    <Button
-                                                        variant="secondary"
-                                                        className="tw-h-6 tw-px-2"
-                                                        title="Delete"
-                                                        onClick={() =>
-                                                            onDeleteCustomNode(node.data.title)
-                                                        }
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </Button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    ))}
-                </div>
-            )}
 
             <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
         </div>

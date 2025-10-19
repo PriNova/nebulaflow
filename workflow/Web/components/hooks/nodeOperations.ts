@@ -62,7 +62,6 @@ function cloneNodeData(sourceNode: WorkflowNodes): WorkflowNodes {
         case NodeType.CLI:
         case NodeType.PREVIEW:
         case NodeType.INPUT:
-        case NodeType.CODY_OUTPUT:
         case NodeType.LOOP_END:
         case NodeType.ACCUMULATOR:
         case NodeType.VARIABLE:

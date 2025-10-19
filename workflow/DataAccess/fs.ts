@@ -182,7 +182,11 @@ export async function getCustomNodes(): Promise<WorkflowNodes[]> {
                         )
                         continue
                     }
-                    nodes.push(node)
+                    const normalizedNode: WorkflowNodes = {
+                        ...node,
+                        id: 'custom:' + sanitizeFilename(node.data.title),
+                    }
+                    nodes.push(normalizedNode)
                 } catch (error: any) {
                     console.error(`Failed to load custom node "${filename}": ${error?.message}`)
                     vscode.window.showErrorMessage(

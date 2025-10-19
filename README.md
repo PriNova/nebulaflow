@@ -7,14 +7,14 @@ A VS Code extension for visually designing and running developer workflows. Buil
 - Workflow runtime and messaging live under `workflow/Application` and `workflow/Core`
 - Persistence and shell execution adapters live under `workflow/DataAccess`
 
-## Project Focus: LLM Node (AI Node for Model Reference)
+## Project Focus: LLM Node
 
-This project primarily focuses on the LLM node. In the current state, the LLM node serves as an AI node for model reference and UI configuration rather than executing model inference. Execution for LLM nodes is intentionally stubbed (see "LLM unavailable" handling in [ExecuteWorkflow.ts](workflow/Application/handlers/ExecuteWorkflow.ts#L88-L95)); the shared `Model` type used for reference is defined in [Protocol.ts](workflow/Core/Contracts/Protocol.ts#L4-L6).
+The LLM node now runs via the Amp SDK. The workflow editor is a visual wrapper around the SDK: it builds prompts from upstream node outputs and executes them with the SDK. Link the SDK first (`npm i /home/prinova/CodeProjects/upstreamAmp/sdk`) and set `AMP_API_KEY` to use the LLM node.
 
 ## Features
 
 - Visual workflow editor with @xyflow/react
-- Node types: CLI, LLM, Preview, Text Input, Search Context, Cody Output, Loop Start/End, Accumulator, Variable, If/Else
+- Node types: CLI, LLM, Preview, Text Input, Loop Start/End, Accumulator, Variable, If/Else
 - Graph execution with ordered edges, token counting for previews, and abortion support
 - Runtime approvals for CLI nodes (approve/modify commands before run)
 - Workspace persistence:

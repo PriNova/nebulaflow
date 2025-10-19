@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from 'uuid'
 import type { Edge } from '../CustomOrderedEdge'
 import { AccumulatorNode } from './Accumulator_Node'
 import { CLINode } from './CLI_Node'
-import { CodyOutputNode } from './CodyOutput_Node'
 import { IfElseNode } from './IfElse_Node'
 import { LLMNode } from './LLM_Node'
 import { LoopEndNode } from './LoopEnd_Node'
@@ -17,7 +16,6 @@ export enum NodeType {
     LLM = 'llm',
     PREVIEW = 'preview',
     INPUT = 'text-format',
-    CODY_OUTPUT = 'cody-output',
     LOOP_START = 'loop-start',
     LOOP_END = 'loop-end',
     ACCUMULATOR = 'accumulator',
@@ -72,7 +70,6 @@ export type WorkflowNodes =
     | LLMNode
     | PreviewNode
     | TextNode
-    | CodyOutputNode
     | LoopStartNode
     | LoopEndNode
     | AccumulatorNode
@@ -204,7 +201,6 @@ export const nodeTypes = {
     [NodeType.LLM]: LLMNode,
     [NodeType.PREVIEW]: PreviewNode,
     [NodeType.INPUT]: TextNode,
-    [NodeType.CODY_OUTPUT]: CodyOutputNode,
     [NodeType.LOOP_START]: LoopStartNode,
     [NodeType.LOOP_END]: LoopEndNode,
     [NodeType.ACCUMULATOR]: AccumulatorNode,
