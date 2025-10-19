@@ -64,11 +64,28 @@ export function activate(context: vscode.ExtensionContext): void {
                 }
                 switch (message.type) {
                     case 'get_models': {
-                        await safePost(
-                            panel.webview,
-                            { type: 'models_loaded', data: [] } as ExtensionToWorkflow,
-                            { strict: isDev }
-                        )
+                        try {
+                            // Dynamically require to avoid hard failure when SDK is not linked
+                            const sdk = require('@sourcegraph/amp-sdk') as any
+                            const listModels:
+                                | (() => Array<{ key: string; displayName: string }>)
+                                | undefined = sdk?.listModels
+                            const models =
+                                typeof listModels === 'function'
+                                    ? listModels().map(m => ({ id: m.key, title: m.displayName }))
+                                    : []
+                            await safePost(
+                                panel.webview,
+                                { type: 'models_loaded', data: models } as ExtensionToWorkflow,
+                                { strict: isDev }
+                            )
+                        } catch {
+                            await safePost(
+                                panel.webview,
+                                { type: 'models_loaded', data: [] } as ExtensionToWorkflow,
+                                { strict: isDev }
+                            )
+                        }
                         break
                     }
                     case 'save_workflow': {

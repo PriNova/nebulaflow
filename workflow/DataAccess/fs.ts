@@ -33,6 +33,46 @@ function isSupportedVersion(version: unknown): boolean {
     return match !== null
 }
 
+// Normalize LLM node model IDs to SDK keys for save/load robustness
+function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): WorkflowPayloadDTO {
+    try {
+        // Dynamically require the SDK so the extension still works if it's not linked
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const sdk = require('@sourcegraph/amp-sdk') as any
+        const resolveModel:
+            | ((args: { key: string } | { displayName: string; provider?: unknown }) => { key: string })
+            | undefined = sdk?.resolveModel
+        if (typeof resolveModel !== 'function') {
+            return data
+        }
+        const nodes = (data.nodes ?? []).map(node => {
+            if (!node || typeof node !== 'object' || (node as any).type !== 'llm') return node
+            const n: any = node
+            const model = n.data?.model
+            const id = model?.id
+            if (!id || typeof id !== 'string') return node
+            try {
+                // First try resolving as a key
+                const r1 = resolveModel({ key: id })
+                if (r1?.key && r1.key !== id) {
+                    return { ...node, data: { ...n.data, model: { ...model, id: r1.key } } }
+                }
+                // If key resolution didn't change anything, also allow displayName resolution
+                try {
+                    const r2 = resolveModel({ displayName: id })
+                    if (r2?.key && r2.key !== id) {
+                        return { ...node, data: { ...n.data, model: { ...model, id: r2.key } } }
+                    }
+                } catch {}
+            } catch {}
+            return node
+        })
+        return { ...data, nodes }
+    } catch {
+        return data
+    }
+}
+
 export async function saveWorkflow(
     data: WorkflowPayloadDTO
 ): Promise<{ uri: vscode.Uri } | { error: string } | null> {
@@ -59,7 +99,11 @@ export async function saveWorkflow(
                 void vscode.window.showErrorMessage('Failed to create workflow directory')
                 return { error: 'mkdir failed' }
             }
-            const content = Buffer.from(JSON.stringify({ ...data, version: '1.0.0' }, null, 2), 'utf-8')
+            const normalized = normalizeModelsInWorkflow(data)
+            const content = Buffer.from(
+                JSON.stringify({ ...normalized, version: '1.0.0' }, null, 2),
+                'utf-8'
+            )
             await vscode.workspace.fs.writeFile(result, content)
             void vscode.window.showInformationMessage('Workflow saved successfully!')
             return { uri: result }
@@ -103,7 +147,7 @@ export async function loadWorkflow(): Promise<WorkflowPayloadDTO | null> {
             }
 
             void vscode.window.showInformationMessage('Workflow loaded successfully!')
-            return data
+            return normalizeModelsInWorkflow(data)
         } catch (error) {
             void vscode.window.showErrorMessage(`Failed to load workflow: ${error}`)
             return null

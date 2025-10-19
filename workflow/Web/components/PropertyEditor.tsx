@@ -1,6 +1,6 @@
 import { Save } from 'lucide-react'
 import type React from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '../ui/shadcn/ui/button'
 import { Checkbox } from '../ui/shadcn/ui/checkbox'
 import {
@@ -50,6 +50,33 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
             setSelectedModel(undefined)
         }
     }, [node])
+
+    const groupedModels = useMemo(() => {
+        const groups = new Map<string, { id: string; title?: string }[]>()
+        for (const m of models) {
+            const provider = m.id.split('/', 1)[0]
+            if (!groups.has(provider)) groups.set(provider, [])
+            groups.get(provider)!.push(m)
+        }
+        const providers = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b))
+        return providers.map(provider => ({
+            provider,
+            items: groups
+                .get(provider)!
+                .slice()
+                .sort((a, b) => (a.title ?? a.id).localeCompare(b.title ?? b.id)),
+        }))
+    }, [models])
+
+    const nodeModelId = node.type === NodeType.LLM ? (node as LLMNode).data.model?.id : undefined
+    const nodeModelTitle = node.type === NodeType.LLM ? (node as LLMNode).data.model?.title : undefined
+
+    const selectedLabel = useMemo(() => {
+        const id = selectedModel?.id ?? nodeModelId
+        if (!id) return 'Select a model'
+        const found = models.find(m => m.id === id)
+        return found?.title ?? selectedModel?.title ?? nodeModelTitle ?? id
+    }, [selectedModel?.id, selectedModel?.title, nodeModelId, nodeModelTitle, models])
 
     const onModelSelect = useCallback(
         (model: { id: string; title?: string }) => {
@@ -176,9 +203,7 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                                         aria-expanded={open}
                                         className="tw-w-full justify-between"
                                     >
-                                        {selectedModel?.id ||
-                                            (node as LLMNode).data.model?.id ||
-                                            'Select a model'}
+                                        {selectedLabel}
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="tw-p-0" side="bottom" align="start">
@@ -189,19 +214,24 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                                         />
                                         <CommandList className="tw-max-h-[200px] tw-overflow-y-auto">
                                             <CommandEmpty>No models found.</CommandEmpty>
-                                            <CommandGroup className="[&_[cmdk-group-heading]]:tw-font-semibold [&_[cmdk-group-heading]]:tw-text-[var(--vscode-editor-foreground)] [&_[cmdk-group-heading]]:tw-bg-[var(--vscode-editor-selectionBackground)] [&_[cmdk-group-heading]]:tw-px-2 [&_[cmdk-group-heading]]:tw-py-1">
-                                                <div className="tw-font-semibold tw-text-[var(--vscode-editor-foreground)] tw-bg-[var(--vscode-editor-selectionBackground)] tw-px-2 tw-py-1">
-                                                    Available Models
-                                                </div>
-                                                {models.map(model => (
-                                                    <CommandItem
-                                                        key={model.id}
-                                                        onSelect={() => onModelSelect(model)}
-                                                    >
-                                                        {model.id}
-                                                    </CommandItem>
-                                                ))}
-                                            </CommandGroup>
+                                            {groupedModels.map(group => (
+                                                <CommandGroup
+                                                    key={group.provider}
+                                                    className="[&_[cmdk-group-heading]]:tw-font-semibold [&_[cmdk-group-heading]]:tw-text-[var(--vscode-editor-foreground)] [&_[cmdk-group-heading]]:tw-bg-[var(--vscode-editor-selectionBackground)] [&_[cmdk-group-heading]]:tw-px-2 [&_[cmdk-group-heading]]:tw-py-1"
+                                                >
+                                                    <div className="tw-font-semibold tw-text-[var(--vscode-editor-foreground)] tw-bg-[var(--vscode-editor-selectionBackground)] tw-px-2 tw-py-1">
+                                                        {group.provider}
+                                                    </div>
+                                                    {group.items.map(model => (
+                                                        <CommandItem
+                                                            key={model.id}
+                                                            onSelect={() => onModelSelect(model)}
+                                                        >
+                                                            {model.title ?? model.id}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            ))}
                                         </CommandList>
                                     </Command>
                                 </PopoverContent>

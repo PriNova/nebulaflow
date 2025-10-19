@@ -86,12 +86,8 @@ export async function executeWorkflow(
                     break
                 }
                 case NodeType.LLM: {
-                    await safePost(webview, {
-                        type: 'node_execution_status',
-                        data: { nodeId: node.id, status: 'error', result: 'LLM unavailable' },
-                    } as ExtensionToWorkflow)
-                    await safePost(webview, { type: 'execution_completed' } as ExtensionToWorkflow)
-                    return
+                    result = await executeLLMNode(node, context, abortSignal)
+                    break
                 }
                 case NodeType.PREVIEW: {
                     result = await executePreviewNode(node.id, webview, context)
@@ -270,6 +266,80 @@ export function combineParentOutputsByConnectionOrder(
             return output.replace(/\r\n/g, '\n').trim()
         })
         .filter(output => output !== undefined)
+}
+
+async function executeLLMNode(
+    node: WorkflowNodes,
+    context: IndexedExecutionContext,
+    abortSignal: AbortSignal
+): Promise<string> {
+    const inputs = combineParentOutputsByConnectionOrder(node.id, context)
+    const template = ((node as any).data?.content || '').toString()
+    const prompt = template
+        ? replaceIndexedInputs(template, inputs, context).trim()
+        : (inputs[0] || '').trim()
+    if (!prompt) {
+        throw new Error('LLM Node requires a non-empty prompt')
+    }
+
+    let createAmp: any
+    try {
+        ;({ createAmp } = require('@sourcegraph/amp-sdk'))
+    } catch {
+        throw new Error('Amp SDK not available')
+    }
+
+    const apiKey = process.env.AMP_API_KEY
+    if (!apiKey) {
+        throw new Error('AMP_API_KEY is not set')
+    }
+
+    const workspaceRoots = (vscode.workspace.workspaceFolders || []).map(f => f.uri.fsPath)
+
+    // Determine model key from node selection, validating with SDK when available
+    const defaultModelKey = 'anthropic/claude-sonnet-4-5-20250929'
+    const modelId = (node as any)?.data?.model?.id as string | undefined
+    let selectedKey: string | undefined
+    if (modelId) {
+        try {
+            const sdk = require('@sourcegraph/amp-sdk') as any
+            const resolveModel:
+                | ((args: { key: string } | { displayName: string; provider?: any }) => { key: string })
+                | undefined = sdk?.resolveModel
+            if (typeof resolveModel === 'function') {
+                const { key } = resolveModel({ key: modelId })
+                selectedKey = key
+            }
+        } catch {
+            // Ignore and fall back
+        }
+    }
+
+    const amp = await createAmp({
+        apiKey,
+        workspaceRoots,
+        settings: {
+            'internal.primaryModel': selectedKey ?? defaultModelKey,
+        },
+    })
+    try {
+        const runP = amp.run({ prompt })
+        const abortP = new Promise<never>((_, rej) =>
+            abortSignal.addEventListener('abort', () => rej(new AbortedError()), { once: true })
+        )
+        const timeoutP = new Promise<never>((_, rej) =>
+            setTimeout(() => rej(new Error('LLM request timed out')), 120000)
+        )
+        const { message } = (await Promise.race([runP, abortP, timeoutP])) as any
+        const text = (message.content || [])
+            .filter((b: any) => b.type === 'text')
+            .map((b: any) => b.text)
+            .join('\n')
+            .trim()
+        return text
+    } finally {
+        await amp.dispose()
+    }
 }
 
 export async function executeCLINode(

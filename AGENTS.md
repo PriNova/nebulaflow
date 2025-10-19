@@ -1,21 +1,23 @@
 # AGENTS – Amp Editor Quick Guide
 
 - Build: `npm run build` (webview + extension). Parts: `webview/vite.config.mts`, `tsconfig.json`.
-- Webview only: `npm run build:webview`. Extension only: `npm run build:ext`.
+  - **SDK Link**: Before first build, run `npm i /home/prinova/CodeProjects/upstreamAmp/sdk` to link the Amp SDK (required for LLM node execution).
+- Webview only: `npm run build:webview`. Extension only: `npm run build:ext` (uses esbuild to bundle extension + SDK).
 - Webview watch: `npm run watch:webview`.
 - Typecheck: `npm run typecheck` (TS 5.x; extends `@sourcegraph/tsconfig`).
-- Lint: Biome configured (no ESLint/Prettier). `npm run lint` or `npm run check` (typecheck + Biome). Auto-fix with `npm run biome`.
+- Lint: Biome configured (no ESLint/Prettier). `npm run lint` or `npm run check` (typecheck + Biome preferred over Typecheck). Auto-fix with `npm run biome`.
 - Format: `npm run format` (Biome).
 - Tests: not configured. Single-test N/A. If added (e.g., Vitest), run: `npx vitest run path -t "name"`.
 
 - Extension entry: `src/extension.ts` (registers `ampEditor.openWorkflow`, hosts webview, handles protocol).
-- Protocol (ext side): `src/protocol/WorkflowProtocol.ts` (node/edge types, message contracts).
-- Engine (ext side): `src/engine/{executor,fs,node-sorting,shell,utils}.ts` (graph execution, IO, sorting, shell exec).
-- Webview app: React + @xyflow/react under `webview/` via Vite; entry `workflow/workflow.html` + `workflow/index.tsx`.
-- Nodes/graph: `webview/workflow/components/nodes/Nodes.tsx` (NodeType, default workflow, nodeTypes).
-- Webview protocol mirror: `webview/workflow/services/WorkflowProtocol.ts`.
+- Protocol (ext side): `workflow/Core/Contracts/Protocol.ts` (node/edge types, message contracts).
+- Execution (ext side): `workflow/Application/handlers/ExecuteWorkflow.ts` (graph execution, node handlers, LLM/CLI/preview logic).
+- LLM node: `workflow/Application/handlers/ExecuteWorkflow.ts` lines 271–306 (`executeLLMNode`); requires `AMP_API_KEY` env var; races SDK call against 120s timeout and abort signal.
+- Webview app: React + @xyflow/react under `workflow/Web/` via Vite; entry `workflow/Web/workflow.html` + `workflow/Web/index.tsx`.
+- Nodes/graph: `workflow/Web/components/nodes/Nodes.tsx` (NodeType, default workflow, nodeTypes); LLM node UI in `workflow/Web/components/nodes/LLM_Node.tsx`.
+- Webview protocol mirror: `workflow/Web/services/WorkflowProtocol.ts`.
 - Persistence: workflows `.sourcegraph/workflows/*.json`, custom nodes `.sourcegraph/nodes/*.json`.
-- Security: blocked CLI prefixes in `src/engine/executor.ts` and shell sanitization + abort support.
+- Security: blocked CLI prefixes in `workflow/DataAccess/shell.ts` and shell sanitization + abort support.
 
 - TS config: strict; ES2022; CJS for extension; `jsx: react-jsx`; extends `@sourcegraph/tsconfig`. `noUnusedLocals` is currently disabled to avoid breaking the build; enable it once unused locals are cleaned up. Webview builds via Vite React plugin.
 - Imports: extension uses `import * as vscode` + Node builtins; webview uses ESM React TS; prefer explicit type imports.
@@ -23,4 +25,6 @@
 - Errors: show user via `vscode.window.showErrorMessage`; avoid unhandled rejections; return sanitized strings.
 - Formatting: Biome formats code; run `npm run format`. Keep functions small/pure in core helpers; side-effects at boundaries (webview/engine).
 - Editor rules: none found (.cursor, .cursorrules, CLAUDE.md, .windsurfrules, .clinerules, .goosehints, Copilot instructions).
-- VS Code: engines `>=1.90.0`; main `dist/extension.js`; webview output `dist/webviews`. Run: `npm i && npm run build`, launch in VS Code.
+- VS Code: engines `>=1.90.0`; main `dist/extension.js`; webview output `dist/webviews`. Run: `npm i && npm i /home/prinova/CodeProjects/upstreamAmp/sdk && npm run build`, launch in VS Code.
+- Amp SDK reference implementation: `/home/prinova/CodeProjects/upstreamAmp/sdk` with the root at `/home/prinova/CodeProjects/upstreamAmp`
+- LLM node dev: set `AMP_API_KEY` env var before F5. Errors: "Amp SDK not available" → link SDK; "AMP_API_KEY is not set" → set env; timeout/abort handled gracefully.

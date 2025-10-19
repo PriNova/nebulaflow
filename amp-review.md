@@ -1,54 +1,36 @@
-## High-level summary
-A single file, `README.md`, has been added.  
-The README introduces the “Amp Workflow Editor” VS Code extension, outlines its architecture, scripts, development workflow, security measures, and troubleshooting steps. No source‐code logic changed.
+## High-level summary  
+Only one file was touched: `workflow/Web/components/PropertyEditor.tsx`.  
+A tiny refactor removed the helper function `getProvider` and inlined its implementation directly in the `groupedModels` `useMemo`. No behavioral changes are intended.
 
-## Tour of changes
-Because the only touched file is `README.md`, begin the review at the very top of that file and read straight through. The first section (“Amp Workflow Editor (VS Code Extension)”) already establishes the project scope and links to key source files; understanding those links will contextualise every later section.
+## Tour of changes  
+Start with the `getProvider` deletion block (lines ‑51 to –45 in the diff). That is the fulcrum of the change; once you understand that the helper is gone and its logic has been inlined, nothing else in the file is affected.
 
-## File-level review
+## File level review  
 
-### `README.md`
-What changed  
-• Entire file added (≈160 lines).  
-• Provides quick-start, project structure, architecture, persistence, security, troubleshooting, and contributing guidelines.
+### `workflow/Web/components/PropertyEditor.tsx`
 
-Review
+Changes made  
+1. Deleted:
+   ```ts
+   const getProvider = (id: string): string => id.split('/', 1)[0]
+   ```
+2. Re-implemented the logic inline inside `groupedModels`:
+   ```ts
+   const provider = m.id.split('/', 1)[0]
+   ```
 
-Correctness & clarity
-1. Broken / fragile line links  
-   – Markdown links such as  
-     `workflow/Application/handlers/ExecuteWorkflow.ts#L88-L95`  
-     will only work in GitHub/GitLab after commit **if the file already exists at those exact line numbers**. Any refactor-induced line shift will silently break the link. Consider linking to permanent anchors (e.g. permalink with commit SHA) or removing the line fragment.
+Correctness / bugs  
+• Behaviour is preserved—both versions call `String.split('/', 1)` and take `[0]`.  
+• No type errors introduced; `provider` is still inferred as `string`.  
+• The arrow-function removal does not affect hooks’ dependency arrays (the helper was never part of a dependency list).
 
-2. “VS Code ≥ 1.90.0”  
-   – VS Code 1.90 has not been released at the time of writing (current stable is 1.87). If 1.90+ APIs are not actually required, downgrade the version requirement (e.g. 1.85). Otherwise add a note that Insiders is needed.
+Inefficiencies / style  
+• Losing the helper increases duplication; if this pattern is needed elsewhere in the file (or project) the helper was preferable for readability and DRY principles.  
+• A dedicated helper allowed automatic documentation and easier unit testing. Inline code makes future refactors harder.  
+• The new line slightly lengthens `groupedModels`’ loop body; not a big deal but readability regresses a bit.
 
-3. Shell security wording  
-   – The list of “Dangerous CLI prefixes” is said to be “non-exhaustive” yet the README might be read as exhaustive. Explicitly state that additional validation occurs in code and the list is illustrative only.
+Security concerns  
+• None. It’s merely string parsing.
 
-4. Scripts block  
-   – The JSON snippet shows `"biome": "biome check --apply --error-on-warnings ."`. Because `.`, not `"."`, is passed, Biome will recurse through `node_modules`. Recommend `.` but with an `--ignore-path .gitignore` or similar or restrict to `src` + `workflow`.
-
-5. Watch webview  
-   – `vite build --watch` performs a production build on every change; typical dev flow is `vite dev` or `vite serve`. If intentional (because VS Code webviews can’t consume dev server), add one‐sentence rationale.
-
-6. Typo / wording  
-   – “Keep core helpers pure; put side-effects at the boundaries” – good, but add a short pointer to the folder that owns side-effects (Application/DataAccess) to avoid drift.  
-   – “TBD” license: until finalised, many companies treat this as “all rights reserved”. If open source is intended, add a short note (“licence choice pending final approval”).
-
-7. Missing badges  
-   – Optional nicety: add CI, VS Code Marketplace, npm, and license badges at the top.
-
-Inefficiencies  
-No performance concerns—this is documentation only.
-
-Security vulnerabilities  
-No direct code; however, caution readers that shell sanitisation lives in code, not the README, and thus they must still audit `workflow/DataAccess/shell.ts`.
-
-Other suggestions
-• Provide a one-line “Install from Marketplace” instruction for end users.  
-• Add a “Testing” script (`npm run test`) placeholder even if tests aren’t yet present.  
-• Under “Persistence”, clarify whether versioning beyond `1.x` will add migration steps.  
-• Under “Quick Start”, step 3 implicitly relies on the `preLaunchTask` defined in `.vscode/launch.json`; mention that explicitly so non-VS Code IDEs know what to run.
-
-Overall this is a strong, detailed README. Addressing the small accuracy and maintenance issues above will reduce future confusion.
+Recommendation  
+Unless there’s a strong reason to inline, keep the helper (or move it to a util module) to avoid duplication and signal intent.

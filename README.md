@@ -38,19 +38,25 @@ This project primarily focuses on the LLM node. In the current state, the LLM no
 npm install
 ```
 
-2) Build once (webview + extension)
+2) Link the Amp SDK (required for LLM node execution)
+
+```bash
+npm i /home/prinova/CodeProjects/upstreamAmp/sdk
+```
+
+3) Build once (webview + extension)
 
 ```bash
 npm run build
 ```
 
-3) Launch the extension in VS Code
+4) Launch the extension in VS Code
 
 - Open this folder in VS Code
 - Run and Debug: "Launch Extension (Desktop)"
   - This uses the `dev: start-webview-watch` task to watch webview assets
 
-4) Open the editor UI
+5) Open the editor UI
 
 - In the Extension Development Host window, run the command: "Amp: Open Workflow Editor"
 
@@ -76,7 +82,7 @@ If you see a message about missing webview assets, run `npm run build` or start 
 {
   "build:webview": "vite build --config workflow/Web/vite.config.mts",
   "watch:webview": "vite build --watch --config workflow/Web/vite.config.mts --mode development",
-  "build:ext": "tsc -p .",
+  "build:ext": "node scripts/bundle-ext.mjs",
   "typecheck": "tsc -p . && tsc -p workflow/Web/tsconfig.json",
   "biome": "biome check --apply --error-on-warnings .",
   "format": "npm run biome",
@@ -144,7 +150,11 @@ Execution flow:
 
 ## Troubleshooting
 
-- Webview assets don’t load:
+- LLM node error "Amp SDK not available":
+  - Ensure the Amp SDK is linked: run `npm i /home/prinova/CodeProjects/upstreamAmp/sdk && npm run build`
+- LLM node error "AMP_API_KEY is not set":
+  - Set the environment variable before launching: `export AMP_API_KEY=<your-key>` or add to `.env`
+- Webview assets don't load:
   - Run `npm run build` or start the Run and Debug configuration (which starts the watcher)
 - Type errors:
   - Run `npm run typecheck` and address diagnostics
