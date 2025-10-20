@@ -43,6 +43,7 @@ function cloneNodeData(sourceNode: WorkflowNodes): WorkflowNodes {
                 data: {
                     ...baseClone.data,
                     model: llmSource.data.model,
+                    timeoutSec: (llmSource as LLMNode).data.timeoutSec,
                 },
             } as LLMNode
         }

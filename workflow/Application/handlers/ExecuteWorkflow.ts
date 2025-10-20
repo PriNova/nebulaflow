@@ -12,6 +12,8 @@ import {
 import { expandHome, execute as shellExecute } from '../../DataAccess/shell'
 import { safePost } from '../messaging/safePost'
 
+const DEFAULT_LLM_TIMEOUT_MS = 300_000
+
 interface IndexedEdges {
     bySource: Map<string, Edge[]>
     byTarget: Map<string, Edge[]>
@@ -356,11 +358,19 @@ async function executeLLMNode(
         const abortP = new Promise<never>((_, rej) =>
             abortSignal.addEventListener('abort', () => rej(new AbortedError()), { once: true })
         )
-        const timeoutP = new Promise<never>((_, rej) =>
-            setTimeout(() => rej(new Error('LLM request timed out')), 120000)
-        )
+        const sec = Number((node as any)?.data?.timeoutSec)
+        const timeoutMs =
+            Number.isFinite(sec) && sec > 0 ? Math.floor(sec * 1000) : DEFAULT_LLM_TIMEOUT_MS
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const timeoutP = new Promise<never>((_, rej) => {
+            timer = setTimeout(() => rej(new Error('LLM request timed out')), timeoutMs)
+        })
 
-        await Promise.race([streamP, abortP, timeoutP])
+        try {
+            await Promise.race([streamP, abortP, timeoutP])
+        } finally {
+            if (timer) clearTimeout(timer)
+        }
         return finalText
     } finally {
         await amp.dispose()

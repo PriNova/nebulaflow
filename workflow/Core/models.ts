@@ -63,6 +63,7 @@ export interface LLMNode extends WorkflowNode {
     data: BaseNodeData & {
         model?: Model
         disabledTools?: string[]
+        timeoutSec?: number
     }
 }
 

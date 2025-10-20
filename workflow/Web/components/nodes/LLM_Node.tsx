@@ -16,6 +16,7 @@ export type LLMNode = Omit<WorkflowNode, 'data'> & {
     data: BaseNodeData & {
         model?: Model
         disabledTools?: string[]
+        timeoutSec?: number
     }
 }
 

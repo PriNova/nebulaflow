@@ -2,11 +2,11 @@ import clsx from 'clsx'
 import { Loader2Icon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AssistantContentItem } from '../../Core/models'
+import { resolveToolName } from '../services/toolNames'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/shadcn/ui/accordion'
 import { Button } from '../ui/shadcn/ui/button'
 import { Textarea } from '../ui/shadcn/ui/textarea'
 import { NodeType, type WorkflowNodes } from './nodes/Nodes'
-import { resolveToolName } from '../services/toolNames'
 
 interface RightSidebarProps {
     sortedNodes: WorkflowNodes[]

@@ -1,6 +1,7 @@
 import { Save } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { getAllToolNames } from '../services/toolNames'
 import { Button } from '../ui/shadcn/ui/button'
 import { Checkbox } from '../ui/shadcn/ui/checkbox'
 import {
@@ -20,7 +21,6 @@ import type { LLMNode } from './nodes/LLM_Node'
 import type { LoopStartNode } from './nodes/LoopStart_Node'
 import { NodeType, type WorkflowNodes } from './nodes/Nodes'
 import type { VariableNode } from './nodes/Variable_Node'
-import { getAllToolNames } from '../services/toolNames'
 
 interface PropertyEditorProps {
     node: WorkflowNodes
@@ -264,12 +264,57 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                                             className="tw-h-7 tw-text-xs tw-rounded-full tw-px-2 tw-whitespace-nowrap tw-max-w-full tw-overflow-hidden tw-text-ellipsis"
                                             title={tool}
                                         >
-                                            <span className={enabled ? '' : 'tw-line-through tw-opacity-70'}>{tool}</span>
+                                            <span
+                                                className={
+                                                    enabled ? '' : 'tw-line-through tw-opacity-70'
+                                                }
+                                            >
+                                                {tool}
+                                            </span>
                                         </Button>
                                     )
                                 })
                             })()}
                         </div>
+                    </div>
+                    <div>
+                        <Label htmlFor="llm-timeout-sec">Timeout (seconds)</Label>
+                        {(() => {
+                            const llm = node as LLMNode
+                            const [val, setVal] = useState<string>('')
+                            useEffect(() => {
+                                const v = llm.data.timeoutSec
+                                setVal(v === undefined ? '' : String(v))
+                            }, [llm.data.timeoutSec])
+                            const commit = () => {
+                                const trimmed = val.trim()
+                                if (trimmed === '') {
+                                    onUpdate(node.id, { timeoutSec: undefined })
+                                    return
+                                }
+                                const n = Number.parseInt(trimmed, 10)
+                                if (Number.isFinite(n) && n >= 1) {
+                                    onUpdate(node.id, { timeoutSec: n })
+                                }
+                            }
+                            return (
+                                <Input
+                                    id="llm-timeout-sec"
+                                    className="tw-h-8 tw-py-1 tw-text-sm"
+                                    type="number"
+                                    min={1}
+                                    value={val}
+                                    onChange={(e: { target: { value: string } }) =>
+                                        setVal(e.target.value)
+                                    }
+                                    onBlur={commit}
+                                    onKeyDown={(e: any) => {
+                                        if (e.key === 'Enter') commit()
+                                    }}
+                                    placeholder="300"
+                                />
+                            )
+                        })()}
                     </div>
                 </div>
             )}

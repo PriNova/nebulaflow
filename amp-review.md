@@ -1,111 +1,79 @@
 ## High-level summary
-* Removes the dependency on `@sourcegraph/amp-sdk` for tool-name helpers and replaces it with an in-repo service (`workflow/Web/services/toolNames.ts`).  
-* Introduces two helper functions (`getAllToolNames`, `resolveToolName`) and two constant maps (`BUILTIN_TOOL_NAMES`, `TOOL_NAME_ALIASES`).
-* Updates UI for enabling/disabling tools in `PropertyEditor.tsx`:  
-  – Checkboxes laid out in a grid are replaced with pill-style toggle buttons laid out in a flex wrap.  
-  – Internal state logic is adapted accordingly (`enabled` vs `disabled`).
-* Minor import change in `RightSidebar.tsx` to use the new helpers.
-
-No database, network, or back-end mutations were introduced. All changes sit in the front-end and a pure utility module.
-
----
+A “timeout” parameter (in seconds) has been added to LLM nodes.  
+Key effects:
+1. Execution layer (`executeLLMNode`) now uses a per-node, user-configurable timeout instead of a hard-coded 120 s.
+2. Type models, React property editor, node cloning helper, and node component typings have been updated to persist and expose the new `timeoutSec` field.
+3. Default timeout is 300 s (5 min) if the user does not specify a value.
 
 ## Tour of changes
-Start with the **new utility module** (`services/toolNames.ts`). Understanding the available tool names and alias-resolution logic clarifies the follow-on UI changes and the new imports in both React components.  
-Once familiar with the helper, review `PropertyEditor.tsx`; this file contains the substantive UI/behavioral change.  
-Finish with the small import tweak in `RightSidebar.tsx`.
-
----
+Start the review in `workflow/Application/handlers/ExecuteWorkflow.ts`.  
+That file contains the functional change that actually enforces the configurable timeout and reveals all assumptions made by the rest of the stack.  
+Once the intent is clear, continue with:
+1. `workflow/Core/models.ts` – schema change.
+2. `workflow/Web/components/PropertyEditor.tsx` – UI that lets the user set the value.
+3. `workflow/Web/components/hooks/nodeOperations.ts` – clone helper to preserve the setting.
+4. `workflow/Web/components/nodes/LLM_Node.tsx` – type duplication for the front-end.
 
 ## File level review
 
-### `workflow/Web/services/toolNames.ts`
-Changes  
-• New file exporting a canonical list of tool names (`BUILTIN_TOOL_NAMES`) and a map of aliases (`TOOL_NAME_ALIASES`).  
-• `getAllToolNames()` returns all canonical names (array).  
-• `resolveToolName()` takes an alias or name and returns a canonical name or `undefined`.
+### `workflow/Application/handlers/ExecuteWorkflow.ts`
+Changes:
+```ts
+const defaultTimeoutMs = 300_000
+const sec = Number((node as any)?.data?.timeoutSec)
+const timeoutMs = Number.isFinite(sec) && sec > 0 ? Math.floor(sec * 1000) : defaultTimeoutMs
+...
+setTimeout(() => rej(new Error('LLM request timed out')), timeoutMs)
+```
 
-Review  
-1. Correctness / Types  
-   * `BUILTIN_TOOL_NAMES` is declared `as const`, so `Object.values` returns `readonly string[]`, good.  
-   * `includes(nameOrAlias as any)` uses an `any` cast to silence TS. Better:  
-     ```ts
-     if ((Object.values(BUILTIN_TOOL_NAMES) as string[]).includes(nameOrAlias))
-     ```  
-     That avoids an escape hatch and maintains type safety.
+Review:
+• Correctly converts seconds ➜ ms and guards against non-finite / ≤0 input.  
+• Default value (300 000 ms) matches UI placeholder (300 s).
 
-2. Case-sensitivity  
-   * The alias lookup is strictly case-sensitive. `resolveToolName('grep')` works via the alias map, but `'GREP'` or `'Grep '` (trailing space) will not. Consider normalising (`trim().toLowerCase()`) for resiliency.
+Potential issues / recommendations
+1. `setTimeout` handle is never cleared. If `streamP` resolves first the timer still fires later, creating an unhandled rejection.  
+   Fix:  
+   ```ts
+   const timer = setTimeout(...);
+   await Promise.race([streamP, abortP, timeoutP]).finally(() => clearTimeout(timer));
+   ```
+2. No upper bound is enforced. An unreasonably large number could tie up the node forever. Consider clamping (e.g., 1 – 1800 s) or using a server-side maximum.
+3. Pull `defaultTimeoutMs` out to a module-level constant so it isn’t re-allocated per call and can be shared/tested.
 
-3. Duplicates  
-   * No duplicate keys, but there are keys whose *values* equal other keys (e.g. `'Grep'` in both maps). That is fine but a quick test would be helpful.
+### `workflow/Core/models.ts`
+Adds `timeoutSec?: number` to the `LLMNode` interface.
 
-4. Ordering  
-   * `getAllToolNames()` returns `Object.values`, which is insertion-order. If a stable sort is important for UI consistency (esp. snapshot tests), sort alphabetically.
-
-5. Extensibility  
-   * If new tools are added, devs must update two places (constants + alias map). Could derive the default alias map automatically (e.g. each canonical name is its own alias) to reduce drift.
-
-6. Security  
-   * Pure data, no security surface.
+Review:
+• Works, but consider documenting units (`seconds`) in a comment to avoid future confusion.  
+• Forward-compatibility: migrating existing persisted workflows is safe because the field is optional.
 
 ### `workflow/Web/components/PropertyEditor.tsx`
-Changes  
-• Import switched to local helper.  
-• UI re-worked:
-  – grid → flex-wrap  
-  – checkbox → toggle `Button` chips  
-  – visual states: `variant="secondary"` when enabled, `variant="outline"` when disabled; disabled state is also shown by strike-through.  
-• Logic reshuffled (`enabled` vs `isDisabled`).
+Adds numeric input labeled “Timeout (seconds)”.
 
-Review  
-1. State inversion logic  
-   ```ts
-   const isDisabled = disabled.includes(tool)
-   const enabled = !isDisabled
-   ...
-   onClick={() => onToggle(tool, !enabled)}
-   ```
-   `onToggle` expects `(tool, enabledAfterClick)`. The call supplies the *negation* of current `enabled`, which is correct.
+Review:
+• `min={1}` and `Math.max(1, …)` force a positive value – good.  
+• Defaulting with `?? 300` keeps UI consistent with back-end default.  
+• `Number.parseInt(e.target.value, 10) || 300` silently resets on invalid input; that is acceptable but may surprise users who mistype “3oo”. Consider inline validation feedback instead.
 
-2. Mutation handling  
-   * `onToggle` builds `next` via `new Set(disabled)`. Good: avoids mutating props.  
-   * Edge-case: if parent passes an *immutable frozen* array, still safe.
+Accessibility: The `<Label htmlFor="llm-timeout-sec">` correctly wires label → input.
 
-3. Rendering performance  
-   * `getAllToolNames()` is executed on every render. If this turns into a large list (> few hundred) or render heavy, memoise with `useMemo`. Currently negligible.
+### `workflow/Web/components/hooks/nodeOperations.ts`
+Ensures `timeoutSec` is copied when duplicating a node.
 
-4. Accessibility  
-   * `aria-pressed` is set; good.  
-   * Each toggle is a `<button>` now, so no more `<label>` that referenced a checkbox. Fine.  
-   * No `role="switch"` is necessary because `aria-pressed` already conveys toggle state.
+Review:
+• Uses `(llmSource.data as any).timeoutSec` which is safe but loses compile-time checking. Prefer proper typing:
+  ```ts
+  timeoutSec: (llmSource as LLMNode).data.timeoutSec,
+  ```
+• No default applied here (fine, undefined falls back in executor).
 
-5. Keyboard navigation  
-   * Buttons are focusable by default; check styling for focus ring.
+### `workflow/Web/components/nodes/LLM_Node.tsx`
+Mirror type updated with `timeoutSec?: number`.
 
-6. Visual consistency  
-   * Tailwind classes rely on design tokens; confirm that `Button` component doesn’t strip them.  
-   * `tw-h-6 tw-py-0` can create vertical centering issues if the component itself applies its own padding.
+Review:
+• Consistency with core model is maintained, avoiding type errors in UI.
 
-7. Removed grid  
-   * Flex wrap may re-flow unpredictably with very long tool names; small overflow/ellipsis mitigation is applied (`tw-max-w-full tw-overflow-hidden`). Good.
-
-8. Minor nit  
-   * Variable shadowing: `disabled` (array) vs `isDisabled` (boolean) is clear; previously `checked` vs `isDisabled` was more explicit. Current naming is still acceptable.
-
-### `workflow/Web/components/RightSidebar.tsx`
-Changes  
-• Only import path updated.
-
-Review  
-• No functional change. Compiles? Yes, because `resolveToolName` is re-exported.  
-• Confirm there are no tree-shaking issues; local module is part of bundle.
-
----
-
-## Recommendations
-1. Type safety: replace `as any` cast in `services/toolNames.ts` with a typed alternative.  
-2. Normalise input in `resolveToolName()` (`trim().toLowerCase()`) to make alias matching forgiving.  
-3. Consider alphabetical sort in `getAllToolNames()` for stable UI order.  
-4. Optional perf: wrap `const toolNames = useMemo(getAllToolNames, [])` inside `PropertyEditor` if list becomes large.  
-5. Add unit tests for `resolveToolName` to guard against alias drift and case issues.
+## Additional considerations
+• Persistence layer: verify that any serialization/deserialization of nodes preserves numeric values (JSON will turn them into numbers, not strings – OK).  
+• Testing: add unit tests for `executeLLMNode` covering default, custom, and invalid timeout values, plus timer-clearing logic if implemented.  
+• Documentation: update user guide / tooltips so users understand that “Timeout” is wall-clock time before the request is aborted.
