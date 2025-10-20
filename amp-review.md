@@ -1,105 +1,111 @@
 ## High-level summary
-This change introduces per-node “disabled tools” support for LLM nodes, exposes it in the web UI, passes the setting to the backend through `createAmp`, and slightly refactors auto-scroll logic in the right sidebar.  
-Additionally, the project’s TypeScript configuration is updated to the Node-16 module system and disables `noUnusedLocals`.
+* Removes the dependency on `@sourcegraph/amp-sdk` for tool-name helpers and replaces it with an in-repo service (`workflow/Web/services/toolNames.ts`).  
+* Introduces two helper functions (`getAllToolNames`, `resolveToolName`) and two constant maps (`BUILTIN_TOOL_NAMES`, `TOOL_NAME_ALIASES`).
+* Updates UI for enabling/disabling tools in `PropertyEditor.tsx`:  
+  – Checkboxes laid out in a grid are replaced with pill-style toggle buttons laid out in a flex wrap.  
+  – Internal state logic is adapted accordingly (`enabled` vs `disabled`).
+* Minor import change in `RightSidebar.tsx` to use the new helpers.
+
+No database, network, or back-end mutations were introduced. All changes sit in the front-end and a pure utility module.
 
 ---
 
 ## Tour of changes
-Start with `workflow/Core/models.ts`.  
-It adds the new `disabledTools` field to the node’s data model; every other modified file is an adaptation or consequence of this. After understanding the data shape, review:
-
-1. `workflow/Application/handlers/ExecuteWorkflow.ts` – backend usage of the new field.
-2. `workflow/Web/components/PropertyEditor.tsx` – UI for toggling tools.
-3. `workflow/Web/components/nodes/LLM_Node.tsx` – React type alignment.
-4. `workflow/Web/components/RightSidebar.tsx` – unrelated but adjacent auto-scroll fix.
-5. `tsconfig.json` – compiler setting changes that affect the whole repo.
+Start with the **new utility module** (`services/toolNames.ts`). Understanding the available tool names and alias-resolution logic clarifies the follow-on UI changes and the new imports in both React components.  
+Once familiar with the helper, review `PropertyEditor.tsx`; this file contains the substantive UI/behavioral change.  
+Finish with the small import tweak in `RightSidebar.tsx`.
 
 ---
 
 ## File level review
 
-### `tsconfig.json`
-Changes
-• `module` and `moduleResolution` switched from `commonjs/node` to `Node16`.  
-• `noUnusedLocals` turned off.  
+### `workflow/Web/services/toolNames.ts`
+Changes  
+• New file exporting a canonical list of tool names (`BUILTIN_TOOL_NAMES`) and a map of aliases (`TOOL_NAME_ALIASES`).  
+• `getAllToolNames()` returns all canonical names (array).  
+• `resolveToolName()` takes an alias or name and returns a canonical name or `undefined`.
 
-Review
-+ Node16 module mode is safer when “type”:“module” is used in `package.json`; make sure the runtime truly executes ESM or this will create dual-module confusion.
-+ Turning off `noUnusedLocals` removes a useful safety net. If the motivation is temporary, add a comment or TODO. If permanent, consider replacing it with a linter rule to avoid silent dead code.
-+ No other compiler flags updated; output directory remains the same, so no build breakage expected.
+Review  
+1. Correctness / Types  
+   * `BUILTIN_TOOL_NAMES` is declared `as const`, so `Object.values` returns `readonly string[]`, good.  
+   * `includes(nameOrAlias as any)` uses an `any` cast to silence TS. Better:  
+     ```ts
+     if ((Object.values(BUILTIN_TOOL_NAMES) as string[]).includes(nameOrAlias))
+     ```  
+     That avoids an escape hatch and maintains type safety.
 
-### `workflow/Core/models.ts`
-Changes
-`disabledTools?: string[]` added to `LLMNode.data`.
+2. Case-sensitivity  
+   * The alias lookup is strictly case-sensitive. `resolveToolName('grep')` works via the alias map, but `'GREP'` or `'Grep '` (trailing space) will not. Consider normalising (`trim().toLowerCase()`) for resiliency.
 
-Review
-+ Correctly marked optional.
-+ Consider restricting the string literals via a `ToolName` union for stronger typing (same list you enumerate in the UI).
+3. Duplicates  
+   * No duplicate keys, but there are keys whose *values* equal other keys (e.g. `'Grep'` in both maps). That is fine but a quick test would be helpful.
 
-### `workflow/Application/handlers/ExecuteWorkflow.ts`
-Changes
-```ts
-const disabledTools: string[] | undefined = (node as any)?.data?.disabledTools
-...
-settings: {
-  'internal.primaryModel': selectedKey ?? defaultModelKey,
-  ...(disabledTools && disabledTools.length > 0
-       ? { 'tools.disable': disabledTools }
-       : {}),
-},
-```
+4. Ordering  
+   * `getAllToolNames()` returns `Object.values`, which is insertion-order. If a stable sort is important for UI consistency (esp. snapshot tests), sort alphabetically.
 
-Review
-✓ Defensive null checks avoid crashes.  
-✓ Spread ‑ conditional syntax is neat.
+5. Extensibility  
+   * If new tools are added, devs must update two places (constants + alias map). Could derive the default alias map automatically (e.g. each canonical name is its own alias) to reduce drift.
 
-Potential issues
-• No validation that the tool names are known by the backend; an unexpected string could silently disable nothing or everything. Consider sanitising or logging unknown names.
+6. Security  
+   * Pure data, no security surface.
 
 ### `workflow/Web/components/PropertyEditor.tsx`
-Changes
-Adds “Tools” section with a check-list; checked = enabled (not in disabled list).
+Changes  
+• Import switched to local helper.  
+• UI re-worked:
+  – grid → flex-wrap  
+  – checkbox → toggle `Button` chips  
+  – visual states: `variant="secondary"` when enabled, `variant="outline"` when disabled; disabled state is also shown by strike-through.  
+• Logic reshuffled (`enabled` vs `isDisabled`).
 
-Correctness
-+ `onToggle` mutates via `Set` then returns `Array.from(next)`, avoiding duplicates.
-+ Checkbox `checked` derived from `!isDisabled` — logic is correct.
+Review  
+1. State inversion logic  
+   ```ts
+   const isDisabled = disabled.includes(tool)
+   const enabled = !isDisabled
+   ...
+   onClick={() => onToggle(tool, !enabled)}
+   ```
+   `onToggle` expects `(tool, enabledAfterClick)`. The call supplies the *negation* of current `enabled`, which is correct.
 
-Edge cases / improvements
-• `onCheckedChange` receives `boolean | "indeterminate"`. When `"indeterminate"` it is coerced to `false`, which will add the tool to `disabledTools`. You may want to treat `"indeterminate"` as “no change”.
-• Hard-coded `toolNames` list risks drift from backend support. Export a constant from a shared file or fetch dynamically.
-• UI grows to 25 rows; think about grouping or search if list expands.
+2. Mutation handling  
+   * `onToggle` builds `next` via `new Set(disabled)`. Good: avoids mutating props.  
+   * Edge-case: if parent passes an *immutable frozen* array, still safe.
 
-Performance
-Negligible — only runs when the property panel is open.
+3. Rendering performance  
+   * `getAllToolNames()` is executed on every render. If this turns into a large list (> few hundred) or render heavy, memoise with `useMemo`. Currently negligible.
 
-### `workflow/Web/components/nodes/LLM_Node.tsx`
-Only the type extension; good.
+4. Accessibility  
+   * `aria-pressed` is set; good.  
+   * Each toggle is a `<button>` now, so no more `<label>` that referenced a checkbox. Fine.  
+   * No `role="switch"` is necessary because `aria-pressed` already conveys toggle state.
+
+5. Keyboard navigation  
+   * Buttons are focusable by default; check styling for focus ring.
+
+6. Visual consistency  
+   * Tailwind classes rely on design tokens; confirm that `Button` component doesn’t strip them.  
+   * `tw-h-6 tw-py-0` can create vertical centering issues if the component itself applies its own padding.
+
+7. Removed grid  
+   * Flex wrap may re-flow unpredictably with very long tool names; small overflow/ellipsis mitigation is applied (`tw-max-w-full tw-overflow-hidden`). Good.
+
+8. Minor nit  
+   * Variable shadowing: `disabled` (array) vs `isDisabled` (boolean) is clear; previously `checked` vs `isDisabled` was more explicit. Current naming is still acceptable.
 
 ### `workflow/Web/components/RightSidebar.tsx`
-Changes
-• Introduces `assistantItemsTick` – counts total assistant items and triggers the scroll effect only when this count changes.
+Changes  
+• Only import path updated.
 
-Review
-+ Fixes stale auto-scroll when item text mutates without changing array identities.
-+ The manual counter avoids React’s object identity pitfall; elegant.
-
-Potential issues
-• If an existing item’s height changes (e.g., content edited in place), the count is unchanged and the scroll may not follow. Using a revision counter from the store or observing mutation could be more robust.
-• Complexity of `assistantItemsTick` is O(N) each render, which is fine for small logs but keep an eye on large histories.
-
-### Miscellaneous
-No tests updated; consider adding:
-• A backend unit test verifying that `disabledTools` is forwarded correctly.  
-• A UI test ensuring a tool checkbox toggles the list.
-
-Security
-Disabling tools reduces capability; no new escalation paths introduced. Just ensure that the server treats the list as authoritative and cannot be overridden by malicious client rewrites during execution.
+Review  
+• No functional change. Compiles? Yes, because `resolveToolName` is re-exported.  
+• Confirm there are no tree-shaking issues; local module is part of bundle.
 
 ---
 
 ## Recommendations
-1. Re-enable `noUnusedLocals` or enforce equivalent ESLint rule.
-2. Extract `ToolName` as a shared `enum`/`union` to avoid string typos.
-3. Handle `"indeterminate"` state explicitly in `onToggle`.
-4. Add validation or logging in the backend for unknown tool names.
-5. Document the rationale for the Node16 module switch to help future maintainers.
+1. Type safety: replace `as any` cast in `services/toolNames.ts` with a typed alternative.  
+2. Normalise input in `resolveToolName()` (`trim().toLowerCase()`) to make alias matching forgiving.  
+3. Consider alphabetical sort in `getAllToolNames()` for stable UI order.  
+4. Optional perf: wrap `const toolNames = useMemo(getAllToolNames, [])` inside `PropertyEditor` if list becomes large.  
+5. Add unit tests for `resolveToolName` to guard against alias drift and case issues.

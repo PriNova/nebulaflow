@@ -6,7 +6,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '..
 import { Button } from '../ui/shadcn/ui/button'
 import { Textarea } from '../ui/shadcn/ui/textarea'
 import { NodeType, type WorkflowNodes } from './nodes/Nodes'
-import { resolveToolName } from '@sourcegraph/amp-sdk'
+import { resolveToolName } from '../services/toolNames'
 
 interface RightSidebarProps {
     sortedNodes: WorkflowNodes[]
