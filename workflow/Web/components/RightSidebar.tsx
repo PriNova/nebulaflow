@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Loader2Icon } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AssistantContentItem } from '../../Core/models'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/shadcn/ui/accordion'
 import { Button } from '../ui/shadcn/ui/button'
@@ -43,6 +43,24 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     const [openItemId, setOpenItemId] = useState<string | undefined>(undefined)
     const [modifiedCommands, setModifiedCommands] = useState<Map<string, string>>(new Map())
     const [expandedJsonItems, setExpandedJsonItems] = useState<Set<string>>(new Set())
+
+    // Auto-scroll management for LLM assistant output per node
+    const assistantScrollRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+    const [pausedAutoScroll, setPausedAutoScroll] = useState<Set<string>>(new Set())
+
+    const handleAssistantScroll = (nodeId: string, el: HTMLDivElement) => {
+        const threshold = 8 // px tolerance for being at bottom
+        const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - threshold
+        setPausedAutoScroll(prev => {
+            const next = new Set(prev)
+            if (nearBottom) {
+                next.delete(nodeId)
+            } else {
+                next.add(nodeId)
+            }
+            return next
+        })
+    }
 
     const handleCommandChange = (nodeId: string, value: string) => {
         setModifiedCommands(prev => new Map(prev).set(nodeId, value))
@@ -351,6 +369,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         }
     }, [pendingApprovalNodeId])
 
+    // Auto-scroll: on assistant content updates or when user resumes bottom, scroll to bottom for nodes not paused
+    useEffect(() => {
+        assistantScrollRefs.current.forEach((el, nodeId) => {
+            if (el && !pausedAutoScroll.has(nodeId)) {
+                el.scrollTop = el.scrollHeight
+            }
+        })
+    }, [nodeAssistantContent, pausedAutoScroll])
+
     return (
         <div
             className="tw-w-full tw-border-r tw-border-border tw-h-full tw-bg-sidebar-background tw-p-4"
@@ -399,7 +426,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                             <div className="tw-mt-1 tw-space-y-4">
                                                 {node.type === NodeType.LLM &&
                                                     nodeAssistantContent.has(node.id) && (
-                                                        <div className="tw-max-h-64 tw-overflow-y-auto">
+                                                        <div
+                                                            className="tw-max-h-64 tw-overflow-y-auto"
+                                                            ref={el => {
+                                                                if (el) {
+                                                                    assistantScrollRefs.current.set(node.id, el)
+                                                                } else {
+                                                                    assistantScrollRefs.current.delete(node.id)
+                                                                }
+                                                            }}
+                                                            onScroll={e => handleAssistantScroll(node.id, e.currentTarget)}
+                                                        >
                                                             <Accordion type="multiple">
                                                                 {(() => {
                                                                     const items =
