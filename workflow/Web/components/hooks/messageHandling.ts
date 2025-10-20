@@ -19,6 +19,7 @@ export const useMessageHandler = (
     setModels: React.Dispatch<React.SetStateAction<{ id: string; title?: string }[]>>,
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>,
     setCustomNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>,
+    setNodeAssistantContent: React.Dispatch<React.SetStateAction<Map<string, any[]>>>,
     notify: (p: { type: 'success' | 'error'; text: string }) => void
 ) => {
     const batchUpdateNodeResults = useCallback(
@@ -96,6 +97,11 @@ export const useMessageHandler = (
                     batchUpdateNodeResults(updates)
                     break
                 }
+                case 'node_assistant_content': {
+                    const { nodeId, content } = event.data.data as any
+                    setNodeAssistantContent(prev => new Map(prev).set(nodeId, content))
+                    break
+                }
                 case 'models_loaded': {
                     const models = event.data.data as any
                     if (models) {
@@ -129,6 +135,7 @@ export const useMessageHandler = (
         batchUpdateNodeResults,
         setModels,
         setCustomNodes,
+        setNodeAssistantContent,
         vscodeAPI,
         notify,
     ])

@@ -14,10 +14,7 @@ import {
 export type LLMNode = Omit<WorkflowNode, 'data'> & {
     type: NodeType.LLM
     data: BaseNodeData & {
-        temperature: number
-        maxTokens?: number
         model?: Model
-        hasGoogleSearch: boolean
     }
 }
 

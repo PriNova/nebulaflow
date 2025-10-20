@@ -79,6 +79,7 @@ export const Flow: React.FC<{
         executingNodeId,
         nodeErrors,
         interruptedNodeId,
+        nodeAssistantContent,
         onExecute,
         onAbort,
         resetExecutionState,
@@ -86,6 +87,7 @@ export const Flow: React.FC<{
         setIsExecuting,
         setInterruptedNodeId,
         setNodeErrors,
+        setNodeAssistantContent,
     } = useWorkflowExecution(vscodeAPI, nodes, edges, setNodes, setEdges)
 
     const { onSave, onLoad, calculatePreviewNodeTokens, handleNodeApproval } = useWorkflowActions(
@@ -112,6 +114,7 @@ export const Flow: React.FC<{
         setModels,
         vscodeAPI,
         setCustomNodes,
+        setNodeAssistantContent,
         notify
     )
 
@@ -279,6 +282,7 @@ export const Flow: React.FC<{
                             pendingApprovalNodeId={pendingApprovalNodeId}
                             onApprove={handleNodeApproval}
                             interruptedNodeId={interruptedNodeId}
+                            nodeAssistantContent={nodeAssistantContent}
                         />
                     </div>
                 </div>

@@ -54,15 +54,14 @@ export interface WorkflowNode {
     selected?: boolean
 }
 
-import type { Model } from './Contracts/Protocol'
+import type { AssistantContentItem, Model } from './Contracts/Protocol'
+
+export type { AssistantContentItem }
 
 export interface LLMNode extends WorkflowNode {
     type: NodeType.LLM
     data: BaseNodeData & {
-        temperature: number
-        maxTokens?: number
         model?: Model
-        hasGoogleSearch: boolean
     }
 }
 

@@ -1,65 +1,74 @@
 ## High-level summary
-The diff eliminates the entire “Cody Output” node type from both the backend workflow engine and the React front-end.  
-Key removals:
-• `NodeType.CODY_OUTPUT` enum value.  
-• Execution-time handler case.  
-• React component (`CodyOutput_Node.tsx`), its registrations, and cloning logic.  
-• The related CSS class.  
-
-No new logic was added; code was purely deleted or refactored to exclude the node.
+The patch removes three optional parameters (`temperature`, `maxTokens`, `hasGoogleSearch`) from every place where an LLM node is defined, initialised, cloned, displayed or edited.  
+Consequently, all UI widgets (two `Slider`s and one `Checkbox`) that controlled those parameters are deleted, together with the corresponding imports and default-initialisation logic.
 
 ## Tour of changes
-Start the review in `workflow/Core/models.ts`.  
-Once the enum entry is removed, every other change (execution switch, React node registration, cloning, styling) is a mechanical consequence. Verifying the correctness of the enum change first clarifies the cascade.
+Start the review in `workflow/Web/components/nodes/LLM_Node.tsx`.  
+This file holds the canonical TypeScript definition of the LLM node.  Seeing the fields disappear here makes the intent of the change obvious, and it becomes easier to understand why the rest of the diff simply follows through by deleting UI controls and default values.
 
 ## File level review
 
 ### `workflow/Core/models.ts`
 Change  
 ```
--    CODY_OUTPUT = 'cody-output',
+data: BaseNodeData & {
+    model?: Model
+}
 ```  
-1. Correctly removes the enum member.  
-2. Impact assessment: Any persisted workflow JSON that still contains `"type": "cody-output"` will now fail to type-guard or render. A migration strategy or compatibility check should accompany this change; otherwise users will encounter runtime errors or un-typed objects.
+removes `temperature`, `maxTokens`, `hasGoogleSearch`.
 
-### `workflow/Application/handlers/ExecuteWorkflow.ts`
-Removed execution branch:
-```
-- case NodeType.CODY_OUTPUT: {
--     result = ''
--     break
-- }
-```
-Observations / risks
-• If workflows referencing the node are still present, the switch will now fall through to the default, very likely throwing `Unknown node type` (if such a default exists) or causing an undefined state.  
-• Because the previous implementation returned a benign empty string, consumers will now see a hard failure instead of soft behaviour. This is acceptable only if backward compatibility is no longer required.
+Review notes
+* ✅  Matches the change in the web bundle, keeps both model layers (core + web) in sync.
+* ⚠️  Audit the execution/runtime layer (where the LLM call is made).  If any of these three fields are still being read, the code will compile (because extra JSON props are allowed at runtime) but TypeScript will warn.  Search for: `node.data.temperature`, `maxTokens`, `hasGoogleSearch` outside this diff.
+
+### `workflow/Web/components/PropertyEditor.tsx`
+Updates  
+* Deletes the import of `Slider`.
+* Removes the 3 blocks that rendered sliders/checkbox.
+
+Review notes
+* ✅  All code that referenced the removed props is gone.  File still imports `Checkbox`, which is still used elsewhere, so the import list is fine.
+* ⚠️  Remove trailing comma in the import list after deleting `Slider` to avoid lint warnings (`import { …, PopoverTrigger } from …` ends cleanly now).
+* ✅  No orphaned css classes or ids.
 
 ### `workflow/Web/components/hooks/nodeOperations.ts`
-Removed cloning logic for the deleted type.  
-Looks correct — the function now simply omits the deleted node.  
+Updates
+1. `cloneNodeData` no longer copies the three properties.
+2. `useNodeOperations` default-initialisation no longer sets them.
 
-Edge case: when duplicating a workflow that still contains obsolete nodes, the `cloneNodeData` helper will hit the `default` branch and throw. Again, a migration plan is required.
+Review notes
+* ✅  Logic matches schema change.
+* ❓  If existing persisted workflows are loaded, `cloneNodeData` will silently drop the three properties.  If you need backward-compatibility you may want to keep copying but ignore later, or run a migration.
 
-### `workflow/Web/components/nodes/CodyOutput_Node.tsx`
-File deleted.  
-Component was stateless and benign; safe to drop as long as it is never referenced.
+### `workflow/Web/components/nodes/LLM_Node.tsx`
+The core TypeScript type loses the same three fields.
+
+Review notes
+* ✅  Keeps type identical to that in `/Core/models.ts`.
+* 💡  Consider exporting a shared type from the core package to avoid duplication / accidental drift.
 
 ### `workflow/Web/components/nodes/Nodes.tsx`
-1. Removed import and mapping for `CodyOutputNode`.  
-2. Removed enum entry, union member, and `nodeTypes` registration.
+Removes the two properties from the predefined “Generate Commit Message” node.
 
-Type-safety:  
-• TypeScript will guarantee no residual references exists in this file, but you should run a project-wide search to ensure no dangling imports elsewhere.
+Review notes
+* ✅  Nodedef is now valid.
+* ⚠️  Search other default nodes; they may still carry the deprecated fields.
 
-### `workflow/Web/index.css`
-Deleted `.cody-chat-error` styles.  
-• If other components rely on that class (not necessarily the Cody Output node), they will lose styling. Perform a search to confirm it is unused.
+## Additional observations / risks
+1. Runtime impact  
+   Any service that actually calls an LLM will almost certainly still need `temperature` and `max_tokens`.  Confirm that you are moving to server-side defaults rather than discarding configurability entirely.  
 
-## Additional considerations / recommendations
-1. **Migration path** – Provide a script or startup check to transform any persisted workflows containing `cody-output` to a supported alternative, or fail gracefully with an actionable message.
-2. **Error messaging** – If old nodes slip through, the runtime should throw a descriptive error such as “Cody Output node type is deprecated; please update your workflow.”
-3. **Tests** – Remove or adapt unit / integration tests that referenced this node.
-4. **Documentation** – Update docs and user-facing release notes to mark the node as deprecated/removed.
-5. **CSS cleanup** – Verify no unrelated component still depends on `.cody-chat-error`.
+2. Saved workflows  
+   Older JSON that contains the removed props will still parse, but TypeScript will flag them as excess properties when the object is created inside the codebase.  Decide whether to run a migration or accept the silent drop.
 
-Overall, the change is straightforward and appears correct, provided compatibility issues are addressed.
+3. UI regression  
+   Users can no longer tweak temperature or max-tokens.  Make sure this is intentional; if not, consider moving those controls somewhere else rather than removing them.
+
+4. Tree-shaking / bundle size  
+   `Slider` component may now be unused; double-check imports across the project and delete if dead.
+
+## Recommendations
+* Perform a project-wide search to eradicate remaining references to the three properties.
+* Verify the LLM service wrapper to ensure sensible defaults are applied.
+* If backward compatibility is required, introduce a one-off migration that pulls the old values into a single `parameters` object or similar rather than losing them.
+* Consider unifying the LLM node type into a single shared package to prevent the dual-definition from diverging again.

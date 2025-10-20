@@ -42,8 +42,6 @@ function cloneNodeData(sourceNode: WorkflowNodes): WorkflowNodes {
                 ...baseClone,
                 data: {
                     ...baseClone.data,
-                    temperature: llmSource.data.temperature,
-                    maxTokens: llmSource.data.maxTokens,
                     model: llmSource.data.model,
                 },
             } as LLMNode
@@ -164,8 +162,6 @@ export const useNodeOperations = (
                     case NodeType.LLM:
                         ;(newNode as any).data = {
                             ...newNode.data,
-                            temperature: 0.0,
-                            maxTokens: 1000,
                             model: undefined,
                         }
                         break

@@ -17,6 +17,7 @@ export const useWorkflowExecution = (
     const [executingNodeId, setExecutingNodeId] = useState<string | null>(null)
     const [interruptedNodeId, setInterruptedNodeId] = useState<string | null>(null)
     const [nodeResults, setNodeResults] = useState<Map<string, string>>(new Map())
+    const [nodeAssistantContent, setNodeAssistantContent] = useState<Map<string, any[]>>(new Map())
 
     const resetExecutionState = useCallback(() => {
         setNodes([])
@@ -27,6 +28,7 @@ export const useWorkflowExecution = (
         setInterruptedNodeId(null)
         setAbortController(null)
         setNodeResults(new Map())
+        setNodeAssistantContent(new Map())
     }, [setEdges, setNodes])
 
     const onExecute = useCallback(() => {
@@ -77,6 +79,7 @@ export const useWorkflowExecution = (
         nodeErrors,
         nodeResults,
         interruptedNodeId,
+        nodeAssistantContent,
         onExecute,
         onAbort,
         resetExecutionState,
@@ -85,5 +88,6 @@ export const useWorkflowExecution = (
         setInterruptedNodeId,
         setNodeResults,
         setNodeErrors,
+        setNodeAssistantContent,
     }
 }

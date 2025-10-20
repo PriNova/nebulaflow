@@ -14,7 +14,6 @@ import {
 import { Input } from '../ui/shadcn/ui/input'
 import { Label } from '../ui/shadcn/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/shadcn/ui/popover'
-import { Slider } from '../ui/shadcn/ui/slider'
 import { Textarea } from '../ui/shadcn/ui/textarea'
 import type { AccumulatorNode } from './nodes/Accumulator_Node'
 import type { LLMNode } from './nodes/LLM_Node'
@@ -237,46 +236,6 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                             </Popover>
                         </div>
                     )}
-                    <div>
-                        <Label htmlFor="node-temperature">Temperature</Label>
-                        <Slider
-                            className="tw-p-4"
-                            id="node-temperature"
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            value={[(node as LLMNode).data.temperature || 0]}
-                            onValueChange={([value]) => onUpdate(node.id, { temperature: value })}
-                        />
-                        <span className="tw-text-sm tw-text-muted-foreground">
-                            {(node as LLMNode).data.temperature || 0}
-                        </span>
-                    </div>
-                    <div>
-                        <Label htmlFor="node-maxTokens">Maximum Tokens</Label>
-                        <Slider
-                            className="tw-p-4"
-                            id="node-maxTokens"
-                            min={250}
-                            max={4000}
-                            step={250}
-                            value={[(node as LLMNode).data.maxTokens || 250]}
-                            onValueChange={([value]) => onUpdate(node.id, { maxTokens: value })}
-                        />
-                        <span className="tw-text-sm tw-text-muted-foreground">
-                            {(node as LLMNode).data.maxTokens || 250}
-                        </span>
-                    </div>
-                    <div className="tw-flex tw-items-center tw-space-x-2">
-                        <Checkbox
-                            id="node-google-search"
-                            checked={(node as LLMNode).data.hasGoogleSearch || false}
-                            onCheckedChange={checked =>
-                                onUpdate(node.id, { hasGoogleSearch: checked === true })
-                            }
-                        />
-                        <Label htmlFor="node-google-search">Google Search</Label>
-                    </div>
                 </div>
             )}
             {node.type === NodeType.INPUT && (

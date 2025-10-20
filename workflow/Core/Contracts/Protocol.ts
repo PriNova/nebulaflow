@@ -4,6 +4,15 @@
 // Basic model descriptor
 export type Model = { id: string; title?: string }
 
+// Assistant content blocks streamed during LLM node execution
+export type AssistantContentItem =
+    | { type: 'text'; text: string }
+    | { type: 'thinking'; thinking: string }
+    | { type: 'tool_use'; id: string; name: string; inputJSON?: string }
+    | { type: 'tool_result'; toolUseID: string; resultJSON?: string }
+    | { type: 'server_tool_use'; name: string; inputJSON?: string }
+    | { type: 'server_web_search_result'; query?: string; resultJSON?: string }
+
 // Transport-friendly edge DTO
 export type EdgeDTO = {
     id: string
@@ -127,6 +136,11 @@ interface TokenCountEvent extends BaseWorkflowMessage {
     data: { count: number; nodeId: string }
 }
 
+interface NodeAssistantContentEvent extends BaseWorkflowMessage {
+    type: 'node_assistant_content'
+    data: { nodeId: string; threadID?: string; content: AssistantContentItem[] }
+}
+
 interface NodeApprovalCommand extends BaseWorkflowMessage {
     type: 'node_approved'
     data: { nodeId: string; modifiedCommand?: string }
@@ -171,4 +185,5 @@ export type ExtensionToWorkflow =
     | ExecutionCompletedEvent
     | NodeExecutionStatusEvent
     | TokenCountEvent
+    | NodeAssistantContentEvent
     | ProvideCustomModelsEvent

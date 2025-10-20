@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 import { processGraphComposition } from '../../Core/engine/node-sorting'
 import { AbortedError } from '../../Core/models'
-import type { ApprovalResult, ExtensionToWorkflow } from '../../Core/models'
+import type { ApprovalResult, AssistantContentItem, ExtensionToWorkflow } from '../../Core/models'
 import {
     type Edge,
     type IfElseNode,
@@ -86,7 +86,7 @@ export async function executeWorkflow(
                     break
                 }
                 case NodeType.LLM: {
-                    result = await executeLLMNode(node, context, abortSignal)
+                    result = await executeLLMNode(node, context, abortSignal, webview)
                     break
                 }
                 case NodeType.PREVIEW: {
@@ -263,7 +263,8 @@ export function combineParentOutputsByConnectionOrder(
 async function executeLLMNode(
     node: WorkflowNodes,
     context: IndexedExecutionContext,
-    abortSignal: AbortSignal
+    abortSignal: AbortSignal,
+    webview: vscode.Webview
 ): Promise<string> {
     const inputs = combineParentOutputsByConnectionOrder(node.id, context)
     const template = ((node as any).data?.content || '').toString()
@@ -315,22 +316,103 @@ async function executeLLMNode(
         },
     })
     try {
-        const runP = amp.run({ prompt })
+        let finalText = ''
+        const streamP = (async () => {
+            for await (const event of amp.runJSONL({ prompt })) {
+                abortSignal.throwIfAborted()
+                if (event.type === 'messages') {
+                    const thread = event.thread as any
+                    const items = extractAssistantTimeline(thread)
+                    await safePost(webview, {
+                        type: 'node_assistant_content',
+                        data: {
+                            nodeId: node.id,
+                            threadID: thread.id,
+                            content: items,
+                        },
+                    } as ExtensionToWorkflow)
+
+                    // Update latest assistant text for final result only
+                    const lastAssistantMessage = thread.messages?.findLast(
+                        (m: any) => m.role === 'assistant'
+                    )
+                    if (lastAssistantMessage) {
+                        const textBlocks = (lastAssistantMessage.content || []).filter(
+                            (b: any) => b.type === 'text'
+                        )
+                        if (textBlocks.length > 0) {
+                            finalText = textBlocks
+                                .map((b: any) => b.text)
+                                .join('\n')
+                                .trim()
+                        }
+                    }
+                }
+            }
+        })()
+
         const abortP = new Promise<never>((_, rej) =>
             abortSignal.addEventListener('abort', () => rej(new AbortedError()), { once: true })
         )
         const timeoutP = new Promise<never>((_, rej) =>
             setTimeout(() => rej(new Error('LLM request timed out')), 120000)
         )
-        const { message } = (await Promise.race([runP, abortP, timeoutP])) as any
-        const text = (message.content || [])
-            .filter((b: any) => b.type === 'text')
-            .map((b: any) => b.text)
-            .join('\n')
-            .trim()
-        return text
+
+        await Promise.race([streamP, abortP, timeoutP])
+        return finalText
     } finally {
         await amp.dispose()
+    }
+}
+
+function extractAssistantTimeline(thread: any): AssistantContentItem[] {
+    const items: AssistantContentItem[] = []
+
+    for (const msg of thread?.messages || []) {
+        if (msg.role === 'assistant') {
+            for (const block of msg.content || []) {
+                if (block.type === 'text') {
+                    items.push({ type: 'text', text: block.text || '' })
+                } else if (block.type === 'thinking') {
+                    items.push({ type: 'thinking', thinking: block.thinking || '' })
+                } else if (block.type === 'tool_use') {
+                    const inputJSON = block.inputPartialJSON?.json || JSON.stringify(block.input || {})
+                    items.push({ type: 'tool_use', id: block.id, name: block.name, inputJSON })
+                } else if (block.type === 'server_tool_use') {
+                    const inputJSON = JSON.stringify(block.input || {})
+                    items.push({ type: 'server_tool_use', name: block.name, inputJSON })
+                } else if (block.type === 'server_web_search_result') {
+                    const resultJSON = safeSafeStringify(block.result)
+                    items.push({
+                        type: 'server_web_search_result',
+                        query: (block as any).query,
+                        resultJSON,
+                    })
+                }
+            }
+        } else if (msg.role === 'user') {
+            for (const block of msg.content || []) {
+                if (block.type === 'tool_result') {
+                    const run = block.run || {}
+                    const resultJSON = safeSafeStringify(run)
+                    items.push({ type: 'tool_result', toolUseID: block.toolUseID, resultJSON })
+                }
+            }
+        }
+    }
+
+    return items
+}
+
+function safeSafeStringify(obj: any, maxLength = 100000): string {
+    try {
+        const str = JSON.stringify(obj, null, 2)
+        if (str.length > maxLength) {
+            return str.slice(0, maxLength) + '\n... (truncated)'
+        }
+        return str
+    } catch {
+        return String(obj)
     }
 }
 

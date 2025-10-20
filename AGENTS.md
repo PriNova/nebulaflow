@@ -1,7 +1,7 @@
 # AGENTS – Amp Editor Quick Guide
 
 - Build: `npm run build` (webview + extension). Parts: `webview/vite.config.mts`, `tsconfig.json`.
-  - **SDK Link**: Before first build, run `npm i /home/prinova/CodeProjects/upstreamAmp/sdk` to link the Amp SDK (required for LLM node execution).
+  - SDK Sync: Builds auto-sync the upstream SDK via `sync:sdk` in the `prebuild` hook; manual linking not required. To force, run `npm i /home/prinova/CodeProjects/upstreamAmp/sdk`.
 - Webview only: `npm run build:webview`. Extension only: `npm run build:ext` (uses esbuild to bundle extension + SDK).
 - Webview watch: `npm run watch:webview`.
 - Typecheck: `npm run typecheck` (TS 5.x; extends `@sourcegraph/tsconfig`).
@@ -25,6 +25,6 @@
 - Errors: show user via `vscode.window.showErrorMessage`; avoid unhandled rejections; return sanitized strings.
 - Formatting: Biome formats code; run `npm run format`. Keep functions small/pure in core helpers; side-effects at boundaries (webview/engine).
 - Editor rules: none found (.cursor, .cursorrules, CLAUDE.md, .windsurfrules, .clinerules, .goosehints, Copilot instructions).
-- VS Code: engines `>=1.90.0`; main `dist/extension.js`; webview output `dist/webviews`. Run: `npm i && npm i /home/prinova/CodeProjects/upstreamAmp/sdk && npm run build`, launch in VS Code.
+- VS Code: engines `>=1.90.0`; main `dist/extension.js`; webview output `dist/webviews`. Run: `npm i && npm run build`, launch in VS Code.
 - Amp SDK reference implementation: `/home/prinova/CodeProjects/upstreamAmp/sdk` with the root at `/home/prinova/CodeProjects/upstreamAmp`
 - LLM node dev: set `AMP_API_KEY` env var before F5. Errors: "Amp SDK not available" → link SDK; "AMP_API_KEY is not set" → set env; timeout/abort handled gracefully.

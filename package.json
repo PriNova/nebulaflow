@@ -7,7 +7,9 @@
         "vscode": ">=1.90.0"
     },
     "main": "dist/src/extension.js",
-    "activationEvents": ["onCommand:ampEditor.openWorkflow"],
+    "activationEvents": [
+        "onCommand:ampEditor.openWorkflow"
+    ],
     "contributes": {
         "commands": [
             {
@@ -17,8 +19,11 @@
         ]
     },
     "scripts": {
+        "sync:sdk": "pnpm -C /home/prinova/CodeProjects/upstreamAmp/sdk build && npm i /home/prinova/CodeProjects/upstreamAmp/sdk",
+        "prebuild": "npm run -s sync:sdk",
         "build:webview": "vite build --config workflow/Web/vite.config.mts",
         "watch:webview": "vite build --watch --config workflow/Web/vite.config.mts --mode development",
+        "prebuild:ext": "npm run -s sync:sdk",
         "build:ext": "node scripts/bundle-ext.mjs",
         "typecheck": "tsc -p . && tsc -p workflow/Web/tsconfig.json",
         "biome": "biome check --apply --error-on-warnings .",
@@ -40,6 +45,7 @@
         "@xyflow/react": "^12.1.4",
         "class-variance-authority": "^0.7.0",
         "clsx": "^2.1.1",
+        "happy-dom": "^14.0.0",
         "lucide-react": "^0.460.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",

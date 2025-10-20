@@ -9,7 +9,7 @@ A VS Code extension for visually designing and running developer workflows. Buil
 
 ## Project Focus: LLM Node
 
-The LLM node now runs via the Amp SDK. The workflow editor is a visual wrapper around the SDK: it builds prompts from upstream node outputs and executes them with the SDK. Link the SDK first (`npm i /home/prinova/CodeProjects/upstreamAmp/sdk`) and set `AMP_API_KEY` to use the LLM node.
+The LLM node now runs via the Amp SDK. The workflow editor is a visual wrapper around the SDK: it builds prompts from upstream node outputs and executes them with the SDK. Builds auto-sync the SDK via a prebuild step; set `AMP_API_KEY` to use the LLM node. To force-link manually: `npm i /home/prinova/CodeProjects/upstreamAmp/sdk`.
 
 ## Features
 
@@ -38,7 +38,9 @@ The LLM node now runs via the Amp SDK. The workflow editor is a visual wrapper a
 npm install
 ```
 
-2) Link the Amp SDK (required for LLM node execution)
+2) SDK sync (automatic)
+
+Builds auto-sync the upstream SDK via a prebuild step; no manual linking required. To force-link manually:
 
 ```bash
 npm i /home/prinova/CodeProjects/upstreamAmp/sdk
@@ -80,8 +82,11 @@ If you see a message about missing webview assets, run `npm run build` or start 
 
 ```jsonc
 {
+  "sync:sdk": "pnpm -C /home/prinova/CodeProjects/upstreamAmp/sdk build && npm i /home/prinova/CodeProjects/upstreamAmp/sdk",
+  "prebuild": "npm run -s sync:sdk",
   "build:webview": "vite build --config workflow/Web/vite.config.mts",
   "watch:webview": "vite build --watch --config workflow/Web/vite.config.mts --mode development",
+  "prebuild:ext": "npm run -s sync:sdk",
   "build:ext": "node scripts/bundle-ext.mjs",
   "typecheck": "tsc -p . && tsc -p workflow/Web/tsconfig.json",
   "biome": "biome check --apply --error-on-warnings .",
@@ -151,7 +156,7 @@ Execution flow:
 ## Troubleshooting
 
 - LLM node error "Amp SDK not available":
-  - Ensure the Amp SDK is linked: run `npm i /home/prinova/CodeProjects/upstreamAmp/sdk && npm run build`
+  - Builds auto-sync the SDK; run `npm run build` to trigger the prebuild. If needed, force-link with `npm i /home/prinova/CodeProjects/upstreamAmp/sdk && npm run build`
 - LLM node error "AMP_API_KEY is not set":
   - Set the environment variable before launching: `export AMP_API_KEY=<your-key>` or add to `.env`
 - Webview assets don't load:

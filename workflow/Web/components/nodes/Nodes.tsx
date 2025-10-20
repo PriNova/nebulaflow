@@ -121,8 +121,6 @@ export const defaultWorkflow = (() => {
                 title: 'Generate Commit Message',
                 content: 'Generate a commit message for the following git diff: ${1}',
                 active: true,
-                temperature: 0.0,
-                maxTokens: 1000,
                 model: undefined,
             },
             position: { x: 0, y: 100 },
