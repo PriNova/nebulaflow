@@ -20,6 +20,7 @@ import type { LLMNode } from './nodes/LLM_Node'
 import type { LoopStartNode } from './nodes/LoopStart_Node'
 import { NodeType, type WorkflowNodes } from './nodes/Nodes'
 import type { VariableNode } from './nodes/Variable_Node'
+import { getAllToolNames } from '@sourcegraph/amp-sdk'
 
 interface PropertyEditorProps {
     node: WorkflowNodes
@@ -236,6 +237,39 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                             </Popover>
                         </div>
                     )}
+                    <div className="tw-mt-2">
+                        <Label>Tools</Label>
+                        <div className="tw-grid tw-grid-cols-1 tw-gap-2 tw-mt-2">
+                            {(() => {
+                                const toolNames = getAllToolNames()
+                                const disabled = ((node as LLMNode).data.disabledTools ?? []) as string[]
+                                const onToggle = (tool: string, enabled: boolean) => {
+                                    const next = new Set(disabled)
+                                    if (enabled) {
+                                        next.delete(tool)
+                                    } else {
+                                        next.add(tool)
+                                    }
+                                    onUpdate(node.id, { disabledTools: Array.from(next) })
+                                }
+                                return toolNames.map(tool => {
+                                    const isDisabled = disabled.includes(tool)
+                                    const checked = !isDisabled
+                                    const id = `tool-${node.id}-${tool}`
+                                    return (
+                                        <div key={tool} className="tw-flex tw-items-center tw-space-x-2">
+                                            <Checkbox
+                                                id={id}
+                                                checked={checked}
+                                                onCheckedChange={value => onToggle(tool, value === true)}
+                                            />
+                                            <Label htmlFor={id}>{tool}</Label>
+                                        </div>
+                                    )
+                                })
+                            })()}
+                        </div>
+                    </div>
                 </div>
             )}
             {node.type === NodeType.INPUT && (

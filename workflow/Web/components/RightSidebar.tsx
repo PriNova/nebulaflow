@@ -6,6 +6,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '..
 import { Button } from '../ui/shadcn/ui/button'
 import { Textarea } from '../ui/shadcn/ui/textarea'
 import { NodeType, type WorkflowNodes } from './nodes/Nodes'
+import { resolveToolName } from '@sourcegraph/amp-sdk'
 
 interface RightSidebarProps {
     sortedNodes: WorkflowNodes[]
@@ -189,7 +190,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     const formatToolArgsFromInput = (name: string, inputJSON?: string): string => {
         const obj = safeParseJSON(inputJSON)
         if (!obj || typeof obj !== 'object') return ''
-        const norm = name.toLowerCase()
+        const official = resolveToolName(name) ?? name
+        const norm = official.toLowerCase()
         const keys = TOOL_KEYS[norm]
         let vals: string[] = []
         if (Array.isArray(keys)) {
@@ -230,16 +232,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 title = '🧠 Thinking'
                 break
             case 'tool_use': {
-                const suffix = formatToolArgsFromInput(item.name, item.inputJSON)
-                title = `🔧 ${item.name}${suffix}`
+                const officialName = resolveToolName(item.name) ?? item.name
+                const suffix = formatToolArgsFromInput(officialName, item.inputJSON)
+                title = `🔧 ${officialName}${suffix}`
                 break
             }
             case 'tool_result':
                 title = '✅ Result'
                 break
             case 'server_tool_use': {
-                const suffix = formatToolArgsFromInput(item.name, item.inputJSON)
-                title = `🌐 ${item.name}${suffix}`
+                const officialName = resolveToolName(item.name) ?? item.name
+                const suffix = formatToolArgsFromInput(officialName, item.inputJSON)
+                title = `🌐 ${officialName}${suffix}`
                 break
             }
             case 'server_web_search_result': {
@@ -370,13 +374,23 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     }, [pendingApprovalNodeId])
 
     // Auto-scroll: on assistant content updates or when user resumes bottom, scroll to bottom for nodes not paused
+    const assistantItemsTick = (() => {
+        let count = 0
+        for (const items of nodeAssistantContent.values()) {
+            count += Array.isArray(items) ? items.length : 0
+        }
+        return count
+    })()
     useEffect(() => {
-        assistantScrollRefs.current.forEach((el, nodeId) => {
-            if (el && !pausedAutoScroll.has(nodeId)) {
-                el.scrollTop = el.scrollHeight
+        // re-run when assistant content changes (tracked via assistantItemsTick)
+        if (assistantItemsTick >= 0) {
+            for (const [nodeId, el] of assistantScrollRefs.current) {
+                if (el && !pausedAutoScroll.has(nodeId)) {
+                    el.scrollTop = el.scrollHeight
+                }
             }
-        })
-    }, [nodeAssistantContent, pausedAutoScroll])
+        }
+    }, [assistantItemsTick, pausedAutoScroll])
 
     return (
         <div
@@ -430,12 +444,22 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                             className="tw-max-h-64 tw-overflow-y-auto"
                                                             ref={el => {
                                                                 if (el) {
-                                                                    assistantScrollRefs.current.set(node.id, el)
+                                                                    assistantScrollRefs.current.set(
+                                                                        node.id,
+                                                                        el
+                                                                    )
                                                                 } else {
-                                                                    assistantScrollRefs.current.delete(node.id)
+                                                                    assistantScrollRefs.current.delete(
+                                                                        node.id
+                                                                    )
                                                                 }
                                                             }}
-                                                            onScroll={e => handleAssistantScroll(node.id, e.currentTarget)}
+                                                            onScroll={e =>
+                                                                handleAssistantScroll(
+                                                                    node.id,
+                                                                    e.currentTarget
+                                                                )
+                                                            }
                                                         >
                                                             <Accordion type="multiple">
                                                                 {(() => {

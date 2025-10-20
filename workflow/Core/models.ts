@@ -62,6 +62,7 @@ export interface LLMNode extends WorkflowNode {
     type: NodeType.LLM
     data: BaseNodeData & {
         model?: Model
+        disabledTools?: string[]
     }
 }
 

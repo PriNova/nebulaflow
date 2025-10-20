@@ -1,74 +1,105 @@
 ## High-level summary
-The patch removes three optional parameters (`temperature`, `maxTokens`, `hasGoogleSearch`) from every place where an LLM node is defined, initialised, cloned, displayed or edited.  
-Consequently, all UI widgets (two `Slider`s and one `Checkbox`) that controlled those parameters are deleted, together with the corresponding imports and default-initialisation logic.
+This change introduces per-node “disabled tools” support for LLM nodes, exposes it in the web UI, passes the setting to the backend through `createAmp`, and slightly refactors auto-scroll logic in the right sidebar.  
+Additionally, the project’s TypeScript configuration is updated to the Node-16 module system and disables `noUnusedLocals`.
+
+---
 
 ## Tour of changes
-Start the review in `workflow/Web/components/nodes/LLM_Node.tsx`.  
-This file holds the canonical TypeScript definition of the LLM node.  Seeing the fields disappear here makes the intent of the change obvious, and it becomes easier to understand why the rest of the diff simply follows through by deleting UI controls and default values.
+Start with `workflow/Core/models.ts`.  
+It adds the new `disabledTools` field to the node’s data model; every other modified file is an adaptation or consequence of this. After understanding the data shape, review:
+
+1. `workflow/Application/handlers/ExecuteWorkflow.ts` – backend usage of the new field.
+2. `workflow/Web/components/PropertyEditor.tsx` – UI for toggling tools.
+3. `workflow/Web/components/nodes/LLM_Node.tsx` – React type alignment.
+4. `workflow/Web/components/RightSidebar.tsx` – unrelated but adjacent auto-scroll fix.
+5. `tsconfig.json` – compiler setting changes that affect the whole repo.
+
+---
 
 ## File level review
 
-### `workflow/Core/models.ts`
-Change  
-```
-data: BaseNodeData & {
-    model?: Model
-}
-```  
-removes `temperature`, `maxTokens`, `hasGoogleSearch`.
+### `tsconfig.json`
+Changes
+• `module` and `moduleResolution` switched from `commonjs/node` to `Node16`.  
+• `noUnusedLocals` turned off.  
 
-Review notes
-* ✅  Matches the change in the web bundle, keeps both model layers (core + web) in sync.
-* ⚠️  Audit the execution/runtime layer (where the LLM call is made).  If any of these three fields are still being read, the code will compile (because extra JSON props are allowed at runtime) but TypeScript will warn.  Search for: `node.data.temperature`, `maxTokens`, `hasGoogleSearch` outside this diff.
+Review
++ Node16 module mode is safer when “type”:“module” is used in `package.json`; make sure the runtime truly executes ESM or this will create dual-module confusion.
++ Turning off `noUnusedLocals` removes a useful safety net. If the motivation is temporary, add a comment or TODO. If permanent, consider replacing it with a linter rule to avoid silent dead code.
++ No other compiler flags updated; output directory remains the same, so no build breakage expected.
+
+### `workflow/Core/models.ts`
+Changes
+`disabledTools?: string[]` added to `LLMNode.data`.
+
+Review
++ Correctly marked optional.
++ Consider restricting the string literals via a `ToolName` union for stronger typing (same list you enumerate in the UI).
+
+### `workflow/Application/handlers/ExecuteWorkflow.ts`
+Changes
+```ts
+const disabledTools: string[] | undefined = (node as any)?.data?.disabledTools
+...
+settings: {
+  'internal.primaryModel': selectedKey ?? defaultModelKey,
+  ...(disabledTools && disabledTools.length > 0
+       ? { 'tools.disable': disabledTools }
+       : {}),
+},
+```
+
+Review
+✓ Defensive null checks avoid crashes.  
+✓ Spread ‑ conditional syntax is neat.
+
+Potential issues
+• No validation that the tool names are known by the backend; an unexpected string could silently disable nothing or everything. Consider sanitising or logging unknown names.
 
 ### `workflow/Web/components/PropertyEditor.tsx`
-Updates  
-* Deletes the import of `Slider`.
-* Removes the 3 blocks that rendered sliders/checkbox.
+Changes
+Adds “Tools” section with a check-list; checked = enabled (not in disabled list).
 
-Review notes
-* ✅  All code that referenced the removed props is gone.  File still imports `Checkbox`, which is still used elsewhere, so the import list is fine.
-* ⚠️  Remove trailing comma in the import list after deleting `Slider` to avoid lint warnings (`import { …, PopoverTrigger } from …` ends cleanly now).
-* ✅  No orphaned css classes or ids.
+Correctness
++ `onToggle` mutates via `Set` then returns `Array.from(next)`, avoiding duplicates.
++ Checkbox `checked` derived from `!isDisabled` — logic is correct.
 
-### `workflow/Web/components/hooks/nodeOperations.ts`
-Updates
-1. `cloneNodeData` no longer copies the three properties.
-2. `useNodeOperations` default-initialisation no longer sets them.
+Edge cases / improvements
+• `onCheckedChange` receives `boolean | "indeterminate"`. When `"indeterminate"` it is coerced to `false`, which will add the tool to `disabledTools`. You may want to treat `"indeterminate"` as “no change”.
+• Hard-coded `toolNames` list risks drift from backend support. Export a constant from a shared file or fetch dynamically.
+• UI grows to 25 rows; think about grouping or search if list expands.
 
-Review notes
-* ✅  Logic matches schema change.
-* ❓  If existing persisted workflows are loaded, `cloneNodeData` will silently drop the three properties.  If you need backward-compatibility you may want to keep copying but ignore later, or run a migration.
+Performance
+Negligible — only runs when the property panel is open.
 
 ### `workflow/Web/components/nodes/LLM_Node.tsx`
-The core TypeScript type loses the same three fields.
+Only the type extension; good.
 
-Review notes
-* ✅  Keeps type identical to that in `/Core/models.ts`.
-* 💡  Consider exporting a shared type from the core package to avoid duplication / accidental drift.
+### `workflow/Web/components/RightSidebar.tsx`
+Changes
+• Introduces `assistantItemsTick` – counts total assistant items and triggers the scroll effect only when this count changes.
 
-### `workflow/Web/components/nodes/Nodes.tsx`
-Removes the two properties from the predefined “Generate Commit Message” node.
+Review
++ Fixes stale auto-scroll when item text mutates without changing array identities.
++ The manual counter avoids React’s object identity pitfall; elegant.
 
-Review notes
-* ✅  Nodedef is now valid.
-* ⚠️  Search other default nodes; they may still carry the deprecated fields.
+Potential issues
+• If an existing item’s height changes (e.g., content edited in place), the count is unchanged and the scroll may not follow. Using a revision counter from the store or observing mutation could be more robust.
+• Complexity of `assistantItemsTick` is O(N) each render, which is fine for small logs but keep an eye on large histories.
 
-## Additional observations / risks
-1. Runtime impact  
-   Any service that actually calls an LLM will almost certainly still need `temperature` and `max_tokens`.  Confirm that you are moving to server-side defaults rather than discarding configurability entirely.  
+### Miscellaneous
+No tests updated; consider adding:
+• A backend unit test verifying that `disabledTools` is forwarded correctly.  
+• A UI test ensuring a tool checkbox toggles the list.
 
-2. Saved workflows  
-   Older JSON that contains the removed props will still parse, but TypeScript will flag them as excess properties when the object is created inside the codebase.  Decide whether to run a migration or accept the silent drop.
+Security
+Disabling tools reduces capability; no new escalation paths introduced. Just ensure that the server treats the list as authoritative and cannot be overridden by malicious client rewrites during execution.
 
-3. UI regression  
-   Users can no longer tweak temperature or max-tokens.  Make sure this is intentional; if not, consider moving those controls somewhere else rather than removing them.
-
-4. Tree-shaking / bundle size  
-   `Slider` component may now be unused; double-check imports across the project and delete if dead.
+---
 
 ## Recommendations
-* Perform a project-wide search to eradicate remaining references to the three properties.
-* Verify the LLM service wrapper to ensure sensible defaults are applied.
-* If backward compatibility is required, introduce a one-off migration that pulls the old values into a single `parameters` object or similar rather than losing them.
-* Consider unifying the LLM node type into a single shared package to prevent the dual-definition from diverging again.
+1. Re-enable `noUnusedLocals` or enforce equivalent ESLint rule.
+2. Extract `ToolName` as a shared `enum`/`union` to avoid string typos.
+3. Handle `"indeterminate"` state explicitly in `onToggle`.
+4. Add validation or logging in the backend for unknown tool names.
+5. Document the rationale for the Node16 module switch to help future maintainers.

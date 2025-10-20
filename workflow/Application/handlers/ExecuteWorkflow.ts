@@ -308,11 +308,13 @@ async function executeLLMNode(
         }
     }
 
+    const disabledTools: string[] | undefined = (node as any)?.data?.disabledTools
     const amp = await createAmp({
         apiKey,
         workspaceRoots,
         settings: {
             'internal.primaryModel': selectedKey ?? defaultModelKey,
+            ...(disabledTools && disabledTools.length > 0 ? { 'tools.disable': disabledTools } : {}),
         },
     })
     try {

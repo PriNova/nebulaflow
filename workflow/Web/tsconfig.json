@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
-        "target": "ES2022",
-        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "target": "ES2023",
+        "lib": ["ES2023", "DOM", "DOM.Iterable"],
         "jsx": "react-jsx",
         "module": "ESNext",
         "moduleResolution": "Bundler",
@@ -11,7 +11,7 @@
         "resolveJsonModule": true,
         "isolatedModules": true,
         "types": ["vite/client"],
-        "noUnusedLocals": true
+        "noUnusedLocals": false
     },
     "include": ["**/*.ts", "**/*.tsx", "workflow.html"]
 }

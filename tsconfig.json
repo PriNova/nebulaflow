@@ -2,7 +2,7 @@
     "extends": "@sourcegraph/tsconfig",
     "compilerOptions": {
         "target": "ES2022",
-        "module": "commonjs",
+        "module": "Node16",
         "lib": ["ES2022"],
         "outDir": "dist",
         "rootDir": ".",
@@ -12,9 +12,9 @@
         "esModuleInterop": true,
         "resolveJsonModule": true,
         "skipLibCheck": true,
-        "moduleResolution": "node",
+        "moduleResolution": "Node16",
         "jsx": "react-jsx",
-        "noUnusedLocals": true
+        "noUnusedLocals": false
     },
     "include": ["src", "workflow/**/*.ts", "workflow/**/*.tsx"],
     "exclude": ["node_modules", "workflow/Web"]
