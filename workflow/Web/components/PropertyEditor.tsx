@@ -30,6 +30,43 @@ interface PropertyEditorProps {
     nodeError?: string
 }
 
+const LLMTimeoutField: React.FC<{ node: LLMNode; onUpdate: PropertyEditorProps['onUpdate'] }> = ({
+    node,
+    onUpdate,
+}) => {
+    const [val, setVal] = useState<string>('')
+    useEffect(() => {
+        const v = node.data.timeoutSec
+        setVal(v === undefined ? '' : String(v))
+    }, [node.id, node.data.timeoutSec])
+    const commit = () => {
+        const trimmed = val.trim()
+        if (trimmed === '') {
+            onUpdate(node.id, { timeoutSec: undefined })
+            return
+        }
+        const n = Number.parseInt(trimmed, 10)
+        if (Number.isFinite(n) && n >= 1) {
+            onUpdate(node.id, { timeoutSec: n })
+        }
+    }
+    return (
+        <Input
+            id={`llm-timeout-sec-${node.id}`}
+            className="tw-h-8 tw-py-1 tw-text-sm"
+            type="number"
+            min={1}
+            value={val}
+            onChange={(e: { target: { value: string } }) => setVal(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e: any) => {
+                if (e.key === 'Enter') commit()
+            }}
+            placeholder="300"
+        />
+    )
+}
+
 export const PropertyEditor: React.FC<PropertyEditorProps> = ({
     node,
     onUpdate,
@@ -278,43 +315,8 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                         </div>
                     </div>
                     <div>
-                        <Label htmlFor="llm-timeout-sec">Timeout (seconds)</Label>
-                        {(() => {
-                            const llm = node as LLMNode
-                            const [val, setVal] = useState<string>('')
-                            useEffect(() => {
-                                const v = llm.data.timeoutSec
-                                setVal(v === undefined ? '' : String(v))
-                            }, [llm.data.timeoutSec])
-                            const commit = () => {
-                                const trimmed = val.trim()
-                                if (trimmed === '') {
-                                    onUpdate(node.id, { timeoutSec: undefined })
-                                    return
-                                }
-                                const n = Number.parseInt(trimmed, 10)
-                                if (Number.isFinite(n) && n >= 1) {
-                                    onUpdate(node.id, { timeoutSec: n })
-                                }
-                            }
-                            return (
-                                <Input
-                                    id="llm-timeout-sec"
-                                    className="tw-h-8 tw-py-1 tw-text-sm"
-                                    type="number"
-                                    min={1}
-                                    value={val}
-                                    onChange={(e: { target: { value: string } }) =>
-                                        setVal(e.target.value)
-                                    }
-                                    onBlur={commit}
-                                    onKeyDown={(e: any) => {
-                                        if (e.key === 'Enter') commit()
-                                    }}
-                                    placeholder="300"
-                                />
-                            )
-                        })()}
+                        <Label htmlFor={`llm-timeout-sec-${node.id}`}>Timeout (seconds)</Label>
+                        <LLMTimeoutField node={node as LLMNode} onUpdate={onUpdate} />
                     </div>
                 </div>
             )}
