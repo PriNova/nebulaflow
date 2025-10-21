@@ -1,0 +1,29 @@
+# Exclude sources and dev artifacts; include only built assets and metadata
+# Keep dist (extension bundle + webview assets) and top-level metadata files
+
+# VCS and editor
+.git/**
+.vscode/**
+
+# Source and tooling
+src/**
+workflow/**
+scripts/**
+docs/**
+
+# Config and project-level files not needed at runtime
+biome.jsonc
+tsconfig.json
+package-lock.json
+
+# Node modules (bundled extension should not require runtime deps)
+node_modules/**
+
+# Build outputs we keep
+!dist/**
+README.md
+package.json
+LICENSE
+CHANGELOG.md
+
+.sourcegraph/

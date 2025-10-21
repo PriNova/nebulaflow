@@ -3,11 +3,11 @@ import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../services/Protocol'
 import type { GenericVSCodeWrapper } from '../utils/vscode'
-import { AmpSpinningLogo } from './AmpSpinningLogo'
 import { CustomOrderedEdgeComponent } from './CustomOrderedEdge'
 import type { Edge } from './CustomOrderedEdge'
 // styles moved to global index.css
 import { HelpModal } from './HelpModal'
+import { NebulaSpinningLogo } from './NebulaSpinningLogo'
 import { RightSidebar } from './RightSidebar'
 import { WorkflowSidebar } from './WorkflowSidebar'
 import { useEdgeOperations } from './hooks/edgeOperations'
@@ -219,12 +219,12 @@ export const Flow: React.FC<{
                                 {banner.text}
                             </div>
                         )}
-                        {/* Background: Spinning Amp logo */}
+                        {/* Background: NebulaFlow spinner */}
                         {centerSize.w > 0 && centerSize.h > 0 ? (
-                            <AmpSpinningLogo
+                            <NebulaSpinningLogo
                                 width={centerSize.w}
                                 height={centerSize.h}
-                                scale={0.66}
+                                scale={2.5}
                                 axis="y"
                                 opacity={0.12}
                                 className="tw-z-0"

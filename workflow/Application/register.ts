@@ -44,10 +44,10 @@ function waitForApproval(_nodeId: string): Promise<ApprovalResult> {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-    const disposable = vscode.commands.registerCommand('ampEditor.openWorkflow', async () => {
+    const disposable = vscode.commands.registerCommand('nebulaFlow.openWorkflow', async () => {
         const panel = vscode.window.createWebviewPanel(
-            'ampWorkflow',
-            'Amp Workflow Editor',
+            'nebulaWorkflow',
+            'NebulaFlow Workflow Editor',
             vscode.ViewColumn.One,
             {
                 enableScripts: true,
@@ -134,7 +134,7 @@ export function activate(context: vscode.ExtensionContext): void {
                     case 'execute_workflow': {
                         if (activeAbortController) {
                             void vscode.window.showInformationMessage(
-                                'Amp Workflow Editor: execution already in progress'
+                                'NebulaFlow Workflow Editor: execution already in progress'
                             )
                             await safePost(
                                 panel.webview,
@@ -277,7 +277,7 @@ export function activate(context: vscode.ExtensionContext): void {
             } catch (err) {
                 const detail = err instanceof Error ? err.message : String(err)
                 void vscode.window.showErrorMessage(
-                    `Amp Workflow Editor: failed to load webview assets. Run \`npm run build\` or \`npm run watch:webview\` and try again. (${detail})`
+                    `NebulaFlow Workflow Editor: failed to load webview assets. Run \`npm run build\` or \`npm run watch:webview\` and try again. (${detail})`
                 )
             }
         }

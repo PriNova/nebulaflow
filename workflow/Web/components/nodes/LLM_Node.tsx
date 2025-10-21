@@ -1,6 +1,6 @@
 import { Handle, Position } from '@xyflow/react'
 import type React from 'react'
-import ampMark from '../../assets/amp-mark.svg'
+import nebulaMark from '../../assets/nebula-mark.svg'
 import type { Model } from '../../services/Protocol'
 import {
     type BaseNodeData,
@@ -57,12 +57,12 @@ export const LLMNode: React.FC<BaseNodeProps> = ({ data, selected }) => (
                 }}
             >
                 <img
-                    src={ampMark}
-                    alt="Amp"
-                    style={{ width: '14px', height: '14px', marginRight: '0.25rem' }}
+                    src={nebulaMark}
+                    alt="NebulaFlow"
+                    style={{ width: '21px', height: '21px', marginRight: '0.25rem' }}
                 />
                 <div className="tw-text-center tw-flex-grow" style={{ transform: 'translateX(-6%)' }}>
-                    Amp Agent
+                    Agent
                 </div>
             </div>
             <div className="tw-flex tw-items-center tw-justify-center">

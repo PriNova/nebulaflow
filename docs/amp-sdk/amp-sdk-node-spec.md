@@ -111,7 +111,7 @@ case NodeType.LLM: {
 ```
 
 3) Build and run
-- `npm run build` (typecheck + webview build + esbuild bundle for extension). Load the extension in VS Code, run `Amp: Open Workflow Editor`.
+- `npm run build` (typecheck + webview build + esbuild bundle for extension). Load the extension in VS Code, run `NebulaFlow: Open Workflow Editor`.
 - Create a simple workflow: Text → LLM → Preview. Enter a prompt in the Text node. Execute; LLM node should complete and Preview should show assistant text.
 
 4) Minimal error handling

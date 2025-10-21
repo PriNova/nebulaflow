@@ -1,4 +1,4 @@
-# Amp Workflow Editor (VS Code Extension)
+# NebulaFlow Workflow Editor (VS Code Extension)
 
 A VS Code extension for visually designing and running developer workflows. Build graphs using node types (CLI, LLM, control-flow, preview, variables), execute them inside VS Code, and persist workflows/custom nodes per workspace.
 
@@ -60,7 +60,7 @@ npm run build
 
 5) Open the editor UI
 
-- In the Extension Development Host window, run the command: "Amp: Open Workflow Editor"
+- In the Extension Development Host window, run the command: "NebulaFlow: Open Workflow Editor"
 
 If you see a message about missing webview assets, run `npm run build` or start the watcher via the launch config and try again.
 

@@ -1,4 +1,4 @@
-# AGENTS – Amp Editor Quick Guide
+# AGENTS – NebulaFlow Editor Quick Guide
 
 - Build: `npm run build` (webview + extension). Parts: `webview/vite.config.mts`, `tsconfig.json`.
   - SDK Sync: Builds auto-sync the upstream SDK via `sync:sdk` in the `prebuild` hook; manual linking not required. To force, run `npm i /home/prinova/CodeProjects/upstreamAmp/sdk`.
@@ -9,7 +9,7 @@
 - Format: `npm run format` (Biome).
 - Tests: not configured. Single-test N/A. If added (e.g., Vitest), run: `npx vitest run path -t "name"`.
 
-- Extension entry: `src/extension.ts` (registers `ampEditor.openWorkflow`, hosts webview, handles protocol).
+- Extension entry: `src/extension.ts` (registers `nebulaFlow.openWorkflow`, hosts webview, handles protocol).
 - Protocol (ext side): `workflow/Core/Contracts/Protocol.ts` (node/edge types, message contracts).
 - Execution (ext side): `workflow/Application/handlers/ExecuteWorkflow.ts` (graph execution, node handlers, LLM/CLI/preview logic).
 - LLM node: `workflow/Application/handlers/ExecuteWorkflow.ts` lines 271–306 (`executeLLMNode`); requires `AMP_API_KEY` env var; races SDK call against 120s timeout and abort signal.

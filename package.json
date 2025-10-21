@@ -1,20 +1,20 @@
 {
-    "name": "amp-editor",
-    "displayName": "Amp Workflow Editor",
-    "version": "0.0.1",
+    "name": "nebula-flow",
+    "displayName": "NebulaFlow Workflow Editor",
+    "version": "0.1.0",
     "publisher": "prinova",
     "engines": {
         "vscode": ">=1.90.0"
     },
     "main": "dist/src/extension.js",
     "activationEvents": [
-        "onCommand:ampEditor.openWorkflow"
+        "onCommand:nebulaFlow.openWorkflow"
     ],
     "contributes": {
         "commands": [
             {
-                "command": "ampEditor.openWorkflow",
-                "title": "Amp: Open Workflow Editor"
+                "command": "nebulaFlow.openWorkflow",
+                "title": "NebulaFlow: Open Workflow Editor"
             }
         ]
     },
@@ -30,7 +30,8 @@
         "format": "npm run biome",
         "check": "npm run -s typecheck && npm run -s biome",
         "lint": "npm run biome",
-        "build": "npm run -s typecheck && npm run -s build:webview && npm run -s build:ext"
+        "build": "npm run -s typecheck && npm run -s build:webview && npm run -s build:ext",
+        "package:vsix": "npm run -s build && vsce package --no-dependencies --out dist/${npm_package_name}-${npm_package_version}.vsix"
     },
     "dependencies": {
         "@radix-ui/react-accordion": "^1.1.2",
@@ -60,6 +61,7 @@
         "@types/uuid": "^10.0.0",
         "@types/vscode": "^1.90.0",
         "@vitejs/plugin-react": "^4.3.3",
+        "@vscode/vsce": "^3.0.0",
         "esbuild": "^0.21.5",
         "postcss": "^8.4.47",
         "postcss-nested": "^6.0.1",

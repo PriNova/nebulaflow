@@ -38,7 +38,7 @@ const LLMTimeoutField: React.FC<{ node: LLMNode; onUpdate: PropertyEditorProps['
     useEffect(() => {
         const v = node.data.timeoutSec
         setVal(v === undefined ? '' : String(v))
-    }, [node.id, node.data.timeoutSec])
+    }, [node.data.timeoutSec])
     const commit = () => {
         const trimmed = val.trim()
         if (trimmed === '') {
@@ -316,7 +316,7 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                     </div>
                     <div>
                         <Label htmlFor={`llm-timeout-sec-${node.id}`}>Timeout (seconds)</Label>
-                        <LLMTimeoutField node={node as LLMNode} onUpdate={onUpdate} />
+                        <LLMTimeoutField key={node.id} node={node as LLMNode} onUpdate={onUpdate} />
                     </div>
                 </div>
             )}

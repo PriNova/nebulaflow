@@ -1,7 +1,7 @@
 import type React from 'react'
-import ampMark from '../assets/amp-mark.svg'
+import nebulaMark from '../assets/nebula-mark.svg'
 
-export interface AmpSpinningLogoProps {
+export interface NebulaSpinningLogoProps {
     width: number
     height: number
     scale?: number // portion of min(width,height), default 0.6
@@ -11,10 +11,10 @@ export interface AmpSpinningLogoProps {
     style?: React.CSSProperties
 }
 
-export const AmpSpinningLogo: React.FC<AmpSpinningLogoProps> = ({
+export const NebulaSpinningLogo: React.FC<NebulaSpinningLogoProps> = ({
     width,
     height,
-    scale = 0.6,
+    scale = 2.5,
     opacity = 0.1,
     axis = 'z',
     className,
@@ -31,8 +31,8 @@ export const AmpSpinningLogo: React.FC<AmpSpinningLogoProps> = ({
                 style={{ transform: 'translate(-50%, -50%)' }}
             >
                 <img
-                    src={ampMark}
-                    alt="Amp"
+                    src={nebulaMark}
+                    alt="NebulaFlow"
                     className={axis === 'x' ? 'spin-x' : axis === 'y' ? 'spin-y' : 'tw-animate-spin'}
                     style={{
                         width: size,

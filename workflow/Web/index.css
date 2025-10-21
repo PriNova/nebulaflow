@@ -50,7 +50,7 @@
     --border-width: none;
 }
 
-/* 3D spin helpers for AmpSpinningLogo */
+/* 3D spin helpers for NebulaSpinningLogo */
 @keyframes spin-x { from { transform: rotateX(0deg); } to { transform: rotateX(360deg); } }
 @keyframes spin-y { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
 .perspective-800 { perspective: 800px; }

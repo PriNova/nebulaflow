@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="NebulaFlow logo">
+  <defs>
+    <radialGradient id="g1" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#8A2BE2"/>
+      <stop offset="45%" stop-color="#4c6fff"/>
+      <stop offset="100%" stop-color="#00D1FF"/>
+    </radialGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#D8ECFF" stop-opacity="0.9"/>
+    </linearGradient>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Stellar core -->
+  <circle cx="128" cy="128" r="20" fill="url(#g1)"/>
+  <circle cx="128" cy="128" r="32" fill="url(#g2)" opacity="0.7"/>
+
+  <!-- Spiral arms -->
+  <g fill="none" stroke="url(#g2)" stroke-width="10" stroke-linecap="round" filter="url(#softGlow)">
+    <path d="M128 60c-36 4-68 28-76 64-10 50 28 76 64 68 30-7 52-38 44-68-8-30-44-42-76-28" opacity="0.9"/>
+    <path d="M196 104c8 12 12 26 10 40-6 44-54 74-100 64-40-9-64-41-60-80" opacity="0.6"/>
+  </g>
+
+  <!-- Orbital rings -->
+  <g fill="none" stroke="url(#g1)" stroke-opacity="0.9">
+    <ellipse cx="128" cy="128" rx="92" ry="36" transform="rotate(-18 128 128)" stroke-width="4"/>
+    <ellipse cx="128" cy="128" rx="72" ry="26" transform="rotate(24 128 128)" stroke-width="3"/>
+  </g>
+
+  <!-- Directional spark -->
+  <path d="M128 20l10 26 28 8-28 8-10 26-10-26-28-8 28-8 10-26z" fill="url(#g2)" opacity="0.9"/>
+</svg>

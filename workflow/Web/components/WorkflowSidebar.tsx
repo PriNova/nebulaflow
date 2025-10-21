@@ -187,11 +187,11 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                     </AccordionContent>
                 </AccordionItem>
                 <AccordionItem value="llm">
-                    <AccordionTrigger className="tw-text-sm">LLM Nodes</AccordionTrigger>
+                    <AccordionTrigger className="tw-text-sm">Agent Nodes</AccordionTrigger>
                     <AccordionContent>
                         <div className="tw-flex tw-flex-col tw-gap-2">
                             <Button
-                                onClick={() => onNodeAdd('LLM', NodeType.LLM)}
+                                onClick={() => onNodeAdd('General Agent', NodeType.LLM)}
                                 className="tw-flex-1"
                                 style={{ ...buttonStyle }}
                                 onMouseEnter={e => {
@@ -202,7 +202,7 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                                     e.currentTarget.style.backgroundColor = 'transparent'
                                 }}
                             >
-                                LLM
+                                General Agent
                             </Button>
                         </div>
                     </AccordionContent>
