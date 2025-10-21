@@ -7,9 +7,7 @@
         "vscode": ">=1.90.0"
     },
     "main": "dist/src/extension.js",
-    "activationEvents": [
-        "onCommand:nebulaFlow.openWorkflow"
-    ],
+    "activationEvents": ["onCommand:nebulaFlow.openWorkflow"],
     "contributes": {
         "commands": [
             {

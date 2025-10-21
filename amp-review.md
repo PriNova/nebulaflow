@@ -1,111 +1,130 @@
 ## High-level summary
-The patch performs a broad re-branding of the project from **“Amp”** to **“NebulaFlow.”**  
-Most of the diff is mechanical string replacement (docs, command IDs, UI text, asset names), but a few files contain **behavioural or visual changes**:
+This patch introduces user-approval handling for “blocked-on-user” tool invocations emitted by an LLM node.
 
-1. `package.json` – new extension/command IDs, activation event, version 0.1.0.  
-2. `workflow/Application/register.ts` – runtime command/webview IDs and user-visible strings updated.  
-3. Web-view UI  
-   • New logo asset `nebula-mark.svg`.  
-   • Component `AmpSpinningLogo` renamed to `NebulaSpinningLogo`; default `scale` increased 0.6 → 2.5.  
-   • `PropertyEditor.tsx` effect dependency list altered and `key={node.id}` added to one field.  
-   • Node, sidebar, modal wording/icons updated.
+Key points
+• `ExecuteWorkflow.ts`:  
+  – `executeLLMNode` now receives an `approvalHandler` callback.  
+  – While streaming LLM output it detects `tool_result` blocks with status `blocked-on-user`, notifies the web-view, waits for an approval / rejection decision, and responds back to the LLM with a `toolInput` message.  
+• `RightSidebar.tsx`:  
+  – UI generalized: the Approve / Reject buttons are shown for *any* node awaiting approval (not just CLI nodes).  
+  – The command-editing textarea remains read-only unless the node is both a CLI node **and** is currently awaiting approval.  
+  – When approving a non-CLI node, no modified command payload is sent.
 
-There are **no build-pipeline, dependency, or back-end logic changes**.
+No other files are touched.
 
----
-
-## Tour of changes (recommended starting order)
-
-1. `package.json` – sets the new extension identity & command names; drives all other changes.  
-2. `workflow/Application/register.ts` – proves that runtime identifiers were likewise updated; good place to catch desynchronisation.  
-3. `workflow/Web/components/NebulaSpinningLogo.tsx` – only functional UI change (new image, bigger default scale).  
-4. `workflow/Web/components/PropertyEditor.tsx` – subtle dependency-array tweak that can cause stale UI.  
-5. Remaining UI component tweaks for wording/icon sizes.
-
-Once these are understood, the rest is safe find-and-replace documentation.
-
----
+## Tour of changes
+Start with `workflow/Application/handlers/ExecuteWorkflow.ts`. That is where the new approval logic is implemented and where the public function signature changes. Understanding this change makes the corresponding UI tweaks in `RightSidebar.tsx` self-explanatory.
 
 ## File level review
 
-### `AGENTS.md`, `README.md`, `docs/amp-sdk/amp-sdk-node-spec.md`
-Search-and-replace “Amp” → “NebulaFlow”.  No risk.
+### `workflow/Application/handlers/ExecuteWorkflow.ts`
 
-### `amp-review.md`
-Older review document updated to reflect the re-brand; no runtime impact.
+1. Public surface
+   • `executeWorkflow` forwards `approvalHandler` to `executeLLMNode`.  
+   • Any other caller of `executeLLMNode` must now provide the extra parameter—make sure all call-sites have been updated (only this file is shown in the diff).
 
-### `package.json`
-• `name`, `displayName`, command id, activation event all migrated.  
-• Version bumped 0.0.1 → 0.1.0.
-
-Review  
-✔️ Correct, but grep for any leftover `ampEditor.*` configuration/telemetry keys that should be renamed as well.  
-✔️ Activation event matches new command.  
-⚠️ Publishing: ensure the new `name` (`nebula-flow`) is unique on the Marketplace.
-
-### `workflow/Application/register.ts`
-All IDs and user messages updated (`ampEditor.openWorkflow` → `nebulaFlow.openWorkflow`, panel id `nebulaWorkflow`).
-
-Review  
-✔️ Code logic unchanged.  
-💡 Suggest exporting these IDs from a shared `constants.ts` to avoid future divergence.  
-✔️ No security impact.
-
-### `workflow/Web/assets/nebula-mark.svg`
-New, self-contained 2.3 kB SVG. No external links or scripts – safe.  ✅
-
-### `workflow/Web/components/NebulaSpinningLogo.tsx`  (renamed from `AmpSpinningLogo.tsx`)
-• Imports new SVG.  
-• Default `scale` lifted to **2.5** (previous 0.6).  
-• Alt text, prop names updated.
-
-Review  
-⚠️ Size: `scale 2.5 × min(width,height)` may overflow on 13″ laptops; test on small viewports.  
-Otherwise identical implementation – no performance or security concerns.
-
-### `workflow/Web/components/Flow.tsx`
-• Imports renamed logo component.  
-• Passes `scale={2.5}` instead of 0.66.
-
-Review  
-Only visual impact; ties into the size concern above.
-
-### `workflow/Web/components/PropertyEditor.tsx`
+2. Function signature
+```ts
+async function executeLLMNode(
+   ...
+   webview: vscode.Webview,
+   approvalHandler: (nodeId: string) => Promise<ApprovalResult>
+): Promise<string>
 ```
-- useEffect deps: [node.id, node.data.timeoutSec]
-+ useEffect deps: [node.data.timeoutSec]
+   • Consider making `approvalHandler` optional (e.g. `?.()`) so existing extensions can compile even if they do not need approvals.  
+   • Type `ApprovalResult` is referenced but not imported; compilation depends on it being in scope elsewhere.
+
+3. Streaming loop
+```ts
+const handledBlocked = new Set<string>()
+for await (const event of amp.runJSONL({ prompt })) {
 ```
-and field component now has `key={node.id}`.
+   • `handledBlocked` prevents duplicate approval prompts—good.  
+   • However, if an approval for the same `toolUseID` is rejected and the LLM re-emits *another* blocked-on-user with the same ID, the prompt will be skipped. Expected? If not, include status (accept/reject) in the dedupe key.
 
-Review  
-❗ BUG: Removing `node.id` means the effect won’t re-run when the user selects a different node whose `timeoutSec` coincidentally matches the previous value; UI may show stale timeout or fail to clear the field.  
-Fix: include `node` or `node.id` again (or depend on `node` object).  
-The added `key={node.id}` mitigates stale controlled-input state somewhat, but the effect should still respond to node change.
+4. Detection logic
+   • Scans the whole thread every token. This is O(N²) over time. You can optimise by:
+     – Keeping an index of already-seen message IDs.  
+     – Only processing the last assistant / user messages delivered in the current event.
 
-### `workflow/Web/components/WorkflowSidebar.tsx`
-Textual rename (“LLM Nodes” → “Agent Nodes”, “LLM” → “General Agent”) and hover-colour tweak.  📄
+5. Use of optional chaining
+   • `thread?.messages?.findLast` – Node 18+ and Chromium have `Array.prototype.findLast` but many runtimes don’t. If the workflow framework targets earlier environments, replace with a manual loop.
 
-### `workflow/Web/components/nodes/LLM_Node.tsx`
-• New logo, icon size 14 px → 21 px, label “Amp Agent” → “Agent”.
+6. Error handling
+```ts
+} catch (e) {
+   if (e instanceof AbortedError) throw e
+}
+```
+   • Good that an abort propagates.  
+   • All other exceptions are swallowed; add logging so silent failures are diagnosable (`console.error` or telemetry).
 
-Review  
-Visual only; ensure the larger icon doesn’t push text outside container.
+7. Awaiting approval
+```ts
+const decision = await approvalHandler(node.id)
+```
+   • No timeout. If the UI disappears the LLM node can hang forever. Consider:
+     – Passing the original `AbortSignal` to `approvalHandler`.  
+     – Applying an explicit timeout and rejecting with AbortedError.
 
-### `workflow/Web/index.css`
-Comment updated; no functional change.
+8. Sending the decision
+```ts
+await amp.sendToolInput({ value: { accepted } })
+```
+   • If the CLI command was modified, the new command is *not* forwarded. Make sure the LLM expects only the boolean.
 
-### `workflow/Web/workflow.html`
-Document title updated.  ✅
+9. Concurrency / re-entrancy
+   • The for-await stream continues while awaiting approval (no `break` or pause). This can lead to interleaving new events. You might want to block reading until the decision is processed by pausing the iterator (create deferred promise and await).
 
-### Removed file `workflow/Web/components/AmpSpinningLogo.tsx`
-Properly replaced; no dangling imports.
+### `workflow/Web/components/RightSidebar.tsx`
 
----
+1. Read-only state
+```tsx
+readOnly={!(node.type === NodeType.CLI && node.id === pendingApprovalNodeId)}
+```
+   • Works, but can be simplified to `readOnly={node.id !== pendingApprovalNodeId || node.type !== NodeType.CLI}`.
+
+2. Approval buttons
+   • Buttons now always rendered when `node.id === pendingApprovalNodeId`. Nice generalisation.
+
+3. `onApprove` call
+```tsx
+onApprove(
+   node.id,
+   true,
+   node.type === NodeType.CLI ? modifiedCommands.get(node.id) : undefined
+)
+```
+   • Safe. Consider passing an explicit `null` instead of `undefined` to avoid 3-argument overloading confusion.
+
+4. Accessibility
+   • Buttons should include `aria-label` (“Approve”, “Reject”).
+
+5. Styling
+   • Inline style strings rely on VS Code theme variables—fine.
+
+6. Minor
+   • Remove unused import of `NodeType` if not already present.
+
+### Files not shown
+
+• Ensure `approvalHandler` hook is implemented in the VS Code extension host and wired to the web-view message coming from `RightSidebar`.  
+• Ensure types `ApprovalResult`, `ExtensionToWorkflow` and `AbortedError` are exported in public APIs.
+
+## Security / correctness checklist
+
+☑️ No obvious injection vectors (inputs are displayed, not executed, in the webview).  
+⚠️ Potential denial-of-service: infinite wait for approval (see timeout suggestion).  
+⚠️ Race: stream continues while waiting; ensure LLM can handle out-of-order `toolInput` messages.  
+☑️ Prevents duplicate prompts via `handledBlocked` (verify logic with rejection loop).  
+☑️ UI prevents command editing for non-CLI nodes.
 
 ## Recommendations
 
-1. PropertyEditor – re-add `node.id` (or `node`) to `useEffect` dependency array to avoid stale state.  
-2. Test the new 2.5 logo scale on small screens; lower if it obstructs the canvas.  
-3. Grep for `amp` / `ampEditor` to catch any residual identifiers (context keys, telemetry, schema).  
-4. Consider centralising constants for command id & panel id to prevent future drift.  
-5. Verify Marketplace availability of the new extension slug (`nebula-flow`) before publishing.
+1. Make `approvalHandler` optional or audit every call-site.  
+2. Add timeout / abort handling when waiting for user approval.  
+3. Optimise scan of `thread.messages` to avoid per-token O(N²) cost.  
+4. Consider logging non-abort exceptions in the approval flow.  
+5. Verify target runtimes support `findLast`, or polyfill.
+
+Overall the change is well-structured and introduces the feature with minimal surface area. Addressing the points above will improve robustness and performance.

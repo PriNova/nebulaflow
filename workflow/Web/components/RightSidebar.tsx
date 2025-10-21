@@ -560,7 +560,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                                 nodeResults.get(node.id) ||
                                                                 ''
                                                             }
-                                                            readOnly={node.id !== pendingApprovalNodeId}
+                                                            readOnly={
+                                                                !(
+                                                                    node.type === NodeType.CLI &&
+                                                                    node.id === pendingApprovalNodeId
+                                                                )
+                                                            }
                                                             onChange={e =>
                                                                 handleCommandChange(
                                                                     node.id,
@@ -580,41 +585,42 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                     )}
                                                 </div>
 
-                                                {node.type === NodeType.CLI &&
-                                                    node.id === pendingApprovalNodeId && (
-                                                        <div className="tw-flex tw-w-full tw-gap-2 tw-mt-2 tw-justify-center">
-                                                            <Button
-                                                                size="sm"
-                                                                onClick={() =>
-                                                                    onApprove(
-                                                                        node.id,
-                                                                        true,
-                                                                        modifiedCommands.get(node.id)
-                                                                    )
-                                                                }
-                                                                variant="secondary"
-                                                                style={{
-                                                                    backgroundColor:
-                                                                        'var(--vscode-testing-iconPassed)',
-                                                                    color: 'var(--vscode-button-foreground)',
-                                                                }}
-                                                            >
-                                                                Approve
-                                                            </Button>
-                                                            <Button
-                                                                size="sm"
-                                                                onClick={() => onApprove(node.id, false)}
-                                                                variant="secondary"
-                                                                style={{
-                                                                    backgroundColor:
-                                                                        'var(--vscode-charts-red)',
-                                                                    color: 'var(--vscode-button-foreground)',
-                                                                }}
-                                                            >
-                                                                Reject
-                                                            </Button>
-                                                        </div>
-                                                    )}
+                                                {node.id === pendingApprovalNodeId && (
+                                                    <div className="tw-flex tw-w-full tw-gap-2 tw-mt-2 tw-justify-center">
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() =>
+                                                                onApprove(
+                                                                    node.id,
+                                                                    true,
+                                                                    node.type === NodeType.CLI
+                                                                        ? modifiedCommands.get(node.id)
+                                                                        : undefined
+                                                                )
+                                                            }
+                                                            variant="secondary"
+                                                            style={{
+                                                                backgroundColor:
+                                                                    'var(--vscode-testing-iconPassed)',
+                                                                color: 'var(--vscode-button-foreground)',
+                                                            }}
+                                                        >
+                                                            Approve
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() => onApprove(node.id, false)}
+                                                            variant="secondary"
+                                                            style={{
+                                                                backgroundColor:
+                                                                    'var(--vscode-charts-red)',
+                                                                color: 'var(--vscode-button-foreground)',
+                                                            }}
+                                                        >
+                                                            Reject
+                                                        </Button>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </AccordionContent>
