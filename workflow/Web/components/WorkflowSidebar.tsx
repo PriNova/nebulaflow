@@ -1,7 +1,8 @@
 import { CircleStop, Edit, File, Play, Save, Trash2 } from 'lucide-react'
 import type React from 'react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/shadcn/ui/accordion'
+import styles from '../ui/shadcn/ui/accordion.module.css'
 import { Button } from '../ui/shadcn/ui/button'
 import { Input } from '../ui/shadcn/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/shadcn/ui/tooltip'
@@ -68,19 +69,9 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
         }
     }
 
-    const [propertyEditorOpen, setPropertyEditorOpen] = useState<string | undefined>(undefined)
     const [isHelpOpen, setIsHelpOpen] = useState(false)
     const [renamingNode, setRenamingNode] = useState<string | null>(null)
     const [newNodeTitle, setNewNodeTitle] = useState<string>('')
-
-    useEffect(() => {
-        if (selectedNode) {
-            setPropertyEditorOpen('property_editor')
-        }
-        if (!selectedNode) {
-            setPropertyEditorOpen(undefined)
-        }
-    }, [selectedNode])
 
     const handleRenameClick = (nodeTitle: string) => {
         setRenamingNode(nodeTitle)
@@ -383,35 +374,24 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                 )}
             </Accordion>
 
-            <Accordion
-                type="single"
-                value={propertyEditorOpen}
-                onValueChange={setPropertyEditorOpen}
-                collapsible
-            >
-                <div className="tw-my-4 tw-border-t tw-border-border" />
-                <AccordionItem value="property_editor">
-                    <AccordionTrigger className="tw-text-sm">Property Editor</AccordionTrigger>
-                    <AccordionContent>
-                        <div className="tw-p-2">
-                            {selectedNode ? (
-                                <PropertyEditor
-                                    node={selectedNode}
-                                    onUpdate={onNodeUpdate!}
-                                    models={models}
-                                    onSaveCustomNode={onSaveCustomNode}
-                                    nodeError={nodeErrors?.get(selectedNode.id)}
-                                />
-                            ) : (
-                                <p className="tw-text-sm tw-text-muted-foreground tw-mt-2">
-                                    Select a node to edit its properties
-                                </p>
-                            )}
-                        </div>
-                        <div className="tw-my-4 tw-border-t tw-border-border" />
-                    </AccordionContent>
-                </AccordionItem>
-            </Accordion>
+            <div className="tw-my-4 tw-border-t tw-border-border" />
+            <div className={`tw-text-sm ${styles['accordion-trigger']}`}>Property Editor</div>
+            <div className="tw-p-2">
+                {selectedNode ? (
+                    <PropertyEditor
+                        node={selectedNode}
+                        onUpdate={onNodeUpdate!}
+                        models={models}
+                        onSaveCustomNode={onSaveCustomNode}
+                        nodeError={nodeErrors?.get(selectedNode.id)}
+                    />
+                ) : (
+                    <p className="tw-text-sm tw-text-muted-foreground tw-mt-2">
+                        Select a node to edit its properties
+                    </p>
+                )}
+            </div>
+            <div className="tw-my-4 tw-border-t tw-border-border" />
 
             <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
         </div>

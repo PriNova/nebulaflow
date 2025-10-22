@@ -16,7 +16,13 @@
 - Webview app: React + @xyflow/react under `workflow/Web/` via Vite; entry `workflow/Web/workflow.html` + `workflow/Web/index.tsx`.
 - Nodes/graph: `workflow/Web/components/nodes/Nodes.tsx` (NodeType, default workflow, nodeTypes); LLM node UI in `workflow/Web/components/nodes/LLM_Node.tsx`.
 - Webview protocol mirror: `workflow/Web/services/WorkflowProtocol.ts`.
-- Persistence: workflows `.sourcegraph/workflows/*.json`, custom nodes `.sourcegraph/nodes/*.json`.
+- Sidebar: `workflow/Web/components/WorkflowSidebar.tsx` (categories, node palette, property editor); v0.1.4+ Property Editor displays as static header using `accordion.module.css` styling (no collapse/expand toggle, content driven by node selection state).
+- Sidebar Resizing (v0.1.6+): 
+  - Left and right resize handles: 4px thickness (defined in `Flow.tsx` as `HANDLE_THICKNESS = '6px'`); identical styles on both sides
+  - Gap: 8px minimum between handles (`MIN_HANDLE_GAP` in `Flow.tsx`). Gap enforced during drag so handles never overlap
+  - Hooks: `workflow/Web/components/hooks/sidebarResizing.ts` accept options `{ minCenterGap, getCenterWidth }` and clamp using the center pane width captured at drag start
+  - Right sidebar: unbounded growth (`maxWidth` undefined); left sidebar: 600px max (explicit parameter)
+- Persistence: workflows `.nebulaflow/workflows/*.json`, custom nodes `.nebulaflow/nodes/*.json`.
 - Security: blocked CLI prefixes in `workflow/DataAccess/shell.ts` and shell sanitization + abort support.
 
 - TS config: strict; ES2022; CJS for extension; `jsx: react-jsx`; extends `@sourcegraph/tsconfig`. `noUnusedLocals` is currently disabled to avoid breaking the build; enable it once unused locals are cleaned up. Webview builds via Vite React plugin.

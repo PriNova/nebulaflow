@@ -1,13 +1,13 @@
 {
     "name": "nebula-flow",
     "displayName": "NebulaFlow Workflow Editor",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "publisher": "prinova",
     "engines": {
         "vscode": ">=1.90.0"
     },
     "main": "dist/src/extension.js",
-    "activationEvents": ["onCommand:nebulaFlow.openWorkflow"],
+    "activationEvents": [],
     "contributes": {
         "commands": [
             {

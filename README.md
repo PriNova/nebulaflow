@@ -11,6 +11,18 @@ A VS Code extension for visually designing and running developer workflows. Buil
 
 The LLM node now runs via the Amp SDK. The workflow editor is a visual wrapper around the SDK: it builds prompts from upstream node outputs and executes them with the SDK. Builds auto-sync the SDK via a prebuild step; set `AMP_API_KEY` to use the LLM node. To force-link manually: `npm i /home/prinova/CodeProjects/upstreamAmp/sdk`.
 
+## Recent Changes (v0.1.5)
+
+- **Sidebar Resizing Improvements**:
+  - Handle thickness standardized to 4px (left and right resize handles); identical styling on both sides
+  - Right sidebar grows unbounded (`maxWidth` undefined); left sidebar retains a 600px max-width
+  - New center-aware clamp: a minimum 8px gap between handles is enforced during drag using `sidebarResizing.ts` options `{ minCenterGap, getCenterWidth }`
+  - Resize handlers retain cursor styling and proper hit areas
+
+## Previous Changes (v0.1.4)
+
+- **UI/UX Refinement**: Property Editor section in the sidebar now displays as a static header (consistent with category headers) rather than a collapsible accordion. The section always shows the PropertyEditor when a node is selected, or prompts "Select a node to edit its properties" when none is selected. This simplification removes collapsibility while maintaining visual consistency and reduces component re-render pressure.
+
 ## Features
 
 - Visual workflow editor with @xyflow/react
@@ -18,8 +30,8 @@ The LLM node now runs via the Amp SDK. The workflow editor is a visual wrapper a
 - Graph execution with ordered edges, token counting for previews, and abortion support
 - Runtime approvals for CLI nodes (approve/modify commands before run)
 - Workspace persistence:
-  - Workflows: `.sourcegraph/workflows/*.json`
-  - Custom nodes: `.sourcegraph/nodes/*.json`
+- Workflows: `.nebulaflow/workflows/*.json`
+- Custom nodes: `.nebulaflow/nodes/*.json`
 - Security protections:
   - Dangerous CLI prefixes blocked (e.g., `rm`, `sudo`, `chown`, etc.)
   - Command sanitization and abort handling
@@ -141,8 +153,8 @@ Execution flow:
 
 ## Persistence
 
-- Workflows are JSON files saved under `.sourcegraph/workflows/` (versioned `1.x`)
-- Custom nodes are JSON files saved under `.sourcegraph/nodes/`
+- Workflows are JSON files saved under `.nebulaflow/workflows/` (versioned `1.x`)
+- Custom nodes are JSON files saved under `.nebulaflow/nodes/`
 - The extension prompts for save/load locations scoped to the workspace
 
 ## Security

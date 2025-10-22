@@ -6,7 +6,7 @@
             "type": "extensionHost",
             "request": "launch",
             "runtimeExecutable": "${execPath}",
-            "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+            "args": ["--disable-extensions", "--extensionDevelopmentPath=${workspaceFolder}"],
             "preLaunchTask": "dev: start-webview-watch",
             "outFiles": ["${workspaceFolder}/dist/**/*.js"],
             "sourceMaps": true
@@ -16,7 +16,11 @@
             "type": "extensionHost",
             "request": "launch",
             "debugWebWorkerHost": true,
-            "args": ["--extensionDevelopmentPath=${workspaceFolder}", "--extensionDevelopmentKind=web"],
+            "args": [
+                "--disable-extensions",
+                "--extensionDevelopmentPath=${workspaceFolder}",
+                "--extensionDevelopmentKind=web"
+            ],
             "preLaunchTask": "dev: start-webview-watch",
             "outFiles": ["${workspaceFolder}/dist/**/*.js"],
             "sourceMaps": true

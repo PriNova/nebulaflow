@@ -4,8 +4,12 @@ import type { WorkflowPayloadDTO } from '../Core/Contracts/Protocol'
 import { isWorkflowPayloadDTO } from '../Core/Contracts/guards'
 import { NodeType, type WorkflowNodes } from '../Core/models'
 
-const WORKFLOWS_DIR = '.sourcegraph/workflows'
-const NODES_DIR = '.sourcegraph/nodes'
+const PERSISTENCE_ROOT = '.nebulaflow'
+const LEGACY_PERSISTENCE_ROOT = '.sourcegraph'
+const WORKFLOWS_DIR = `${PERSISTENCE_ROOT}/workflows`
+const NODES_DIR = `${PERSISTENCE_ROOT}/nodes`
+const LEGACY_WORKFLOWS_DIR = `${LEGACY_PERSISTENCE_ROOT}/workflows`
+const LEGACY_NODES_DIR = `${LEGACY_PERSISTENCE_ROOT}/nodes`
 
 function isValidPosition(v: any): v is { x: number; y: number } {
     return v && typeof v.x === 'number' && typeof v.y === 'number'
@@ -117,10 +121,25 @@ export async function saveWorkflow(
 }
 
 export async function loadWorkflow(): Promise<WorkflowPayloadDTO | null> {
-    const workspaceRootFsPath = vscode.workspace.workspaceFolders?.[0]?.uri?.path
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri
+    const workspaceRootFsPath = workspaceRoot?.path
     const defaultFilePath = workspaceRootFsPath
-        ? vscode.Uri.joinPath(vscode.Uri.file(workspaceRootFsPath), WORKFLOWS_DIR)
+        ? vscode.Uri.joinPath(workspaceRoot, WORKFLOWS_DIR)
         : vscode.Uri.file('workflow.json')
+
+    // Migrate from legacy if new dir is empty
+    if (workspaceRoot) {
+        try {
+            const workflowsDirUri = vscode.Uri.joinPath(workspaceRoot, WORKFLOWS_DIR)
+            let filesInNew: [string, vscode.FileType][] = []
+            try {
+                filesInNew = await vscode.workspace.fs.readDirectory(workflowsDirUri)
+            } catch {}
+            if (filesInNew.length === 0) {
+                await migrateFromLegacy(workspaceRoot, LEGACY_WORKFLOWS_DIR, WORKFLOWS_DIR)
+            }
+        } catch {}
+    }
 
     const result = await vscode.window.showOpenDialog({
         defaultUri: defaultFilePath,
@@ -167,6 +186,15 @@ export async function getCustomNodes(): Promise<WorkflowNodes[]> {
         try {
             await vscode.workspace.fs.createDirectory(nodesDirUri)
         } catch {}
+
+        // Migrate from legacy if new dir is empty
+        try {
+            const filesInNew = await vscode.workspace.fs.readDirectory(nodesDirUri)
+            if (filesInNew.length === 0) {
+                await migrateFromLegacy(workspaceRoot, LEGACY_NODES_DIR, NODES_DIR)
+            }
+        } catch {}
+
         const files = await vscode.workspace.fs.readDirectory(nodesDirUri)
         const nodes: WorkflowNodes[] = []
         for (const [filename, fileType] of files) {
@@ -305,6 +333,36 @@ export async function renameCustomNode(oldNodeTitle: string, newNodeTitle: strin
     } catch (error: any) {
         vscode.window.showErrorMessage(`Failed to rename custom node: ${error?.message}`)
     }
+}
+
+async function migrateFromLegacy(
+    workspaceRoot: vscode.Uri,
+    legacyPath: string,
+    newPath: string
+): Promise<boolean> {
+    try {
+        const legacyUri = vscode.Uri.joinPath(workspaceRoot, legacyPath)
+        const newUri = vscode.Uri.joinPath(workspaceRoot, newPath)
+        if (await fileExists(legacyUri)) {
+            try {
+                await vscode.workspace.fs.createDirectory(
+                    vscode.Uri.joinPath(workspaceRoot, PERSISTENCE_ROOT)
+                )
+            } catch {}
+            const files = await vscode.workspace.fs.readDirectory(legacyUri)
+            for (const [filename] of files) {
+                const legacyFileUri = vscode.Uri.joinPath(legacyUri, filename)
+                const newFileUri = vscode.Uri.joinPath(newUri, filename)
+                const content = await vscode.workspace.fs.readFile(legacyFileUri)
+                try {
+                    await vscode.workspace.fs.createDirectory(newUri)
+                } catch {}
+                await vscode.workspace.fs.writeFile(newFileUri, content)
+            }
+            return true
+        }
+    } catch {}
+    return false
 }
 
 function sanitizeFilename(name: string): string {

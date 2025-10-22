@@ -21,6 +21,9 @@ import { useWorkflowExecution } from './hooks/workflowExecution'
 import { type WorkflowNodes, defaultWorkflow, nodeTypes } from './nodes/Nodes'
 import { isValidEdgeConnection } from './utils/edgeValidation'
 
+const HANDLE_THICKNESS = '6px'
+const MIN_HANDLE_GAP = 8 // px gap to prevent handle overlap
+
 const pruneEdgesForMissingNodes = (eds: Edge[], nodeList: WorkflowNodes[]): Edge[] => {
     const nodeIds = new Set(nodeList.map(n => n.id))
     return eds.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target))
@@ -118,8 +121,16 @@ export const Flow: React.FC<{
         notify
     )
 
-    const { sidebarWidth, handleMouseDown } = useSidebarResize()
-    const { rightSidebarWidth, handleMouseDown: handleRightSidebarMouseDown } = useRightSidebarResize()
+    const { sidebarWidth, handleMouseDown } = useSidebarResize(256, 200, 600, {
+        minCenterGap: MIN_HANDLE_GAP,
+        getCenterWidth: () => centerRef.current?.clientWidth ?? 0,
+    })
+    const { rightSidebarWidth, handleMouseDown: handleRightSidebarMouseDown } = useRightSidebarResize(
+        256,
+        200,
+        undefined,
+        { minCenterGap: MIN_HANDLE_GAP, getCenterWidth: () => centerRef.current?.clientWidth ?? 0 }
+    )
     const { onNodeClick, handleBackgroundClick, handleBackgroundKeyDown } = useInteractionHandling(
         setSelectedNodes,
         setActiveNode
@@ -172,7 +183,7 @@ export const Flow: React.FC<{
         <div className="tw-flex tw-h-screen tw-w-full tw-border-2 tw-border-solid tw-border-[var(--vscode-panel-border)] tw-text-[14px] tw-overflow-hidden">
             <div
                 style={{ width: sidebarWidth + 'px' }}
-                className="tw-flex-shrink-0 tw-border-r tw-border-solid tw-border-[var(--vscode-panel-border)] tw-bg-[var(--vscode-sideBar-background)] tw-overflow-y-auto tw-h-full"
+                className="tw-flex-shrink-0 tw-bg-[var(--vscode-sideBar-background)] tw-overflow-y-auto tw-h-full"
             >
                 <WorkflowSidebar
                     onNodeAdd={onNodeAdd}
@@ -193,7 +204,8 @@ export const Flow: React.FC<{
                 />
             </div>
             <div
-                className="tw-w-2 hover:tw-w-2 tw-bg-[var(--vscode-panel-border)] hover:tw-bg-[var(--vscode-textLink-activeForeground)] tw-cursor-ew-resize"
+                style={{ width: HANDLE_THICKNESS }}
+                className="hover:tw-bg-[var(--vscode-textLink-activeForeground)] tw-bg-[var(--vscode-panel-border)] tw-cursor-ew-resize tw-select-none"
                 onMouseDown={handleMouseDown}
             />
             <div
@@ -206,7 +218,7 @@ export const Flow: React.FC<{
                 <div className="tw-flex tw-flex-1 tw-h-full">
                     <div
                         ref={centerRef}
-                        className="tw-relative tw-flex-1 tw-bg-[var(--vscode-editor-background)] tw-h-full"
+                        className="tw-relative tw-flex-1 tw-bg-[var(--vscode-editor-background)] tw-h-full tw-min-w-0"
                     >
                         {banner && (
                             <div
@@ -268,7 +280,8 @@ export const Flow: React.FC<{
                         </div>
                     </div>
                     <div
-                        className="tw-w-2 hover:tw-w-2 tw-bg-[var(--vscode-panel-border)] hover:tw-bg-[var(--vscode-textLink-activeForeground)] tw-cursor-ew-resize tw-select-none tw-transition-colors tw-transition-width tw-shadow-sm"
+                        style={{ width: HANDLE_THICKNESS }}
+                        className="hover:tw-bg-[var(--vscode-textLink-activeForeground)] tw-bg-[var(--vscode-panel-border)] tw-cursor-ew-resize tw-select-none"
                         onMouseDown={handleRightSidebarMouseDown}
                     />
                     <div
