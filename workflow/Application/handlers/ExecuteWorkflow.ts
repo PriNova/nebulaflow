@@ -9,10 +9,15 @@ import {
     type WorkflowNode,
     type WorkflowNodes,
 } from '../../Core/models'
+import { isToolDisabled } from '../../Core/toolUtils'
 import { expandHome, execute as shellExecute } from '../../DataAccess/shell'
 import { safePost } from '../messaging/safePost'
 
 const DEFAULT_LLM_TIMEOUT_MS = 300_000
+
+function isBashDisabled(disabledTools: string[] | undefined): boolean {
+    return isToolDisabled('Bash', disabledTools)
+}
 
 interface IndexedEdges {
     bySource: Map<string, Edge[]>
@@ -382,13 +387,18 @@ async function executeLLMNode(
 
     const disabledTools: string[] | undefined = (node as any)?.data?.disabledTools
     const dangerouslyAllowAll: boolean | undefined = (node as any)?.data?.dangerouslyAllowAll
+    const bashDisabled = isBashDisabled(disabledTools)
+    const shouldApplyAllowAll = dangerouslyAllowAll && !bashDisabled
+    if (bashDisabled && dangerouslyAllowAll) {
+        console.debug('[ExecuteWorkflow] Bash is disabled; ignoring dangerouslyAllowAll flag for safety')
+    }
     const amp = await createAmp({
         apiKey,
         workspaceRoots,
         settings: {
             'internal.primaryModel': selectedKey ?? defaultModelKey,
             ...(disabledTools && disabledTools.length > 0 ? { 'tools.disable': disabledTools } : {}),
-            ...(dangerouslyAllowAll
+            ...(shouldApplyAllowAll
                 ? {
                       'amp.dangerouslyAllowAll': true,
                       'amp.experimental.commandApproval.enabled': false,
@@ -445,9 +455,9 @@ async function executeLLMNode(
                             if (handledBlocked.has(b.toolUseID)) continue
                             handledBlocked.add(b.toolUseID)
 
-                            // Auto-approve command execution when dangerouslyAllowAll is enabled
+                            // Auto-approve command execution when dangerouslyAllowAll is enabled and Bash is available
                             if (
-                                dangerouslyAllowAll &&
+                                shouldApplyAllowAll &&
                                 Array.isArray(b.toAllow) &&
                                 b.toAllow.length > 0
                             ) {

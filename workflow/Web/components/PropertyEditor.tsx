@@ -1,7 +1,7 @@
 import { Save } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getAllToolNames } from '../services/toolNames'
+import { getAllToolNames, isToolEnabled } from '../services/toolNames'
 import { Button } from '../ui/shadcn/ui/button'
 import { Checkbox } from '../ui/shadcn/ui/checkbox'
 import {
@@ -271,21 +271,38 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                             </Popover>
                         </div>
                     )}
-                    <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
-                        <Checkbox
-                            id={`llm-dangerously-allow-all-${node.id}`}
-                            checked={(node as LLMNode).data.dangerouslyAllowAll ?? false}
-                            onCheckedChange={checked =>
-                                onUpdate(node.id, { dangerouslyAllowAll: Boolean(checked) })
-                            }
-                        />
-                        <Label
-                            htmlFor={`llm-dangerously-allow-all-${node.id}`}
-                            className="tw-cursor-pointer tw-font-normal"
-                        >
-                            Dangerously allow all commands
-                        </Label>
-                    </div>
+                    {(() => {
+                        const disabled = ((node as LLMNode).data.disabledTools ?? []) as string[]
+                        const isBashAvailable = isToolEnabled('Bash', disabled)
+                        return (
+                            <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
+                                <Checkbox
+                                    id={`llm-dangerously-allow-all-${node.id}`}
+                                    checked={(node as LLMNode).data.dangerouslyAllowAll ?? false}
+                                    disabled={!isBashAvailable}
+                                    onCheckedChange={checked => {
+                                        if (isBashAvailable) {
+                                            onUpdate(node.id, { dangerouslyAllowAll: Boolean(checked) })
+                                        }
+                                    }}
+                                />
+                                <Label
+                                    htmlFor={`llm-dangerously-allow-all-${node.id}`}
+                                    className={`tw-cursor-pointer tw-font-normal ${
+                                        !isBashAvailable ? 'tw-line-through tw-opacity-60' : ''
+                                    }`}
+                                    title={
+                                        !isBashAvailable
+                                            ? 'Requires Bash tool. Enable Bash under Tools to use this.'
+                                            : ''
+                                    }
+                                    aria-disabled={!isBashAvailable}
+                                >
+                                    Dangerously allow all commands
+                                </Label>
+                            </div>
+                        )
+                    })()}
                     <div className="tw-mt-2">
                         <Label>Tools</Label>
 
@@ -297,7 +314,17 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                                     const next = new Set(disabled)
                                     if (enabled) next.delete(tool)
                                     else next.add(tool)
-                                    onUpdate(node.id, { disabledTools: Array.from(next) })
+                                    const updates: Partial<(typeof node)['data']> = {
+                                        disabledTools: Array.from(next),
+                                    }
+                                    if (
+                                        tool === 'Bash' &&
+                                        !enabled &&
+                                        ((node as LLMNode).data.dangerouslyAllowAll ?? false)
+                                    ) {
+                                        updates.dangerouslyAllowAll = false
+                                    }
+                                    onUpdate(node.id, updates)
                                 }
                                 return toolNames.map(tool => {
                                     const isDisabled = disabled.includes(tool)

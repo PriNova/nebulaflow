@@ -80,3 +80,9 @@ export function resolveToolName(nameOrAlias: string): string | undefined {
     if (officialNames.includes(key)) return key
     return TOOL_NAME_ALIASES[key]
 }
+
+export function isToolEnabled(toolName: string, disabledTools: string[] = []): boolean {
+    const resolved = resolveToolName(toolName)
+    if (!resolved) return false
+    return !disabledTools.includes(resolved)
+}

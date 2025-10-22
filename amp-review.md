@@ -1,128 +1,96 @@
 ## High-level summary
-This change set introduces “Run / Resume from here” functionality for a workflow-execution feature.  
-Major themes:
+This patch tightens the safety guarantees around the “Dangerously allow all commands” flag in the workflow LLM node:
 
-* Back-end: `executeWorkflow` can now be called with an optional `resume` object that
-  * specifies the node ID to start from (`fromNodeId`)
-  * optionally injects (“seed”) output values that were already produced earlier.
-* Extension host: `activate` now forwards the `resume` payload that arrives from the web-view.
-* Web-view:
-  * Globally dispatches / listens to a `nebula-run-from-here` custom event.
-  * All node React components now render a small play button; clicking it fires the event.
-  * `RightSidebar` also contains a “Run from here” button per node.
-  * `useWorkflowExecution` handles new `onResume` logic without clearing prior results.
-* Minor UI adjustments (title bars all become flex rows).
-* Type surface changes: `BaseNodeProps` now always contains `id`.
+1.	Backend (ExecuteWorkflow.ts)  
+	•	Introduces a helper that detects whether the **Bash** tool is disabled.  
+	•	Ignores/strips the `dangerouslyAllowAll` flag when Bash is not available, adds a debug log, and only auto-approves commands when both conditions (flag + Bash enabled) are met.
+
+2.	Frontend (PropertyEditor.tsx)  
+	•	UI disables, strikes through, and tool-tips the “Dangerously allow all commands” checkbox when Bash is disabled.  
+	•	Automatically resets `dangerouslyAllowAll` to `false` if the user disables Bash.
+
+3.	Tool helper (toolNames.ts)  
+	•	New `isToolEnabled()` utility.
+
+Overall, the change closes a security foot-gun (enabling unrestricted command execution without an execution tool present) and brings UI/UX in line with backend enforcement.
 
 ## Tour of changes
 Start with `workflow/Application/handlers/ExecuteWorkflow.ts`.  
-That file contains the execution-engine changes (new parameters, seeding, node-skipping).  
-Understanding that logic makes the remaining front-end plumbing easy to follow.
+It contains the authoritative logic that now conditions the “allow all” flow on Bash availability; understanding this explains every other modification (UI updates, helper utilities, etc.).
 
 ## File level review
 
 ### `workflow/Application/handlers/ExecuteWorkflow.ts`
-
 Changes
-* Function signature extended with `resume?: { fromNodeId: string; seeds?: { outputs?: Record<string, string> } }`.
-* Seeds are written into `context.nodeOutputs` and, when relevant, `variableValues` / `accumulatorValues`.
-* A flag `resumeStarted` skips all nodes that appear before `fromNodeId` in the already topologically-sorted list.
+•	Line 14-17: Added `isBashDisabled()` helper.  
+•	Lines 386-397:  
+	–	Derives `bashDisabled` and `shouldApplyAllowAll`.  
+	–	Logs a debug message if user tries `dangerouslyAllowAll` while Bash is disabled.  
+•	Lines 401-411: Passes `shouldApplyAllowAll` (not the raw flag) into AMP settings.  
+•	Lines 454-458: Re-uses `shouldApplyAllowAll` in the command-auto-approval block.
 
 Review
-* ✅ Straight-forward implementation, minimal surface area.
-* ⚠️ Type narrowing: `seeds.outputs` is declared as `Record<string, string>` but `nodeOutputs` previously held `unknown | any`.  
-  – In practice most outputs are JSON serialisable, not guaranteed to be strings. Consider `Record<string, unknown>`.
-* ⚠️ `context.ifelseSkipPaths` is populated **only** while evaluating the branching nodes that you now potentially skip.  
-  If the first resumed node is inside an inactive path, the old info is lost and that node still executes.  
-  You may want to recompute skip state, or forbid resuming inside a path that was disabled by a skipped `IF_ELSE`.
-* ⚠️ No validation that `fromNodeId` exists inside `sortedNodes`; silently runs whole workflow if it does not.
-* ✅ Early exit (`resumeStarted = !resume?.fromNodeId`) keeps normal behaviour unchanged.
-* Minor – seeding loop sets `context.accumulatorValues?.set(...)` even if `context.accumulatorValues` is `undefined`; the optional chaining prevents a crash but indicates the map may be uninitialised. Consider initialising the maps eagerly.
+1.	Correctness & safety  
+	✓ Logic guarantees we never set the “allow all” setting when Bash is disabled—good.  
+	✓ Debug message helps observability.
 
-### `workflow/Application/register.ts`
+2.	Edge cases  
+	• `isBashDisabled()` naïvely checks `.includes('Bash')`. If the user disables Bash via an alias (e.g. `"bash"`, `"Shell"`), the helper will miss it even though the backend will still block the tool. Prefer:
+	```ts
+	import { resolveToolName } from '.../toolNames'
+	function isBashDisabled(disabledTools: string[] | undefined): boolean {
+	    const resolved = resolveToolName('Bash')
+	    return (disabledTools ?? []).some(d => resolveToolName(d) === resolved)
+	}
+	```
+	• Consider `disabledTools` containing mixed-case values—current check is case-sensitive.
 
+3.	Performance: negligible.
+
+4.	Security: Improves posture; no new risks introduced.
+
+### `workflow/Web/components/PropertyEditor.tsx`
 Changes
-* Reads `resume` from inbound message and forwards it to `executeWorkflow`.
+•	Imports `isToolEnabled`.  
+•	Wraps the “Dangerously allow all commands” checkbox in an IIFE that:  
+	–	Disables the checkbox when Bash is not available.  
+	–	Strikes through label & adds tooltip.  
+•	In tool list toggle handler, if the user disables Bash it automatically clears `dangerouslyAllowAll`.
 
 Review
-* ✅ Keeps backwards compatibility; old messages without `resume` work.
+1.	UX  
+	✓ State of checkbox now matches backend capability; reduces user confusion.  
+	✓ Tooltip is a nice accessibility touch.
 
-### `workflow/Web/components/hooks/workflowExecution.ts`
+2.	Correctness  
+	• When Bash is re-enabled, `dangerouslyAllowAll` remains `false`; user must manually re-enable it—sensible default.
 
+3.	Performance  
+	• Inline IIFE re-creates logic each render; not problematic but could be a small `useMemo`.
+
+4.	Type safety  
+	✓ Uses `Partial<(typeof node)['data']>`; good.  
+	• `disabledTools` default should be `[]` to avoid `undefined` handling in multiple places; small nit.
+
+5.	Edge cases  
+	• Checkbox `disabled` prop prevents user interaction, but `onCheckedChange` guard (`if (isBashAvailable)`) is still advisable—already present.
+
+### `workflow/Web/services/toolNames.ts`
 Changes
-* Adds `onResume` that:
-  * Creates an `AbortController`.
-  * Does **not** clear existing nodeResults (good – previous results are still shown).
-  * Sends `execute_workflow` with `resume` payload.
+•	Adds `isToolEnabled()` which resolves aliases then checks absence in `disabledTools`.
 
 Review
-* ✅ Correctly mirrors new native signature.
-* ⚠️ `seedsOutputs` typed as `Record<string,string>` (same string-only caveat).
+✓ Simple, correct, and already consumed by UI.
 
-### `workflow/Web/components/Flow.tsx`
+Minor suggestion
+• Export `resolveToolName` & `isToolEnabled` from same module—already done.
 
-Changes
-* Accepts and propagates new `onResume` prop.
-* In a `useEffect`, listens for `nebula-run-from-here` and calls `onResume`.
-* When sidebar button is used, builds the same `outputs` map and calls `onResume`.
+## Recommendations
+1.	Alias handling: Replace the raw `.includes('Bash')` comparison in backend with alias-aware logic; otherwise UI (which is alias-aware) and backend can diverge.  
+2.	Case-insensitive checks for tool names across the codebase.  
+3.	Optional: memoise `isBashAvailable` calculation in `PropertyEditor` (`useMemo`).  
+4.	Add unit tests for:
+	• `isBashDisabled` with aliases.  
+	• Interaction: Disabling Bash auto-clears `dangerouslyAllowAll`.
 
-Review
-* ✅ Handles clean-up of event listener.
-* ⚠️ `nodeResults` key filtering is `nodes.find(n => n.id === k)` on every iteration – `Set` lookup or `nodeIds.has(k)` would be O(1).
-* Possible double messaging: `useEffect` and inline `onRunFromHere` both replicate the same logic.
-
-### `workflow/Web/components/RightSidebar.tsx`
-
-Changes
-* Renders per-node play button (`<Play>` icon) that triggers `onRunFromHere`.
-* Layout tweaks (flex row, margin).
-
-Review
-* ✅ Blocks propagation (`e.stopPropagation()`) to avoid accordion toggle.
-* 🚨 Accessibility: icon button without aria-label (only `title`). Add `aria-label="Run from here"`.
-
-### All `workflow/Web/components/nodes/*_Node.tsx` (Accumulator, CLI, IfElse, LLM, LoopStart/End, Text, Variable)
-
-Changes
-* Signature switched to `({ id, data, selected })`.
-* Title bar changed to flex row and play button added (same dispatch logic).
-
-Review
-* ✅ XYFlow passes `id` automatically so callers remain type-correct.
-* 🚨 Every node duplicates the exact same play-button snippet. Extracting to a small component would reduce bundle size and avoid future drift.
-* ⚠️ `variant="ghostRoundedIcon"` – ensure this variant exists in `Button` or compilation will fail.
-* ⚠️ No `disabled` prop – user can click play while execution is ongoing (contrary to sidebar button). Propagate `executingNodeId` to nodes or use global state to disable.
-
-### `workflow/Web/components/nodes/Nodes.tsx`
-
-Changes
-* `BaseNodeProps` now includes `id`.
-
-Review
-* ✅ Compile-time guarantee that future nodes remember to accept the id.
-
-### `workflow/Web/components/Preview_Node.tsx`
-
-Minor layout change only; no play button (preview nodes are intentionally non-runnable).
-
-### Styling / UI consistency
-
-All “title bars” now remove the hard-coded gap (`tw-gap-2`) and use uniform margin `tw-mb-1`. That keeps height stable when the play button is present.
-
-## Security considerations
-No user‐supplied input reaches shell / network in these changes.  
-Only potential issue: large `seeds.outputs` object could grow memory but not worse than original `nodeOutputs`. Safe.
-
-## Overall assessment
-Feature is well integrated end-to-end, but there are correctness edge cases and opportunities for cleanup.
-
-Recommended follow-ups
-1. Re-evaluate `ifelseSkipPaths` behaviour when resuming.
-2. Allow non-string outputs in `seeds.outputs`, or at least document stringification expectations.
-3. Deduplicate play-button code and ensure consistent disable state.
-4. Add validation and error handling when `fromNodeId` is unknown.
-5. Add unit tests for:
-   * Resume starting at a normal node.
-   * Resume inside inactive IF-ELSE branch.
-   * Seeded variable/accumulator values.
-   * Resuming after abort.
+Overall, the patch is well-structured, fixes a real security hole, and keeps UI in sync with backend rules.
