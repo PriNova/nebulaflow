@@ -111,57 +111,64 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
 
     return (
         <div className="tw-w-full tw-border-r tw-border-border tw-h-full tw-bg-sidebar-background tw-p-4">
-            <div className="tw-flex tw-flex-col tw-gap-1 tw-mb-1">
-                <div className="tw-flex tw-flex-row tw-gap-1">
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button variant="outline" size="sm" className="tw-flex-1" onClick={onLoad}>
-                                <File size={18} />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Open Workflow</TooltipContent>
-                    </Tooltip>
+            <div className="tw-sticky tw-top-0 tw-z-10 tw-bg-sidebar-background tw-pb-4 tw-mb-2 tw-border-b tw-border-border">
+                <div className="tw-flex tw-flex-col tw-gap-1">
+                    <div className="tw-flex tw-flex-row tw-gap-1">
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="tw-flex-1"
+                                    onClick={onLoad}
+                                >
+                                    <File size={18} />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Open Workflow</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="tw-flex-1"
+                                    onClick={handleSave}
+                                >
+                                    <Save size={18} />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Save Workflow</TooltipContent>
+                        </Tooltip>
+                    </div>
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Button
                                 variant="outline"
                                 size="sm"
                                 className="tw-flex-1"
-                                onClick={handleSave}
+                                onClick={isExecuting ? onAbort : onExecute}
                             >
-                                <Save size={18} />
+                                {isExecuting ? <CircleStop size={18} /> : <Play size={18} />}
                             </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Save Workflow</TooltipContent>
+                        <TooltipContent>
+                            {isExecuting ? 'Stop Execution' : 'Start Execution'}
+                        </TooltipContent>
                     </Tooltip>
+                    <Button variant="outline" size="sm" className="tw-w-full" onClick={onClear}>
+                        Clear Workflow
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="tw-w-full"
+                        onClick={() => setIsHelpOpen(true)}
+                    >
+                        Show Help
+                    </Button>
                 </div>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="tw-flex-1"
-                            onClick={isExecuting ? onAbort : onExecute}
-                        >
-                            {isExecuting ? <CircleStop size={18} /> : <Play size={18} />}
-                        </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{isExecuting ? 'Stop Execution' : 'Start Execution'}</TooltipContent>
-                </Tooltip>
-                <Button variant="outline" size="sm" className="tw-w-full" onClick={onClear}>
-                    Clear Workflow
-                </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="tw-w-full"
-                    onClick={() => setIsHelpOpen(true)}
-                >
-                    Show Help
-                </Button>
             </div>
-
-            <div className="tw-my-4 tw-border-t tw-border-border" />
 
             <Accordion type="single" collapsible>
                 <AccordionItem value="cli">
