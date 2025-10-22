@@ -18,6 +18,7 @@ export const useWorkflowExecution = (
     const [interruptedNodeId, setInterruptedNodeId] = useState<string | null>(null)
     const [nodeResults, setNodeResults] = useState<Map<string, string>>(new Map())
     const [nodeAssistantContent, setNodeAssistantContent] = useState<Map<string, any[]>>(new Map())
+    const [executionRunId, setExecutionRunId] = useState(0)
 
     const resetExecutionState = useCallback(() => {
         setNodes([])
@@ -57,6 +58,8 @@ export const useWorkflowExecution = (
         setNodes(updatedNodes)
         setNodeResults(new Map())
         setNodeErrors(new Map())
+        setNodeAssistantContent(new Map())
+        setExecutionRunId(prev => prev + 1)
         const controller = new AbortController()
         setAbortController(controller)
         setIsExecuting(true)
@@ -95,6 +98,7 @@ export const useWorkflowExecution = (
         nodeResults,
         interruptedNodeId,
         nodeAssistantContent,
+        executionRunId,
         onExecute,
         onResume,
         onAbort,

@@ -17,6 +17,7 @@ interface RightSidebarProps {
     onApprove: (nodeId: string, approved: boolean, modifiedCommand?: string) => void
     interruptedNodeId: string | null
     nodeAssistantContent: Map<string, AssistantContentItem[]>
+    executionRunId: number
     onRunFromHere?: (nodeId: string) => void
 }
 
@@ -28,6 +29,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     onApprove,
     interruptedNodeId,
     nodeAssistantContent,
+    executionRunId,
     onRunFromHere,
 }) => {
     const filteredByActiveNodes = useMemo(
@@ -375,6 +377,16 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             setModifiedCommands(new Map())
         }
     }, [pendingApprovalNodeId])
+
+    useEffect(() => {
+        if (executionRunId > 0) {
+            setOpenItemId(undefined)
+            setModifiedCommands(new Map())
+            setExpandedJsonItems(new Set())
+            setPausedAutoScroll(new Set())
+            assistantScrollRefs.current.clear()
+        }
+    }, [executionRunId])
 
     // Auto-scroll: on assistant content updates or when user resumes bottom, scroll to bottom for nodes not paused
     const assistantItemsTick = (() => {

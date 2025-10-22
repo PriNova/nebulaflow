@@ -84,6 +84,7 @@ export const Flow: React.FC<{
         nodeErrors,
         interruptedNodeId,
         nodeAssistantContent,
+        executionRunId,
         onExecute,
         onResume,
         onAbort,
@@ -317,6 +318,7 @@ export const Flow: React.FC<{
                             onApprove={handleNodeApproval}
                             interruptedNodeId={interruptedNodeId}
                             nodeAssistantContent={nodeAssistantContent}
+                            executionRunId={executionRunId}
                             onRunFromHere={(nodeId: string) => {
                                 const outputs: Record<string, string> = {}
                                 const nodeIdSet = new Set(nodes.map(n => n.id))

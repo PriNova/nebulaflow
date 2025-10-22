@@ -1,79 +1,72 @@
 ## High-level summary
-The patch extracts the “sticky” toolbar that lived inside `WorkflowSidebar` into its own component (`SidebarActionsBar`).  
-Key structural changes:
+This patch introduces a monotonic `executionRunId` that is bumped every time a **new workflow execution** starts.  
+The id is threaded
 
-1. New file `SidebarActionsBar.tsx` – self-contained action bar with Save / Load / Execute-Stop / Clear / Help buttons and its own Help modal state.
-2. `Flow.tsx` now renders the left panel as a **two-row flex column**:  
-   • fixed `SidebarActionsBar` (no scrolling)  
-   • scrollable remainder that hosts `WorkflowSidebar`.
-3. All header-related props and markup were deleted from `WorkflowSidebar`.
-4. Docs updated: CHANGELOG and future-enhancements.
+1. From the custom hook `useWorkflowExecution`
+2. To the top–level `Flow` component
+3. Down to `RightSidebar`.
 
-No back-end logic changed; only UI layout and prop plumbing are affected.
+`RightSidebar` listens to the id and resets its local UI/scroll state when it detects a new run, guaranteeing that artefacts from a previous run (open accordion items, modified commands, paused scrolling, etc.) do not bleed into the next run.
+
+No functional behaviour besides this state-reset is changed.
 
 ## Tour of changes
-Start with `Flow.tsx`. It shows how the new bar is wired and reveals the new flex layout. Once that is clear, reviewing `SidebarActionsBar.tsx` (new behaviour) and the slimming of `WorkflowSidebar.tsx` becomes straightforward.
+Start in `workflowExecution.ts`.  
+That file defines and mutates `executionRunId`, so understanding it first clarifies every other change (new prop plumb-throughs and the reset logic).
 
 ## File level review
 
-### `workflow/Web/components/Flow.tsx`
+### `workflow/Web/components/hooks/workflowExecution.ts`
+
 Changes
-• Replaced single scroll container (`overflow-y-auto`) with `tw-flex tw-flex-col` parent.  
-• Inserted `<SidebarActionsBar … />` before the scrollable `<div>` that wraps `WorkflowSidebar`.
+• `const [executionRunId, setExecutionRunId] = useState(0)` – new state slot.  
+• In `resetExecutionState` it:
+  – Clears existing assistant content (previously leaked across runs)  
+  – `setExecutionRunId(prev => prev + 1)` increments the run id.
+
+Returned object now contains `executionRunId`.
 
 Review
-✔️ Correct flex technique: `tw-flex-col` + inner `tw-flex-1 tw-overflow-y-auto tw-min-h-0` allows scrolling without affecting the bar.  
-✔️ Prop routing matches new component interface.
+✔️ Correct place to bump the id; ensures monotonic increase, so React prop comparisons work.  
+✔️ Clearing `nodeAssistantContent` avoids leftover messages – good.  
 
-⚠️  Edge case: `sidebarWidth` is still the width of the whole column, not only the scroll section. That is intended but confirm that border styling of the bar (`tw-border-b`) aligns with the panel border to avoid double lines.
+Potential improvements / minor issues
+• Race condition unlikely, but if `onExecute` can be called in rapid succession, two increments may coalesce (React batches). Not harmful, but a dedicated `Date.now()` or UUID would also work.  
+• Initial value `0` is relied on by `RightSidebar` to skip the first mount reset. Consider adding a comment.  
 
-### `workflow/Web/components/SidebarActionsBar.tsx`
-New component.
+Security: N/A.
 
-Correctness
-• Accepts *required* handlers (were optional before). Only `Flow.tsx` currently calls it, so compilation succeeds, but any other caller must now pass all five callbacks.  
-• Tooltip + `aria-label` added for all icon-only buttons – accessibility ✓.  
-• Uses `useState` for `isHelpOpen`; modal unmounts correctly on close.
+### `workflow/Web/components/Flow.tsx`
 
-Potential improvements / observations
-1. Re-render on every typing in workflow is unaffected (no heavy state here).  
-2. Modal is instantiated on every render; consider lazy mount (not urgent).  
-3. Clear button tooltip content is “Clear” but sidebar still says “Clear Workflow” elsewhere – unify wording.  
-4. Variant/size strings: they match shadcn, but consider elevating repeat constants.
+Changes
+• Accepts `executionRunId` from hook and passes it to `RightSidebar`.  
+• Prop list updated in two places.
 
-Security
-• No user input; no concerns.
+Review
+✔️ Simple plumb-through, no functional risk.  
+⚠️ Type safety: If this codebase uses strict TS props elsewhere, make sure `Flow`’s prop interface is updated in *all* call sites. (Appears OK in this diff.)  
+• Tests / Storybook stories that mount `Flow` without the hook will now have to supply `executionRunId`. Consider marking the prop optional or providing a default when used outside the hook context.
 
-### `workflow/Web/components/WorkflowSidebar.tsx`
-Removed toolbar, props, imports, and helper state.
+### `workflow/Web/components/RightSidebar.tsx`
 
-Correctness
-✔️ No remaining references to deleted props or `handleSave`.  
-✔️ `useState` kept because still used for node rename flow.
+Changes
+• New prop `executionRunId: number`.  
+• `useEffect` listening to that id; when it changes (>0) it:
+  – resets `openItemId`, `modifiedCommands`, `expandedJsonItems`, `pausedAutoScroll`, and clears `assistantScrollRefs`.
 
-Compilation
-• Component signature changed; all deleted props were optional so callers compile as long as they drop them (done in `Flow.tsx`).
+Review
+✔️ All state containers that should be wiped are included.  
+✔️ `assistantScrollRefs.current.clear()` prevents memory leaks.  
 
-Performance
-• Sticky header removal eradicates nested `position:sticky` edge cases.
+Edge cases / suggestions
+1. Dependency list: the effect only depends on `executionRunId`. That is correct; internal setters are stable.  
+2. Condition `if (executionRunId > 0) { … }`  
+   • Guarantees no reset on first mount, which is intentional.  
+   • If at some point we decide to “run” immediately on first mount, this condition will skip the reset: revisit then.
+3. Because the component’s state is wiped *after* new props arrive, there is a tiny flicker window where old open items may render once. Not noticeable, but if it matters, reset could also be done in a layout effect.  
+4. Consider exporting a small helper to collect all “sidebar resettable state” so the logic stays DRY if more fields appear.
 
-### `CHANGELOG.md`
-Updated entries – fine.
-
-### `future-enhancements.md`
-Moved accessibility items to “Completed Enhancements” – documentation only.
+Security / performance: no concerns.
 
 ## Overall assessment
-A clean refactor that:
-
-• Fixes previous sticky-scroll quirks by letting React Flow handle scroll separation.  
-• Improves accessibility (ARIA labels).  
-• Reduces responsibility of `WorkflowSidebar`.
-
-No functional regressions spotted, but test:
-
-1. Execute/Stop toggle while long sidebar content is scrolled.  
-2. Ensure resize of left panel still lets scroll area grow/shrink (check `min-h-0`).  
-3. Confirm that top border alignment is visually correct on light/dark VS Code themes.
-
-Otherwise, LGTM.
+The change is small, focused, and correct. It removes an observable UI bug where remnants from a previous workflow execution polluted the next one. The plumbing is straightforward and type-safe. Only minor stylistic comments remain.
