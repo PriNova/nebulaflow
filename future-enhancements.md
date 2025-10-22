@@ -4,6 +4,24 @@ Recommended improvements and optimizations for future implementation.
 
 ## Pending Enhancements
 
+### Window Title - Conditional URI in Protocol Message
+- **Goal**: Reduce redundant data transmission when workflow filename is already known to the webview
+- **What**: Only include workflow URI in the `workflow_loaded` protocol message when the file path information is necessary for the webview consumer
+- **Why**: Currently, the URI is always sent even though the webview primarily uses it to trigger title updates via the existing panel title mechanism. Conditional passing reduces message payload and clarifies data flow semantics.
+- **Priority**: P1 (nice-to-have; improves protocol clarity without affecting current functionality)
+
+### Window Title - Extract Title Prefix Constant
+- **Goal**: Improve maintainability and consistency of the NebulaFlow title prefix
+- **What**: Extract the "NebulaFlow" prefix string into a shared constant (e.g., `NEBULA_FLOW_TITLE_PREFIX`) in the register.ts or a dedicated constants module
+- **Why**: Centralizes the title prefix definition, reducing the risk of inconsistent text across save/load/create operations and making future branding changes easier.
+- **Priority**: P2 (code quality; improves maintainability for future changes)
+
+### Window Title - External File Rename Handling
+- **Goal**: Maintain accurate window titles when workflows are renamed or moved outside the editor
+- **What**: Detect when a loaded workflow file has been renamed or moved externally, and either update the title accordingly or prompt the user to re-save
+- **Why**: If a user renames a workflow file outside the editor, the title would become stale, potentially causing confusion when managing multiple files.
+- **Priority**: P2 (optional enhancement; edge case handling for better user experience)
+
 ### Right Sidebar State Reset - Optional `executionRunId` Prop
 - **Goal**: Improve ergonomics for `Flow` and `RightSidebar` components when used outside the `useWorkflowExecution` hook (e.g., tests, stories)
 - **What**: Make `executionRunId` prop optional in `Flow` and `RightSidebar` components with sensible defaults

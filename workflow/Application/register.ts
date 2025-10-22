@@ -1,3 +1,4 @@
+import * as path from 'node:path'
 import * as vscode from 'vscode'
 import { isWorkflowToExtension } from '../Core/Contracts/guards'
 import type { ApprovalResult, ExtensionToWorkflow } from '../Core/models'
@@ -19,6 +20,14 @@ let pendingApproval: {
     reject: (error: unknown) => void
     removeAbortListener?: () => void
 } | null = null
+
+function formatPanelTitle(uri?: vscode.Uri): string {
+    if (!uri) {
+        return 'NebulaFlow — Untitled'
+    }
+    const filename = path.basename(uri.fsPath)
+    return `NebulaFlow — ${filename}`
+}
 
 function waitForApproval(_nodeId: string): Promise<ApprovalResult> {
     return new Promise((resolve, reject) => {
@@ -45,9 +54,11 @@ function waitForApproval(_nodeId: string): Promise<ApprovalResult> {
 
 export function activate(context: vscode.ExtensionContext): void {
     const disposable = vscode.commands.registerCommand('nebulaFlow.openWorkflow', async () => {
+        let currentWorkflowUri: vscode.Uri | undefined
+
         const panel = vscode.window.createWebviewPanel(
             'nebulaWorkflow',
-            'NebulaFlow Workflow Editor',
+            formatPanelTitle(currentWorkflowUri),
             vscode.ViewColumn.One,
             {
                 enableScripts: true,
@@ -91,6 +102,8 @@ export function activate(context: vscode.ExtensionContext): void {
                     case 'save_workflow': {
                         const result = await saveWorkflow(message.data)
                         if (result && 'uri' in result) {
+                            currentWorkflowUri = result.uri
+                            panel.title = formatPanelTitle(currentWorkflowUri)
                             await safePost(
                                 panel.webview,
                                 {
@@ -123,9 +136,11 @@ export function activate(context: vscode.ExtensionContext): void {
                     case 'load_workflow': {
                         const result = await loadWorkflow()
                         if (result) {
+                            currentWorkflowUri = result.uri
+                            panel.title = formatPanelTitle(currentWorkflowUri)
                             await safePost(
                                 panel.webview,
-                                { type: 'workflow_loaded', data: result } as ExtensionToWorkflow,
+                                { type: 'workflow_loaded', data: result.dto } as ExtensionToWorkflow,
                                 { strict: isDev }
                             )
                         }

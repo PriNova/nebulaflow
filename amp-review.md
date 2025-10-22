@@ -1,117 +1,82 @@
 ## High-level summary
-This patch is almost entirely about introducing a new optional LLM node setting called `reasoningEffort` (allowed values: `minimal | low | medium | high`).  
-The change propagates through:
+This diff introduces the notion of a “current workflow file” and surfaces it in the UI:
 
-1. Data model definitions (`models.ts`, `LLM_Node.tsx`)
-2. Workflow execution path (`ExecuteWorkflow.ts`)
-3. Web UI / property editor (`PropertyEditor.tsx`)
-4. A minor version bump (`package.json`, `package-lock.json`)
+1. `workflow/Application/register.ts`  
+   • Adds logic to keep track of the URI of the workflow currently open / just saved.  
+   • Dynamically formats the WebviewPanel title using that URI (`NebulaFlow — <filename>`).  
+   • Posts only the DTO part of a loaded workflow back to the webview.
 
-No other functionality is modified.
+2. `workflow/DataAccess/fs.ts`  
+   • Changes the return type of `loadWorkflow` from just the DTO to `{ dto, uri }`, so callers can learn the file’s location.  
+   • Adjusts the implementation accordingly.
 
----
+No other modules are modified, so every compile-time reference to `loadWorkflow()` must now handle the new return type or the build will fail.
 
 ## Tour of changes
-Start with `workflow/Core/models.ts`, because it shows the new field and its valid string-literal union. Once that is clear, look at `ExecuteWorkflow.ts` to understand how the new value is validated and forwarded to the SDK via `createAmp`. Finally, review the UI code (`PropertyEditor.tsx`) to see how the value is edited. The package version bumps can be skimmed last.
-
-Suggested order:
-1. `workflow/Core/models.ts`
-2. `workflow/Application/handlers/ExecuteWorkflow.ts`
-3. `workflow/Web/components/PropertyEditor.tsx`
-4. `workflow/Web/components/nodes/LLM_Node.tsx`
-5. `package.json` / `package-lock.json`
-
----
+Start the review in `workflow/Application/register.ts`, specifically at the new `formatPanelTitle` helper and the refactor around `currentWorkflowUri`. This is the heart of the change; the accompanying change in `DataAccess/fs.ts` is merely to supply the URI needed here.
 
 ## File level review
 
-### `workflow/Core/models.ts`
-Changes:
-```ts
-reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
+### `workflow/Application/register.ts`
+Changes
+• `import * as path from 'node:path'` – new dependency.  
+• New `formatPanelTitle(uri?)` helper.  
+• Local variable `currentWorkflowUri`.  
+• Panel creation now uses `formatPanelTitle(currentWorkflowUri)` instead of a literal string.  
+• After both `save_workflow` and `load_workflow`, `currentWorkflowUri` is set and `panel.title` is refreshed.  
+• When a workflow is loaded, only `result.dto` is sent to the webview.
+
+Review
+1. Correctness
+   • `currentWorkflowUri` is scoped inside the command handler, so it lives as long as the panel does; good.  
+   • Title formatting: `uri.fsPath` is appropriate for `path.basename` on all OSs; VS Code already normalizes `fsPath`.  
+   • On first open (no file yet) the title is “NebulaFlow — Untitled”; fine.  
+   • Posting only the DTO (`result.dto`) is consistent with webview expectations but verify that the webview did not rely on the `uri`. If it did, this is a breaking change.
+
+2. Type safety / compile
+   • `currentWorkflowUri` is initialised as `undefined`; `formatPanelTitle` accepts `undefined`, so no issue.  
+   • `panel.title = …` runs only after a successful save/load; guards are correct.
+
+3. UX
+   • Title updates immediately after save/load: 👍  
+   • Consider also updating the title when the user picks “Save As…” or renames the file externally; currently only handled through extension’s own save function.
+
+4. Security
+   • No direct risks added.
+
+5. Minor nit
+   • String literal `NebulaFlow —` is duplicated (helper + initial constant). Consider moving `"NebulaFlow — "` to a constant to avoid drift.
+
+### `workflow/DataAccess/fs.ts`
+Changes
+• Function now returns `{ dto, uri } | null`.  
+• Inside the success branch: create `dto`; return `{ dto, uri: result[0] }`.
+
+Review
+1. Correctness
+   • `result` from `vscode.window.showOpenDialog` is guaranteed to be non-empty here (checked earlier), so `result[0]` is safe.  
+   • `normalizeModelsInWorkflow` result stored as `dto`; no functional change.
+
+2. Compatibility
+   • This is a breaking signature change. Every existing call site must be updated. The diff shows one call site updated, but run a project-wide search for `loadWorkflow(` to ensure none are missed. Otherwise build will fail.
+
+3. Types
+   • The exported function’s return type is explicit and precise, good.
+
+4. Docs
+   • Update any README / in-code documentation for the new shape.
+
+### ❓ Other files (not in diff)
+Compilation or runtime errors will surface if any untouched file
 ```
+const wf = await loadWorkflow()
+```
+still expects a DTO. Pay special attention to unit tests.
 
-Review:
-✔ Correctly adds a discriminated-union style literal type, giving compile-time safety.  
-❓ Consider extracting the literal union into a reusable type alias so both core and UI can import it without repeating the list.
+## Recommendations
+1. Perform a workspace-wide search for `loadWorkflow(` to confirm all consumers handle the new `{ dto, uri }` shape.
+2. If the webview ever needs the file path (e.g. for “Reload”), consider passing the URI along instead of stripping it.
+3. Factor out the `"NebulaFlow — "` prefix as a constant to prevent future mismatch.
+4. If the extension supports remote workspaces (e.g. WSL, SSH), verify that `path.basename(uri.fsPath)` behaves correctly (it usually does, but worth a manual test).
 
----
-
-### `workflow/Application/handlers/ExecuteWorkflow.ts`
-Key additions:
-1. `console.log('[ExecuteWorkflow] LLM Node workspace roots:', workspaceRoots)`
-2. Reads `reasoningEffort` from node data.
-3. Local `validReasoningEfforts` set to whitelist inputs.
-4. When calling `createAmp`, conditionally injects `'reasoning.effort'` setting.
-
-Review & suggestions:
-
-• Validation & safety  
-  – The whitelist check via `validReasoningEfforts.has` is good, but we already have compile-time safety. Runtime validation is still useful because data may come from a saved JSON file created by an older version or manually edited. ✔
-
-• Unused code paths  
-  – `validReasoningEfforts` is re-created on every call; not costly, but could be hoisted to file-scope constant.
-
-• Logging  
-  – `console.log` may spam the VS Code dev tools panel. Consider downgrading to `console.debug` or guarding with an env flag.
-
-• Type cast  
-  – `(reasoningEffort as any)` is unnecessary when `validReasoningEfforts` guard guarantees the variable is of the correct literal type. You can keep strong typing by writing:
-    ```ts
-    'reasoning.effort': reasoningEffort
-    ```
-  – Likewise, prefer a typed object for `settings` rather than `as any`.
-
-No security issues introduced; the value is an enum and does not reach shell/FS APIs.
-
----
-
-### `workflow/Web/components/PropertyEditor.tsx`
-New UI block renders four toggle buttons.
-
-Review:
-
-• UX  
-  – Nice inline button group; reads the existing value and highlights selection.
-
-• onUpdate call
-  ```tsx
-  onUpdate(node.id, { reasoningEffort: effort } as any)
-  ```
-  – Risk: If `onUpdate` naïvely does `node.data = newData`, previous fields could be dropped. From prior code you likely merge, but confirm. Suggest:
-    ```ts
-    onUpdate(node.id, { ...llmNode.data, reasoningEffort: effort })
-    ```
-  – Remove `as any` by importing the `LLMNode` data type or the new `ReasoningEffort` alias.
-
-• Re-declaration of literal list  
-  – Duplicates the same array as in backend. Extract to a shared constant to prevent drift (`reasoningEffortLevels`?).
-
-• Accessibility  
-  – Buttons lack `aria-pressed`. Consider:
-    ```tsx
-    aria-pressed={current === effort}
-    ```
-
----
-
-### `workflow/Web/components/nodes/LLM_Node.tsx`
-Same field added to the front-end type. No issues.
-
----
-
-### `package.json` / `package-lock.json`
-Version bump from `0.1.5` ➜ `0.1.6`. No new dependencies. LGTM.
-
----
-
-## Overall assessment
-The feature is correctly threaded end-to-end. Main follow-ups:
-
-1. Replace duplicated literal arrays with a shared constant/type.
-2. Remove unnecessary `as any` casts.
-3. Ensure `onUpdate` merges data.
-4. Consider reducing noisy `console.log`.
-5. Minor perf: hoist `validReasoningEfforts` set.
-
-Otherwise the change is sound, well-scoped, and backwards-compatible.
+Overall, the change is straightforward and correct; the main risk is missed call-site updates resulting from the breaking change in `loadWorkflow`’s signature.

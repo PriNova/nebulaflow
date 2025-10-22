@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Window Title Shows Loaded Workflow**: Display workflow filename in the NebulaFlow window title for multi-instance differentiation
+  - Window title shows "NebulaFlow — <filename.json>" when a workflow is loaded, or "NebulaFlow — Untitled" when no file is open
+  - Each panel instance maintains independent workflow state, allowing multiple workflows to be open simultaneously without blocking each other
+  - Title updates on file save and load operations
+
 - **LLM Node Reasoning Effort Control**: Added reasoning effort selector to LLM node configuration
   - UI buttons in Property Editor for selecting reasoning effort level (`minimal`, `low`, `medium`, `high`)
   - Buttons positioned between "Dangerously allow all commands" and "Tools" section with radio-button semantics (only one selectable at a time)

@@ -120,7 +120,7 @@ export async function saveWorkflow(
     return null
 }
 
-export async function loadWorkflow(): Promise<WorkflowPayloadDTO | null> {
+export async function loadWorkflow(): Promise<{ dto: WorkflowPayloadDTO; uri: vscode.Uri } | null> {
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri
     const workspaceRootFsPath = workspaceRoot?.path
     const defaultFilePath = workspaceRootFsPath
@@ -166,7 +166,8 @@ export async function loadWorkflow(): Promise<WorkflowPayloadDTO | null> {
             }
 
             void vscode.window.showInformationMessage('Workflow loaded successfully!')
-            return normalizeModelsInWorkflow(data)
+            const dto = normalizeModelsInWorkflow(data)
+            return { dto, uri: result[0] }
         } catch (error) {
             void vscode.window.showErrorMessage(`Failed to load workflow: ${error}`)
             return null
