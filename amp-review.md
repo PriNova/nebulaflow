@@ -1,71 +1,67 @@
 ## High-level summary
-The patch is small and focused on the developer experience:
-
-1. `.vscode/launch.json`
-   • Adds `--disable-extensions` to both launch configurations so that only the extension under development is loaded.
-2. `src/extension.ts`
-   • Switches the import from `import type * as vscode` to `import * as vscode` (runtime import).
-   • Logs a console message when the extension is activated in development mode.
-
-No functional behaviour of the shipped extension changes for production users.
-
----
+This change set introduces a large number of NebulaFlow-specific workflow / node definition files (JSON) that describe a multi-agent, multi-stage workflow for planning, implementing, reviewing and documenting code changes.  
+Only one “runtime” code change affects the shipped application: `WorkflowSidebar.tsx` now shows friendlier labels (“Agents”, “Text”) for two node categories by adding `displayCategoryLabel()`.
 
 ## Tour of changes
-Start with `src/extension.ts`.  
-The switch from a type-only import to a runtime import is the only actual code path update and explains why the launch configuration was tweaked—to make development easier.  
-After understanding this file, the `launch.json` edits are self-explanatory.
-
----
+Begin with `workflow/Web/components/WorkflowSidebar.tsx`.  
+It is the only file executed at run-time; understanding its small UI change tells us whether any regressions were introduced.  
+Afterwards skim the new `.nebulaflow/**` JSON files to confirm they are purely configuration, spot-check a few security-relevant settings (`dangerouslyAllowAll`), and note duplication / maintenance risk.
 
 ## File level review
 
-### `.vscode/launch.json`
+### `workflow/Web/components/WorkflowSidebar.tsx`
 Changes
-• Both launch configs now pass `--disable-extensions`, preventing other installed extensions from being loaded.
-• Minor formatting tweaks (array split over multiple lines).
+• Line 46+: add helper `displayCategoryLabel(type:string)` mapping  
+```ts
+const categoryLabels: Record<string,string> = {
+  [NodeType.LLM]: 'Agents',
+  [NodeType.INPUT]: 'Text',
+}
+```  
+• Lines 303–306: replace raw `type` with `displayCategoryLabel(type)` when rendering group headers.
 
 Review
-✔ Correct flag usage (`--disable-extensions` is supported in both desktop and web dev host).
-⚠ If you rely on any built-in extension (e.g., Git, TypeScript, Notebooks) during development, this flag will also disable them; consider `--disable-extension <id>` to be more selective.
-✔ No security or performance impact.
+1. Correctness  
+   – If `NodeType` is an enum of strings (likely), computed property keys are valid.  
+   – Unknown types fall back to the original string via `|| type`; good default behaviour.  
 
-### `src/extension.ts`
-Changes
-1. `import type * as vscode` ➜ `import * as vscode`
-2. Added development-mode log:
-   ```ts
-   if (context.extensionMode === vscode.ExtensionMode.Development) {
-       console.log('[NebulaFlow] Activated in Development mode')
-   }
-   ```
+2. Typing  
+   – `type` argument is declared as `string`; callers pass the object-key from `Object.entries(customNodesByType)` which is indeed a string. ✓  
 
-Review
-• Runtime import necessity  
-  – Accessing `vscode.ExtensionMode` at runtime requires a real import, so the change is justified.  
-  – Minor downside: increases the bundle size slightly because the build tool can no longer tree-shake the `vscode` import away. This is acceptable for extensions (the module is provided by VS Code at runtime, not bundled).
+3. Performance  
+   – Function is recreated on every render. Minor, but could be hoisted with `const` outside the component to avoid re-creation. Existing placement already outside component (good).  
 
-• Alternative pattern  
-  ```ts
-  import type { ExtensionMode } from 'vscode';
-  import { ExtensionMode } from 'vscode';
-  ```  
-  or  
-  ```ts
-  const { ExtensionMode } = require('vscode');
-  ```  
-  retains type-only benefits for the rest of the API but is not materially better; current change is fine.
+4. Internationalisation / UX  
+   – Hard-coded English labels. If the app supports i18n, consider centralising the mapping.  
 
-• Console logging  
-  – Harmless in dev; won’t execute in production mode.  
-  – Consider using `console.debug` or VS Code’s `outputChannel.appendLine` for richer tracing, but not required.
+5. Tests  
+   – No tests; but impact is visual only.  
 
-• No functional regressions  
-  – `workflowActivate` / `workflowDeactivate` usage unchanged.
+No bugs detected; change is safe.
 
-Security & stability
-✔ No user-visible behaviour change.
-✔ No new security surface.
+### `.nebulaflow/nodes/*.json` (18 files)
+All new; each defines one NebulaFlow “node” (LLM call, text, preview). Main points:
 
----
+• `timeoutSec: 0` is used widely to indicate “no timeout”. Confirm the orchestrator treats `0` as infinite and not as immediate cancel.  
+• Several nodes set `"dangerouslyAllowAll": true`. This disables most tool sandbox restrictions. It should be restricted to trusted contexts only; otherwise a malicious prompt could trigger unwanted actions.  
+• Many nodes disable `commit`, `edit_file`, etc. Good to limit write operations.  
+
+Nothing blocks merge, but document the security implications of `dangerouslyAllowAll`.
+
+### `.nebulaflow/workflows/full_implementation.json` & `full_workflow.json`
+Define two composite graphs wiring the nodes together.
+
+• Edge relationships appear consistent (JSON generated by a visual editor).  
+• No cyclic dependencies detected.  
+• The same “Code-Review” node definition is duplicated between `nodes` directory and workflow. Consider DRY to reduce drift risk.  
+
+### Other newly added node JSON files
+`Aggregate_Changes.json`, `Coarse_Planning.json`, `Fine-Grained_Planning.json`, etc. – configuration only, no execution code. Verify file naming is consistent; otherwise NebulaFlow may not auto-discover them.
+
+### `WorkflowSidebar.tsx` (already reviewed)
+
+## Recommendations
+P3 – Security: review every `"dangerouslyAllowAll": true` flag. Remove or narrow scope where not absolutely required.  
+P3 – Maintainability: deduplicate duplicated LLM prompt text (present in both node and workflow JSON) to avoid divergence.  
+No blocking issues for merge.
 

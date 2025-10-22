@@ -16,7 +16,7 @@
 - Webview app: React + @xyflow/react under `workflow/Web/` via Vite; entry `workflow/Web/workflow.html` + `workflow/Web/index.tsx`.
 - Nodes/graph: `workflow/Web/components/nodes/Nodes.tsx` (NodeType, default workflow, nodeTypes); LLM node UI in `workflow/Web/components/nodes/LLM_Node.tsx`.
 - Webview protocol mirror: `workflow/Web/services/WorkflowProtocol.ts`.
-- Sidebar: `workflow/Web/components/WorkflowSidebar.tsx` (categories, node palette, property editor); v0.1.4+ Property Editor displays as static header using `accordion.module.css` styling (no collapse/expand toggle, content driven by node selection state).
+- Sidebar: `workflow/Web/components/WorkflowSidebar.tsx` (categories, node palette, property editor); v0.1.4+ Property Editor displays as static header using `accordion.module.css` styling (no collapse/expand toggle, content driven by node selection state); v0.1.6+ Category labels render via `displayCategoryLabel` helper (lines 49–55) mapping `llm` → `Agents`, `text-format` → `Text`, others unchanged.
 - Sidebar Resizing (v0.1.6+): 
   - Left and right resize handles: 4px thickness (defined in `Flow.tsx` as `HANDLE_THICKNESS = '6px'`); identical styles on both sides
   - Gap: 8px minimum between handles (`MIN_HANDLE_GAP` in `Flow.tsx`). Gap enforced during drag so handles never overlap

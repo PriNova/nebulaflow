@@ -46,6 +46,14 @@ const buttonStyle = {
     whiteSpace: 'nowrap',
 } as React.CSSProperties
 
+const displayCategoryLabel = (type: string): string => {
+    const categoryLabels: Record<string, string> = {
+        [NodeType.LLM]: 'Agents',
+        [NodeType.INPUT]: 'Text',
+    }
+    return categoryLabels[type] || type
+}
+
 export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
     onNodeAdd,
     selectedNode,
@@ -295,7 +303,9 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                         <AccordionContent>
                             {Object.entries(customNodesByType).map(([type, nodes]) => (
                                 <div key={type} className="tw-mb-2">
-                                    <h4 className="tw-text-sm tw-font-medium tw-mb-1">{type}</h4>
+                                    <h4 className="tw-text-sm tw-font-medium tw-mb-1">
+                                        {displayCategoryLabel(type)}
+                                    </h4>
                                     <ul className="tw-space-y-1">
                                         {nodes?.map(node => (
                                             <li
