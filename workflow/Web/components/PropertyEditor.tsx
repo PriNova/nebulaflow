@@ -46,7 +46,7 @@ const LLMTimeoutField: React.FC<{ node: LLMNode; onUpdate: PropertyEditorProps['
             return
         }
         const n = Number.parseInt(trimmed, 10)
-        if (Number.isFinite(n) && n >= 1) {
+        if (Number.isFinite(n) && n >= 0) {
             onUpdate(node.id, { timeoutSec: n })
         }
     }
@@ -55,7 +55,7 @@ const LLMTimeoutField: React.FC<{ node: LLMNode; onUpdate: PropertyEditorProps['
             id={`llm-timeout-sec-${node.id}`}
             className="tw-h-8 tw-py-1 tw-text-sm"
             type="number"
-            min={1}
+            min={0}
             value={val}
             onChange={(e: { target: { value: string } }) => setVal(e.target.value)}
             onBlur={commit}
@@ -143,9 +143,6 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                     onCheckedChange={checked => onUpdate(node.id, { active: checked !== false })}
                 />
                 <Label htmlFor="node-active">Node Active</Label>
-            </div>
-            <div>
-                <Label htmlFor="node-title">Node ID: {node.id}</Label>
             </div>
             <div>
                 <Label htmlFor="node-title">Title</Label>
@@ -274,6 +271,21 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                             </Popover>
                         </div>
                     )}
+                    <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
+                        <Checkbox
+                            id={`llm-dangerously-allow-all-${node.id}`}
+                            checked={(node as LLMNode).data.dangerouslyAllowAll ?? false}
+                            onCheckedChange={checked =>
+                                onUpdate(node.id, { dangerouslyAllowAll: Boolean(checked) })
+                            }
+                        />
+                        <Label
+                            htmlFor={`llm-dangerously-allow-all-${node.id}`}
+                            className="tw-cursor-pointer tw-font-normal"
+                        >
+                            Dangerously allow all commands
+                        </Label>
+                    </div>
                     <div className="tw-mt-2">
                         <Label>Tools</Label>
 
@@ -317,6 +329,9 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                     <div>
                         <Label htmlFor={`llm-timeout-sec-${node.id}`}>Timeout (seconds)</Label>
                         <LLMTimeoutField key={node.id} node={node as LLMNode} onUpdate={onUpdate} />
+                        <p className="tw-text-xs tw-text-gray-500 tw-mt-1">
+                            0 = no timeout; use Stop to abort
+                        </p>
                     </div>
                 </div>
             )}

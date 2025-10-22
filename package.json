@@ -1,7 +1,7 @@
 {
     "name": "nebula-flow",
     "displayName": "NebulaFlow Workflow Editor",
-    "version": "0.1.1",
+    "version": "0.1.3",
     "publisher": "prinova",
     "engines": {
         "vscode": ">=1.90.0"

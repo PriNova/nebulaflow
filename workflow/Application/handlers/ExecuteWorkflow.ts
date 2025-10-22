@@ -312,12 +312,21 @@ async function executeLLMNode(
     }
 
     const disabledTools: string[] | undefined = (node as any)?.data?.disabledTools
+    const dangerouslyAllowAll: boolean | undefined = (node as any)?.data?.dangerouslyAllowAll
     const amp = await createAmp({
         apiKey,
         workspaceRoots,
         settings: {
             'internal.primaryModel': selectedKey ?? defaultModelKey,
             ...(disabledTools && disabledTools.length > 0 ? { 'tools.disable': disabledTools } : {}),
+            ...(dangerouslyAllowAll
+                ? {
+                      'amp.dangerouslyAllowAll': true,
+                      'amp.experimental.commandApproval.enabled': false,
+                      'amp.commands.allowlist': ['*'],
+                      'amp.commands.strict': false,
+                  }
+                : {}),
         },
     })
     try {
@@ -366,6 +375,20 @@ async function executeLLMNode(
                         for (const b of blocked) {
                             if (handledBlocked.has(b.toolUseID)) continue
                             handledBlocked.add(b.toolUseID)
+
+                            // Auto-approve command execution when dangerouslyAllowAll is enabled
+                            if (
+                                dangerouslyAllowAll &&
+                                Array.isArray(b.toAllow) &&
+                                b.toAllow.length > 0
+                            ) {
+                                await amp.sendToolInput({
+                                    threadID: thread.id,
+                                    toolUseID: b.toolUseID,
+                                    value: { accepted: true },
+                                })
+                                continue
+                            }
 
                             const summaryLines: string[] = []
                             if (b.toAllow && Array.isArray(b.toAllow) && b.toAllow.length > 0) {
@@ -427,21 +450,28 @@ async function executeLLMNode(
             }
         })()
 
-        const abortP = new Promise<never>((_, rej) =>
-            abortSignal.addEventListener('abort', () => rej(new AbortedError()), { once: true })
-        )
+        let abortHandler: (() => void) | undefined
+        const abortP = new Promise<never>((_, rej) => {
+            abortHandler = () => rej(new AbortedError())
+            abortSignal.addEventListener('abort', abortHandler)
+        }).catch(() => {})
         const sec = Number((node as any)?.data?.timeoutSec)
+        const disableTimeout = sec === 0
         const timeoutMs =
             Number.isFinite(sec) && sec > 0 ? Math.floor(sec * 1000) : DEFAULT_LLM_TIMEOUT_MS
         let timer: ReturnType<typeof setTimeout> | undefined
-        const timeoutP = new Promise<never>((_, rej) => {
-            timer = setTimeout(() => rej(new Error('LLM request timed out')), timeoutMs)
-        })
+        const timeoutP = disableTimeout
+            ? undefined
+            : new Promise<never>((_, rej) => {
+                  timer = setTimeout(() => rej(new Error('LLM request timed out')), timeoutMs)
+              })
 
         try {
-            await Promise.race([streamP, abortP, timeoutP])
+            const racePromises = timeoutP ? [streamP, abortP, timeoutP] : [streamP, abortP]
+            await Promise.race(racePromises)
         } finally {
             if (timer) clearTimeout(timer)
+            if (abortHandler) abortSignal.removeEventListener('abort', abortHandler)
         }
         return finalText
     } finally {
