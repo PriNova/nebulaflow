@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react'
 import type React from 'react'
+import RunFromHereButton from '../RunFromHereButton'
 import {
     type BaseNodeData,
     type BaseNodeProps,
@@ -14,7 +15,7 @@ export type CLINode = Omit<WorkflowNode, 'data'> & {
     data: BaseNodeData & { shouldAbort: boolean }
 }
 
-export const CLINode: React.FC<BaseNodeProps> = ({ data, selected }) => (
+export const CLINode: React.FC<BaseNodeProps> = ({ id, data, selected }) => (
     <div
         style={getNodeStyle(
             NodeType.CLI,
@@ -27,9 +28,9 @@ export const CLINode: React.FC<BaseNodeProps> = ({ data, selected }) => (
         )}
     >
         <Handle type="target" position={Position.Top} />
-        <div className="tw-flex tw-flex-col tw-gap-2">
+        <div className="tw-flex tw-flex-col">
             <div
-                className="tw-text-center tw-py-1 tw-mb-2 tw-rounded-t-sm tw-font-bold"
+                className="tw-flex tw-items-center tw-mb-1 tw-rounded-t-sm tw-font-bold tw-pl-1 tw-pr-1"
                 style={{
                     background: `linear-gradient(to top, #1e1e1e, ${getBorderColor(NodeType.CLI, {
                         error: data.error,
@@ -45,7 +46,8 @@ export const CLINode: React.FC<BaseNodeProps> = ({ data, selected }) => (
                     marginTop: '-0.5rem',
                 }}
             >
-                CLI
+                <div className="tw-flex-grow tw-text-center">CLI</div>
+                <RunFromHereButton nodeId={id} className="tw-w-[1.75rem] tw-h-[1.75rem]" />
             </div>
             <div className="tw-flex tw-items-center tw-justify-center">
                 <span>{data.title}</span>

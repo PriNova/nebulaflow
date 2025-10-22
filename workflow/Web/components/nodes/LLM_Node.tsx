@@ -2,6 +2,7 @@ import { Handle, Position } from '@xyflow/react'
 import type React from 'react'
 import nebulaMark from '../../assets/nebula-mark.svg'
 import type { Model } from '../../services/Protocol'
+import RunFromHereButton from '../RunFromHereButton'
 import {
     type BaseNodeData,
     type BaseNodeProps,
@@ -21,7 +22,7 @@ export type LLMNode = Omit<WorkflowNode, 'data'> & {
     }
 }
 
-export const LLMNode: React.FC<BaseNodeProps> = ({ data, selected }) => (
+export const LLMNode: React.FC<BaseNodeProps> = ({ id, data, selected }) => (
     <div
         style={getNodeStyle(
             NodeType.LLM,
@@ -36,7 +37,7 @@ export const LLMNode: React.FC<BaseNodeProps> = ({ data, selected }) => (
         <Handle type="target" position={Position.Top} />
         <div className="tw-flex tw-flex-col">
             <div
-                className="tw-flex tw-items-center tw-justify-center tw-py-1 tw-mb-2 tw-rounded-t-sm tw-font-bold"
+                className="tw-flex tw-items-center tw-mb-1 tw-rounded-t-sm tw-font-bold tw-pl-1 tw-pr-1"
                 style={{
                     background: `linear-gradient(to top, #1e1e1e, ${getBorderColor(NodeType.LLM, {
                         error: data.error,
@@ -50,11 +51,6 @@ export const LLMNode: React.FC<BaseNodeProps> = ({ data, selected }) => (
                     marginLeft: '-0.5rem',
                     marginRight: '-0.5rem',
                     marginTop: '-0.5rem',
-                    paddingLeft: '0.2rem',
-                    paddingRight: '0.2rem',
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
                 }}
             >
                 <img
@@ -62,9 +58,8 @@ export const LLMNode: React.FC<BaseNodeProps> = ({ data, selected }) => (
                     alt="NebulaFlow"
                     style={{ width: '21px', height: '21px', marginRight: '0.25rem' }}
                 />
-                <div className="tw-text-center tw-flex-grow" style={{ transform: 'translateX(-6%)' }}>
-                    Agent
-                </div>
+                <div className="tw-text-center tw-flex-grow">Agent</div>
+                <RunFromHereButton nodeId={id} className="tw-w-[1.75rem] tw-h-[1.75rem]" />
             </div>
             <div className="tw-flex tw-items-center tw-justify-center">
                 <span>{data.title}</span>

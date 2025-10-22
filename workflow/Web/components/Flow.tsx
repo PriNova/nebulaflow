@@ -84,6 +84,7 @@ export const Flow: React.FC<{
         interruptedNodeId,
         nodeAssistantContent,
         onExecute,
+        onResume,
         onAbort,
         resetExecutionState,
         setExecutingNodeId,
@@ -178,6 +179,21 @@ export const Flow: React.FC<{
         ro.observe(el)
         return () => ro.disconnect()
     }, [])
+
+    useEffect(() => {
+        const handler = (e: any) => {
+            const nodeId = e?.detail?.nodeId
+            if (!nodeId) return
+            const outputs: Record<string, string> = {}
+            const nodeIdSet = new Set(nodes.map(n => n.id))
+            for (const [k, v] of nodeResults) {
+                if (nodeIdSet.has(k)) outputs[k] = v
+            }
+            onResume(nodeId, outputs)
+        }
+        window.addEventListener('nebula-run-from-here' as any, handler as any)
+        return () => window.removeEventListener('nebula-run-from-here' as any, handler as any)
+    }, [nodeResults, nodes, onResume])
 
     return (
         <div className="tw-flex tw-h-screen tw-w-full tw-border-2 tw-border-solid tw-border-[var(--vscode-panel-border)] tw-text-[14px] tw-overflow-hidden">
@@ -296,6 +312,16 @@ export const Flow: React.FC<{
                             onApprove={handleNodeApproval}
                             interruptedNodeId={interruptedNodeId}
                             nodeAssistantContent={nodeAssistantContent}
+                            onRunFromHere={(nodeId: string) => {
+                                const outputs: Record<string, string> = {}
+                                const nodeIdSet = new Set(nodes.map(n => n.id))
+                                for (const [k, v] of nodeResults) {
+                                    if (nodeIdSet.has(k)) {
+                                        outputs[k] = v
+                                    }
+                                }
+                                onResume(nodeId, outputs)
+                            }}
                         />
                     </div>
                 </div>

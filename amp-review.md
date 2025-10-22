@@ -1,67 +1,128 @@
 ## High-level summary
-This change set introduces a large number of NebulaFlow-specific workflow / node definition files (JSON) that describe a multi-agent, multi-stage workflow for planning, implementing, reviewing and documenting code changes.  
-Only one “runtime” code change affects the shipped application: `WorkflowSidebar.tsx` now shows friendlier labels (“Agents”, “Text”) for two node categories by adding `displayCategoryLabel()`.
+This change set introduces “Run / Resume from here” functionality for a workflow-execution feature.  
+Major themes:
+
+* Back-end: `executeWorkflow` can now be called with an optional `resume` object that
+  * specifies the node ID to start from (`fromNodeId`)
+  * optionally injects (“seed”) output values that were already produced earlier.
+* Extension host: `activate` now forwards the `resume` payload that arrives from the web-view.
+* Web-view:
+  * Globally dispatches / listens to a `nebula-run-from-here` custom event.
+  * All node React components now render a small play button; clicking it fires the event.
+  * `RightSidebar` also contains a “Run from here” button per node.
+  * `useWorkflowExecution` handles new `onResume` logic without clearing prior results.
+* Minor UI adjustments (title bars all become flex rows).
+* Type surface changes: `BaseNodeProps` now always contains `id`.
 
 ## Tour of changes
-Begin with `workflow/Web/components/WorkflowSidebar.tsx`.  
-It is the only file executed at run-time; understanding its small UI change tells us whether any regressions were introduced.  
-Afterwards skim the new `.nebulaflow/**` JSON files to confirm they are purely configuration, spot-check a few security-relevant settings (`dangerouslyAllowAll`), and note duplication / maintenance risk.
+Start with `workflow/Application/handlers/ExecuteWorkflow.ts`.  
+That file contains the execution-engine changes (new parameters, seeding, node-skipping).  
+Understanding that logic makes the remaining front-end plumbing easy to follow.
 
 ## File level review
 
-### `workflow/Web/components/WorkflowSidebar.tsx`
+### `workflow/Application/handlers/ExecuteWorkflow.ts`
+
 Changes
-• Line 46+: add helper `displayCategoryLabel(type:string)` mapping  
-```ts
-const categoryLabels: Record<string,string> = {
-  [NodeType.LLM]: 'Agents',
-  [NodeType.INPUT]: 'Text',
-}
-```  
-• Lines 303–306: replace raw `type` with `displayCategoryLabel(type)` when rendering group headers.
+* Function signature extended with `resume?: { fromNodeId: string; seeds?: { outputs?: Record<string, string> } }`.
+* Seeds are written into `context.nodeOutputs` and, when relevant, `variableValues` / `accumulatorValues`.
+* A flag `resumeStarted` skips all nodes that appear before `fromNodeId` in the already topologically-sorted list.
 
 Review
-1. Correctness  
-   – If `NodeType` is an enum of strings (likely), computed property keys are valid.  
-   – Unknown types fall back to the original string via `|| type`; good default behaviour.  
+* ✅ Straight-forward implementation, minimal surface area.
+* ⚠️ Type narrowing: `seeds.outputs` is declared as `Record<string, string>` but `nodeOutputs` previously held `unknown | any`.  
+  – In practice most outputs are JSON serialisable, not guaranteed to be strings. Consider `Record<string, unknown>`.
+* ⚠️ `context.ifelseSkipPaths` is populated **only** while evaluating the branching nodes that you now potentially skip.  
+  If the first resumed node is inside an inactive path, the old info is lost and that node still executes.  
+  You may want to recompute skip state, or forbid resuming inside a path that was disabled by a skipped `IF_ELSE`.
+* ⚠️ No validation that `fromNodeId` exists inside `sortedNodes`; silently runs whole workflow if it does not.
+* ✅ Early exit (`resumeStarted = !resume?.fromNodeId`) keeps normal behaviour unchanged.
+* Minor – seeding loop sets `context.accumulatorValues?.set(...)` even if `context.accumulatorValues` is `undefined`; the optional chaining prevents a crash but indicates the map may be uninitialised. Consider initialising the maps eagerly.
 
-2. Typing  
-   – `type` argument is declared as `string`; callers pass the object-key from `Object.entries(customNodesByType)` which is indeed a string. ✓  
+### `workflow/Application/register.ts`
 
-3. Performance  
-   – Function is recreated on every render. Minor, but could be hoisted with `const` outside the component to avoid re-creation. Existing placement already outside component (good).  
+Changes
+* Reads `resume` from inbound message and forwards it to `executeWorkflow`.
 
-4. Internationalisation / UX  
-   – Hard-coded English labels. If the app supports i18n, consider centralising the mapping.  
+Review
+* ✅ Keeps backwards compatibility; old messages without `resume` work.
 
-5. Tests  
-   – No tests; but impact is visual only.  
+### `workflow/Web/components/hooks/workflowExecution.ts`
 
-No bugs detected; change is safe.
+Changes
+* Adds `onResume` that:
+  * Creates an `AbortController`.
+  * Does **not** clear existing nodeResults (good – previous results are still shown).
+  * Sends `execute_workflow` with `resume` payload.
 
-### `.nebulaflow/nodes/*.json` (18 files)
-All new; each defines one NebulaFlow “node” (LLM call, text, preview). Main points:
+Review
+* ✅ Correctly mirrors new native signature.
+* ⚠️ `seedsOutputs` typed as `Record<string,string>` (same string-only caveat).
 
-• `timeoutSec: 0` is used widely to indicate “no timeout”. Confirm the orchestrator treats `0` as infinite and not as immediate cancel.  
-• Several nodes set `"dangerouslyAllowAll": true`. This disables most tool sandbox restrictions. It should be restricted to trusted contexts only; otherwise a malicious prompt could trigger unwanted actions.  
-• Many nodes disable `commit`, `edit_file`, etc. Good to limit write operations.  
+### `workflow/Web/components/Flow.tsx`
 
-Nothing blocks merge, but document the security implications of `dangerouslyAllowAll`.
+Changes
+* Accepts and propagates new `onResume` prop.
+* In a `useEffect`, listens for `nebula-run-from-here` and calls `onResume`.
+* When sidebar button is used, builds the same `outputs` map and calls `onResume`.
 
-### `.nebulaflow/workflows/full_implementation.json` & `full_workflow.json`
-Define two composite graphs wiring the nodes together.
+Review
+* ✅ Handles clean-up of event listener.
+* ⚠️ `nodeResults` key filtering is `nodes.find(n => n.id === k)` on every iteration – `Set` lookup or `nodeIds.has(k)` would be O(1).
+* Possible double messaging: `useEffect` and inline `onRunFromHere` both replicate the same logic.
 
-• Edge relationships appear consistent (JSON generated by a visual editor).  
-• No cyclic dependencies detected.  
-• The same “Code-Review” node definition is duplicated between `nodes` directory and workflow. Consider DRY to reduce drift risk.  
+### `workflow/Web/components/RightSidebar.tsx`
 
-### Other newly added node JSON files
-`Aggregate_Changes.json`, `Coarse_Planning.json`, `Fine-Grained_Planning.json`, etc. – configuration only, no execution code. Verify file naming is consistent; otherwise NebulaFlow may not auto-discover them.
+Changes
+* Renders per-node play button (`<Play>` icon) that triggers `onRunFromHere`.
+* Layout tweaks (flex row, margin).
 
-### `WorkflowSidebar.tsx` (already reviewed)
+Review
+* ✅ Blocks propagation (`e.stopPropagation()`) to avoid accordion toggle.
+* 🚨 Accessibility: icon button without aria-label (only `title`). Add `aria-label="Run from here"`.
 
-## Recommendations
-P3 – Security: review every `"dangerouslyAllowAll": true` flag. Remove or narrow scope where not absolutely required.  
-P3 – Maintainability: deduplicate duplicated LLM prompt text (present in both node and workflow JSON) to avoid divergence.  
-No blocking issues for merge.
+### All `workflow/Web/components/nodes/*_Node.tsx` (Accumulator, CLI, IfElse, LLM, LoopStart/End, Text, Variable)
 
+Changes
+* Signature switched to `({ id, data, selected })`.
+* Title bar changed to flex row and play button added (same dispatch logic).
+
+Review
+* ✅ XYFlow passes `id` automatically so callers remain type-correct.
+* 🚨 Every node duplicates the exact same play-button snippet. Extracting to a small component would reduce bundle size and avoid future drift.
+* ⚠️ `variant="ghostRoundedIcon"` – ensure this variant exists in `Button` or compilation will fail.
+* ⚠️ No `disabled` prop – user can click play while execution is ongoing (contrary to sidebar button). Propagate `executingNodeId` to nodes or use global state to disable.
+
+### `workflow/Web/components/nodes/Nodes.tsx`
+
+Changes
+* `BaseNodeProps` now includes `id`.
+
+Review
+* ✅ Compile-time guarantee that future nodes remember to accept the id.
+
+### `workflow/Web/components/Preview_Node.tsx`
+
+Minor layout change only; no play button (preview nodes are intentionally non-runnable).
+
+### Styling / UI consistency
+
+All “title bars” now remove the hard-coded gap (`tw-gap-2`) and use uniform margin `tw-mb-1`. That keeps height stable when the play button is present.
+
+## Security considerations
+No user‐supplied input reaches shell / network in these changes.  
+Only potential issue: large `seeds.outputs` object could grow memory but not worse than original `nodeOutputs`. Safe.
+
+## Overall assessment
+Feature is well integrated end-to-end, but there are correctness edge cases and opportunities for cleanup.
+
+Recommended follow-ups
+1. Re-evaluate `ifelseSkipPaths` behaviour when resuming.
+2. Allow non-string outputs in `seeds.outputs`, or at least document stringification expectations.
+3. Deduplicate play-button code and ensure consistent disable state.
+4. Add validation and error handling when `fromNodeId` is unknown.
+5. Add unit tests for:
+   * Resume starting at a normal node.
+   * Resume inside inactive IF-ELSE branch.
+   * Seeded variable/accumulator values.
+   * Resuming after abort.

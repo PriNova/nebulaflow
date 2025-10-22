@@ -24,6 +24,7 @@ export enum NodeType {
 }
 
 export interface BaseNodeProps {
+    id: string
     data: {
         title: string
         moving?: boolean

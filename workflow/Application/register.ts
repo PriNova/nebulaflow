@@ -147,12 +147,14 @@ export function activate(context: vscode.ExtensionContext): void {
                             activeAbortController = new AbortController()
                             try {
                                 const { nodes, edges } = fromProtocolPayload(message.data)
+                                const resume = (message as any)?.data?.resume
                                 await executeWorkflow(
                                     nodes,
                                     edges,
                                     panel.webview,
                                     activeAbortController.signal,
-                                    waitForApproval
+                                    waitForApproval,
+                                    resume
                                 )
                             } finally {
                                 activeAbortController = null

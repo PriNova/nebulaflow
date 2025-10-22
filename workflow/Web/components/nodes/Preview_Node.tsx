@@ -26,10 +26,10 @@ export const PreviewNode: React.FC<BaseNodeProps & { tokenCount?: number }> = ({
             )}
         >
             <Handle type="target" position={Position.Top} />
-            <div className="tw-flex tw-flex-col tw-gap-2">
+            <div className="tw-flex tw-flex-col">
                 <div className="tw-flex tw-flex-col">
                     <div
-                        className="tw-text-center tw-py-1 tw-mb-2 tw-rounded-t-sm tw-font-bold"
+                        className="tw-text-center tw-mb-1 tw-rounded-t-sm tw-font-bold"
                         style={{
                             background: `linear-gradient(to top, #1e1e1e, ${getBorderColor(
                                 NodeType.PREVIEW,

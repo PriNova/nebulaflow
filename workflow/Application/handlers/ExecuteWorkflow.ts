@@ -36,10 +36,19 @@ export async function executeWorkflow(
     edges: Edge[],
     webview: vscode.Webview,
     abortSignal: AbortSignal,
-    approvalHandler: (nodeId: string) => Promise<ApprovalResult>
+    approvalHandler: (nodeId: string) => Promise<ApprovalResult>,
+    resume?: { fromNodeId: string; seeds?: { outputs?: Record<string, string> } }
 ): Promise<void> {
     const edgeIndex = createEdgeIndex(edges)
     const nodeIndex = new Map(nodes.map(node => [node.id, node]))
+
+    // Guard: invalid resume target
+    if (resume?.fromNodeId && !nodeIndex.has(resume.fromNodeId)) {
+        void vscode.window.showErrorMessage(`Resume failed: node ${resume.fromNodeId} not found`)
+        await safePost(webview, { type: 'execution_completed' } as ExtensionToWorkflow)
+        return
+    }
+
     const context: IndexedExecutionContext = {
         nodeOutputs: new Map(),
         nodeIndex,
@@ -49,6 +58,21 @@ export async function executeWorkflow(
         cliMetadata: new Map(),
         variableValues: new Map(),
         ifelseSkipPaths: new Map(),
+    }
+
+    if (resume?.seeds?.outputs) {
+        for (const [nodeId, value] of Object.entries(resume.seeds.outputs)) {
+            context.nodeOutputs.set(nodeId, value)
+            const n = nodeIndex.get(nodeId)
+            if (n?.type === NodeType.VARIABLE) {
+                const varName = (n as any).data?.variableName as string | undefined
+                if (varName) context.variableValues?.set(varName, value)
+            }
+            if (n?.type === NodeType.ACCUMULATOR) {
+                const varName = (n as any).data?.variableName as string | undefined
+                if (varName) context.accumulatorValues?.set(varName, value)
+            }
+        }
     }
 
     const allInactiveNodes = new Set<string>()
@@ -62,9 +86,54 @@ export async function executeWorkflow(
     }
     const sortedNodes = processGraphComposition(nodes, edges, true)
 
+    // Precompute IF/ELSE skip paths based on reachability to resume node
+    if (resume?.fromNodeId) {
+        const allEdges = Array.from(edgeIndex.byId.values())
+        const isReachable = (start: string, target: string): boolean => {
+            if (start === target) return true
+            const visited = new Set<string>()
+            const q: string[] = [start]
+            while (q.length) {
+                const cur = q.shift()!
+                if (cur === target) return true
+                if (visited.has(cur)) continue
+                visited.add(cur)
+                for (const e of allEdges) {
+                    if (e.source === cur) q.push(e.target)
+                }
+            }
+            return false
+        }
+        for (const node of sortedNodes) {
+            if ((node as WorkflowNodes).type !== NodeType.IF_ELSE) continue
+            const out = edgeIndex.bySource.get(node.id) || []
+            const trueEdge = out.find(e => e.sourceHandle === 'true')
+            const falseEdge = out.find(e => e.sourceHandle === 'false')
+            if (!trueEdge || !falseEdge) continue
+            const reachesTrue = isReachable(trueEdge.target, resume.fromNodeId)
+            const reachesFalse = isReachable(falseEdge.target, resume.fromNodeId)
+            if (reachesTrue === reachesFalse) continue // ambiguous or neither
+            const nonTakenTarget = reachesTrue ? falseEdge.target : trueEdge.target
+            let skipNodes = context.ifelseSkipPaths?.get(node.id)
+            skipNodes = new Set<string>()
+            context.ifelseSkipPaths?.set(node.id, skipNodes)
+            const nodesToSkip = getInactiveNodes(allEdges, nonTakenTarget)
+            for (const nid of nodesToSkip) skipNodes.add(nid)
+        }
+    }
+
     await safePost(webview, { type: 'execution_started' } as ExtensionToWorkflow)
 
+    let resumeStarted = !resume?.fromNodeId
+
     for (const node of sortedNodes) {
+        if (!resumeStarted) {
+            if (node.id === resume?.fromNodeId) {
+                resumeStarted = true
+            } else {
+                continue
+            }
+        }
         const shouldSkip = Array.from(context.ifelseSkipPaths?.values() ?? []).some(skipNodes =>
             skipNodes.has(node.id)
         )

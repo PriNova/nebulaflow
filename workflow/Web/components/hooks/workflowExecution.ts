@@ -64,6 +64,21 @@ export const useWorkflowExecution = (
         vscodeAPI.postMessage({ type: 'execute_workflow', data: { nodes: updatedNodes, edges } } as any)
     }, [nodes, edges, setNodes, vscodeAPI])
 
+    const onResume = useCallback(
+        (fromNodeId: string, seedsOutputs: Record<string, string>) => {
+            const controller = new AbortController()
+            setAbortController(controller)
+            setIsExecuting(true)
+            setInterruptedNodeId(null)
+            // Do not clear existing node results or nodes; we want to reuse them
+            vscodeAPI.postMessage({
+                type: 'execute_workflow',
+                data: { nodes, edges, resume: { fromNodeId, seeds: { outputs: seedsOutputs } } },
+            } as any)
+        },
+        [nodes, edges, vscodeAPI]
+    )
+
     const onAbort = useCallback(() => {
         if (abortController) {
             abortController.abort()
@@ -81,6 +96,7 @@ export const useWorkflowExecution = (
         interruptedNodeId,
         nodeAssistantContent,
         onExecute,
+        onResume,
         onAbort,
         resetExecutionState,
         setExecutingNodeId,

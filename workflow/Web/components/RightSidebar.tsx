@@ -6,6 +6,7 @@ import { resolveToolName } from '../services/toolNames'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/shadcn/ui/accordion'
 import { Button } from '../ui/shadcn/ui/button'
 import { Textarea } from '../ui/shadcn/ui/textarea'
+import RunFromHereButton from './RunFromHereButton'
 import { NodeType, type WorkflowNodes } from './nodes/Nodes'
 
 interface RightSidebarProps {
@@ -16,6 +17,7 @@ interface RightSidebarProps {
     onApprove: (nodeId: string, approved: boolean, modifiedCommand?: string) => void
     interruptedNodeId: string | null
     nodeAssistantContent: Map<string, AssistantContentItem[]>
+    onRunFromHere?: (nodeId: string) => void
 }
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
@@ -26,6 +28,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     onApprove,
     interruptedNodeId,
     nodeAssistantContent,
+    onRunFromHere,
 }) => {
     const filteredByActiveNodes = useMemo(
         () => sortedNodes.filter(node => node.type !== NodeType.PREVIEW && node.data.active !== false),
@@ -419,7 +422,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                             >
                                 <AccordionItem value={node.id}>
                                     <AccordionTrigger className="tw-w-full tw-text-sm tw-h-6 tw-py-[.1rem]">
-                                        <div className="tw-flex tw-items-center">
+                                        <div className="tw-flex tw-items-center tw-w-full">
                                             <div className="tw-w-4 tw-mr-2">
                                                 {node.id === executingNodeId && (
                                                     <Loader2Icon
@@ -431,6 +434,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                 )}
                                             </div>
                                             {node.data.title}
+                                            {onRunFromHere && (
+                                                <RunFromHereButton
+                                                    nodeId={node.id}
+                                                    className="tw-ml-auto tw-w-[1.75rem] tw-h-[1.75rem]"
+                                                    disabled={!!executingNodeId}
+                                                    onClick={() => onRunFromHere(node.id)}
+                                                />
+                                            )}
                                         </div>
                                     </AccordionTrigger>
                                     <AccordionContent>
