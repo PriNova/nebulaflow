@@ -1,72 +1,117 @@
 ## High-level summary
-This patch introduces a monotonic `executionRunId` that is bumped every time a **new workflow execution** starts.  
-The id is threaded
+This patch is almost entirely about introducing a new optional LLM node setting called `reasoningEffort` (allowed values: `minimal | low | medium | high`).  
+The change propagates through:
 
-1. From the custom hook `useWorkflowExecution`
-2. To the top–level `Flow` component
-3. Down to `RightSidebar`.
+1. Data model definitions (`models.ts`, `LLM_Node.tsx`)
+2. Workflow execution path (`ExecuteWorkflow.ts`)
+3. Web UI / property editor (`PropertyEditor.tsx`)
+4. A minor version bump (`package.json`, `package-lock.json`)
 
-`RightSidebar` listens to the id and resets its local UI/scroll state when it detects a new run, guaranteeing that artefacts from a previous run (open accordion items, modified commands, paused scrolling, etc.) do not bleed into the next run.
+No other functionality is modified.
 
-No functional behaviour besides this state-reset is changed.
+---
 
 ## Tour of changes
-Start in `workflowExecution.ts`.  
-That file defines and mutates `executionRunId`, so understanding it first clarifies every other change (new prop plumb-throughs and the reset logic).
+Start with `workflow/Core/models.ts`, because it shows the new field and its valid string-literal union. Once that is clear, look at `ExecuteWorkflow.ts` to understand how the new value is validated and forwarded to the SDK via `createAmp`. Finally, review the UI code (`PropertyEditor.tsx`) to see how the value is edited. The package version bumps can be skimmed last.
+
+Suggested order:
+1. `workflow/Core/models.ts`
+2. `workflow/Application/handlers/ExecuteWorkflow.ts`
+3. `workflow/Web/components/PropertyEditor.tsx`
+4. `workflow/Web/components/nodes/LLM_Node.tsx`
+5. `package.json` / `package-lock.json`
+
+---
 
 ## File level review
 
-### `workflow/Web/components/hooks/workflowExecution.ts`
+### `workflow/Core/models.ts`
+Changes:
+```ts
+reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
+```
 
-Changes
-• `const [executionRunId, setExecutionRunId] = useState(0)` – new state slot.  
-• In `resetExecutionState` it:
-  – Clears existing assistant content (previously leaked across runs)  
-  – `setExecutionRunId(prev => prev + 1)` increments the run id.
+Review:
+✔ Correctly adds a discriminated-union style literal type, giving compile-time safety.  
+❓ Consider extracting the literal union into a reusable type alias so both core and UI can import it without repeating the list.
 
-Returned object now contains `executionRunId`.
+---
 
-Review
-✔️ Correct place to bump the id; ensures monotonic increase, so React prop comparisons work.  
-✔️ Clearing `nodeAssistantContent` avoids leftover messages – good.  
+### `workflow/Application/handlers/ExecuteWorkflow.ts`
+Key additions:
+1. `console.log('[ExecuteWorkflow] LLM Node workspace roots:', workspaceRoots)`
+2. Reads `reasoningEffort` from node data.
+3. Local `validReasoningEfforts` set to whitelist inputs.
+4. When calling `createAmp`, conditionally injects `'reasoning.effort'` setting.
 
-Potential improvements / minor issues
-• Race condition unlikely, but if `onExecute` can be called in rapid succession, two increments may coalesce (React batches). Not harmful, but a dedicated `Date.now()` or UUID would also work.  
-• Initial value `0` is relied on by `RightSidebar` to skip the first mount reset. Consider adding a comment.  
+Review & suggestions:
 
-Security: N/A.
+• Validation & safety  
+  – The whitelist check via `validReasoningEfforts.has` is good, but we already have compile-time safety. Runtime validation is still useful because data may come from a saved JSON file created by an older version or manually edited. ✔
 
-### `workflow/Web/components/Flow.tsx`
+• Unused code paths  
+  – `validReasoningEfforts` is re-created on every call; not costly, but could be hoisted to file-scope constant.
 
-Changes
-• Accepts `executionRunId` from hook and passes it to `RightSidebar`.  
-• Prop list updated in two places.
+• Logging  
+  – `console.log` may spam the VS Code dev tools panel. Consider downgrading to `console.debug` or guarding with an env flag.
 
-Review
-✔️ Simple plumb-through, no functional risk.  
-⚠️ Type safety: If this codebase uses strict TS props elsewhere, make sure `Flow`’s prop interface is updated in *all* call sites. (Appears OK in this diff.)  
-• Tests / Storybook stories that mount `Flow` without the hook will now have to supply `executionRunId`. Consider marking the prop optional or providing a default when used outside the hook context.
+• Type cast  
+  – `(reasoningEffort as any)` is unnecessary when `validReasoningEfforts` guard guarantees the variable is of the correct literal type. You can keep strong typing by writing:
+    ```ts
+    'reasoning.effort': reasoningEffort
+    ```
+  – Likewise, prefer a typed object for `settings` rather than `as any`.
 
-### `workflow/Web/components/RightSidebar.tsx`
+No security issues introduced; the value is an enum and does not reach shell/FS APIs.
 
-Changes
-• New prop `executionRunId: number`.  
-• `useEffect` listening to that id; when it changes (>0) it:
-  – resets `openItemId`, `modifiedCommands`, `expandedJsonItems`, `pausedAutoScroll`, and clears `assistantScrollRefs`.
+---
 
-Review
-✔️ All state containers that should be wiped are included.  
-✔️ `assistantScrollRefs.current.clear()` prevents memory leaks.  
+### `workflow/Web/components/PropertyEditor.tsx`
+New UI block renders four toggle buttons.
 
-Edge cases / suggestions
-1. Dependency list: the effect only depends on `executionRunId`. That is correct; internal setters are stable.  
-2. Condition `if (executionRunId > 0) { … }`  
-   • Guarantees no reset on first mount, which is intentional.  
-   • If at some point we decide to “run” immediately on first mount, this condition will skip the reset: revisit then.
-3. Because the component’s state is wiped *after* new props arrive, there is a tiny flicker window where old open items may render once. Not noticeable, but if it matters, reset could also be done in a layout effect.  
-4. Consider exporting a small helper to collect all “sidebar resettable state” so the logic stays DRY if more fields appear.
+Review:
 
-Security / performance: no concerns.
+• UX  
+  – Nice inline button group; reads the existing value and highlights selection.
+
+• onUpdate call
+  ```tsx
+  onUpdate(node.id, { reasoningEffort: effort } as any)
+  ```
+  – Risk: If `onUpdate` naïvely does `node.data = newData`, previous fields could be dropped. From prior code you likely merge, but confirm. Suggest:
+    ```ts
+    onUpdate(node.id, { ...llmNode.data, reasoningEffort: effort })
+    ```
+  – Remove `as any` by importing the `LLMNode` data type or the new `ReasoningEffort` alias.
+
+• Re-declaration of literal list  
+  – Duplicates the same array as in backend. Extract to a shared constant to prevent drift (`reasoningEffortLevels`?).
+
+• Accessibility  
+  – Buttons lack `aria-pressed`. Consider:
+    ```tsx
+    aria-pressed={current === effort}
+    ```
+
+---
+
+### `workflow/Web/components/nodes/LLM_Node.tsx`
+Same field added to the front-end type. No issues.
+
+---
+
+### `package.json` / `package-lock.json`
+Version bump from `0.1.5` ➜ `0.1.6`. No new dependencies. LGTM.
+
+---
 
 ## Overall assessment
-The change is small, focused, and correct. It removes an observable UI bug where remnants from a previous workflow execution polluted the next one. The plumbing is straightforward and type-safe. Only minor stylistic comments remain.
+The feature is correctly threaded end-to-end. Main follow-ups:
+
+1. Replace duplicated literal arrays with a shared constant/type.
+2. Remove unnecessary `as any` casts.
+3. Ensure `onUpdate` merges data.
+4. Consider reducing noisy `console.log`.
+5. Minor perf: hoist `validReasoningEfforts` set.
+
+Otherwise the change is sound, well-scoped, and backwards-compatible.

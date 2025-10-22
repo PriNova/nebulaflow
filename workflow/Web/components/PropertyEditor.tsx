@@ -303,6 +303,33 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                             </div>
                         )
                     })()}
+                    {(() => {
+                        const llmNode = node as LLMNode
+                        const current = (llmNode.data as any).reasoningEffort
+                        return (
+                            <div className="tw-mt-4">
+                                <Label className="tw-block tw-mb-2">Reasoning Effort</Label>
+                                <div className="tw-flex tw-gap-1.5">
+                                    {(['minimal', 'low', 'medium', 'high'] as const).map(effort => (
+                                        <button
+                                            key={effort}
+                                            type="button"
+                                            onClick={() =>
+                                                onUpdate(node.id, { reasoningEffort: effort } as any)
+                                            }
+                                            className={`tw-px-3 tw-py-1 tw-text-sm tw-font-medium tw-border tw-rounded tw-transition-colors ${
+                                                current === effort
+                                                    ? 'tw-bg-[var(--vscode-button-background)] tw-text-[var(--vscode-button-foreground)] tw-border-[var(--vscode-button-background)]'
+                                                    : 'tw-bg-transparent tw-text-[var(--vscode-foreground)] tw-border-[var(--vscode-input-border)]'
+                                            }`}
+                                        >
+                                            {effort.charAt(0).toUpperCase() + effort.slice(1)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )
+                    })()}
                     <div className="tw-mt-2">
                         <Label>Tools</Label>
 

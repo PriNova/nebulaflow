@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **LLM Node Reasoning Effort Control**: Added reasoning effort selector to LLM node configuration
+  - UI buttons in Property Editor for selecting reasoning effort level (`minimal`, `low`, `medium`, `high`)
+  - Buttons positioned between "Dangerously allow all commands" and "Tools" section with radio-button semantics (only one selectable at a time)
+  - Optional `reasoningEffort` field in LLMNode data type persists through save/load cycles
+  - ExecuteWorkflow handler validates effort value against allowed set and conditionally passes `'reasoning.effort'` to SDK settings
+  - Defaults to undefined when not selected; SDK uses its default behavior
+  - Version bumped to reflect new feature
+
 ### Changed
 - **Sidebar Layout Restructuring**: Extracted action header from WorkflowSidebar into dedicated SidebarActionsBar component
   - SidebarActionsBar now positioned outside scroll container in Flow.tsx, fixed at the top of the left panel

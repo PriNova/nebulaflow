@@ -365,6 +365,7 @@ async function executeLLMNode(
     }
 
     const workspaceRoots = (vscode.workspace.workspaceFolders || []).map(f => f.uri.fsPath)
+    console.log('[ExecuteWorkflow] LLM Node workspace roots:', workspaceRoots)
 
     // Determine model key from node selection, validating with SDK when available
     const defaultModelKey = 'anthropic/claude-sonnet-4-5-20250929'
@@ -387,17 +388,22 @@ async function executeLLMNode(
 
     const disabledTools: string[] | undefined = (node as any)?.data?.disabledTools
     const dangerouslyAllowAll: boolean | undefined = (node as any)?.data?.dangerouslyAllowAll
+    const reasoningEffort: string | undefined = (node as any)?.data?.reasoningEffort
     const bashDisabled = isBashDisabled(disabledTools)
     const shouldApplyAllowAll = dangerouslyAllowAll && !bashDisabled
     if (bashDisabled && dangerouslyAllowAll) {
         console.debug('[ExecuteWorkflow] Bash is disabled; ignoring dangerouslyAllowAll flag for safety')
     }
+    const validReasoningEfforts = new Set(['minimal', 'low', 'medium', 'high'])
     const amp = await createAmp({
         apiKey,
         workspaceRoots,
         settings: {
             'internal.primaryModel': selectedKey ?? defaultModelKey,
             ...(disabledTools && disabledTools.length > 0 ? { 'tools.disable': disabledTools } : {}),
+            ...(reasoningEffort && validReasoningEfforts.has(reasoningEffort)
+                ? { 'reasoning.effort': reasoningEffort as any }
+                : {}),
             ...(shouldApplyAllowAll
                 ? {
                       'amp.dangerouslyAllowAll': true,

@@ -19,6 +19,7 @@ export type LLMNode = Omit<WorkflowNode, 'data'> & {
         disabledTools?: string[]
         timeoutSec?: number
         dangerouslyAllowAll?: boolean
+        reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
     }
 }
 

@@ -65,6 +65,7 @@ export interface LLMNode extends WorkflowNode {
         disabledTools?: string[]
         timeoutSec?: number
         dangerouslyAllowAll?: boolean
+        reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
     }
 }
 
