@@ -1,12 +1,10 @@
-import { CircleStop, Edit, File, Play, Save, Trash2 } from 'lucide-react'
+import { Edit, Trash2 } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/shadcn/ui/accordion'
 import styles from '../ui/shadcn/ui/accordion.module.css'
 import { Button } from '../ui/shadcn/ui/button'
 import { Input } from '../ui/shadcn/ui/input'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/shadcn/ui/tooltip'
-import { HelpModal } from './HelpModal'
 import { PropertyEditor } from './PropertyEditor'
 import { NodeType, type WorkflowNodes } from './nodes/Nodes'
 
@@ -14,12 +12,6 @@ interface WorkflowSidebarProps {
     onNodeAdd: (nodeOrLabel: WorkflowNodes | string, nodeType?: NodeType) => void
     selectedNode?: WorkflowNodes | null
     onNodeUpdate?: (nodeId: string, data: Partial<WorkflowNodes['data']>) => void
-    onSave?: () => void
-    onLoad?: () => void
-    onExecute?: () => void
-    onClear?: () => void
-    isExecuting?: boolean
-    onAbort?: () => void
     models: { id: string; title?: string }[]
     onSaveCustomNode: (node: WorkflowNodes) => void
     onDeleteCustomNode: (nodeId: string) => void
@@ -58,12 +50,6 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
     onNodeAdd,
     selectedNode,
     onNodeUpdate,
-    onSave,
-    onLoad,
-    onExecute,
-    onClear,
-    isExecuting,
-    onAbort,
     models,
     onSaveCustomNode,
     customNodes,
@@ -71,13 +57,6 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
     onRenameCustomNode,
     nodeErrors,
 }) => {
-    const handleSave = async (): Promise<void> => {
-        if (onSave) {
-            onSave()
-        }
-    }
-
-    const [isHelpOpen, setIsHelpOpen] = useState(false)
     const [renamingNode, setRenamingNode] = useState<string | null>(null)
     const [newNodeTitle, setNewNodeTitle] = useState<string>('')
 
@@ -111,65 +90,6 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
 
     return (
         <div className="tw-w-full tw-border-r tw-border-border tw-h-full tw-bg-sidebar-background tw-p-4">
-            <div className="tw-sticky tw-top-0 tw-z-10 tw-bg-sidebar-background tw-pb-4 tw-mb-2 tw-border-b tw-border-border">
-                <div className="tw-flex tw-flex-col tw-gap-1">
-                    <div className="tw-flex tw-flex-row tw-gap-1">
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="tw-flex-1"
-                                    onClick={onLoad}
-                                >
-                                    <File size={18} />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Open Workflow</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="tw-flex-1"
-                                    onClick={handleSave}
-                                >
-                                    <Save size={18} />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Save Workflow</TooltipContent>
-                        </Tooltip>
-                    </div>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="tw-flex-1"
-                                onClick={isExecuting ? onAbort : onExecute}
-                            >
-                                {isExecuting ? <CircleStop size={18} /> : <Play size={18} />}
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            {isExecuting ? 'Stop Execution' : 'Start Execution'}
-                        </TooltipContent>
-                    </Tooltip>
-                    <Button variant="outline" size="sm" className="tw-w-full" onClick={onClear}>
-                        Clear Workflow
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="tw-w-full"
-                        onClick={() => setIsHelpOpen(true)}
-                    >
-                        Show Help
-                    </Button>
-                </div>
-            </div>
-
             <Accordion type="single" collapsible>
                 <AccordionItem value="cli">
                     <AccordionTrigger className="tw-text-sm">Shell Nodes</AccordionTrigger>
@@ -409,8 +329,6 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                 )}
             </div>
             <div className="tw-my-4 tw-border-t tw-border-border" />
-
-            <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
         </div>
     )
 }

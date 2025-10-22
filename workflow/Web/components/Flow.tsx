@@ -9,6 +9,7 @@ import type { Edge } from './CustomOrderedEdge'
 import { HelpModal } from './HelpModal'
 import { NebulaSpinningLogo } from './NebulaSpinningLogo'
 import { RightSidebar } from './RightSidebar'
+import { SidebarActionsBar } from './SidebarActionsBar'
 import { WorkflowSidebar } from './WorkflowSidebar'
 import { useEdgeOperations } from './hooks/edgeOperations'
 import { useMessageHandler } from './hooks/messageHandling'
@@ -199,25 +200,29 @@ export const Flow: React.FC<{
         <div className="tw-flex tw-h-screen tw-w-full tw-border-2 tw-border-solid tw-border-[var(--vscode-panel-border)] tw-text-[14px] tw-overflow-hidden">
             <div
                 style={{ width: sidebarWidth + 'px' }}
-                className="tw-flex-shrink-0 tw-bg-[var(--vscode-sideBar-background)] tw-overflow-y-auto tw-h-full"
+                className="tw-flex-shrink-0 tw-bg-[var(--vscode-sideBar-background)] tw-h-full tw-flex tw-flex-col"
             >
-                <WorkflowSidebar
-                    onNodeAdd={onNodeAdd}
-                    selectedNode={activeNode}
-                    onNodeUpdate={onNodeUpdate}
+                <SidebarActionsBar
                     onSave={onSave}
                     onLoad={onLoad}
                     onExecute={onExecute}
                     onClear={resetExecutionState}
                     isExecuting={isExecuting}
                     onAbort={onAbort}
-                    models={models}
-                    onSaveCustomNode={onSaveCustomNode}
-                    onDeleteCustomNode={onDeleteCustomNode}
-                    onRenameCustomNode={onRenameCustomNode}
-                    customNodes={customNodes}
-                    nodeErrors={nodeErrors}
                 />
+                <div className="tw-flex-1 tw-overflow-y-auto tw-min-h-0">
+                    <WorkflowSidebar
+                        onNodeAdd={onNodeAdd}
+                        selectedNode={activeNode}
+                        onNodeUpdate={onNodeUpdate}
+                        models={models}
+                        onSaveCustomNode={onSaveCustomNode}
+                        onDeleteCustomNode={onDeleteCustomNode}
+                        onRenameCustomNode={onRenameCustomNode}
+                        customNodes={customNodes}
+                        nodeErrors={nodeErrors}
+                    />
+                </div>
             </div>
             <div
                 style={{ width: HANDLE_THICKNESS }}
