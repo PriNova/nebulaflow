@@ -82,10 +82,14 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
     useEffect(() => {
         if (node.type === NodeType.LLM) {
             setSelectedModel((node as LLMNode).data.model as any)
+            const llmNode = node as LLMNode
+            if (llmNode.data.reasoningEffort === undefined) {
+                onUpdate(node.id, { reasoningEffort: 'medium' } as any)
+            }
         } else {
             setSelectedModel(undefined)
         }
-    }, [node])
+    }, [node, onUpdate])
 
     const groupedModels = useMemo(() => {
         const groups = new Map<string, { id: string; title?: string }[]>()
@@ -305,7 +309,7 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                     })()}
                     {(() => {
                         const llmNode = node as LLMNode
-                        const current = (llmNode.data as any).reasoningEffort
+                        const current = (llmNode.data as any).reasoningEffort ?? 'medium'
                         return (
                             <div className="tw-mt-4">
                                 <Label className="tw-block tw-mb-2">Reasoning Effort</Label>

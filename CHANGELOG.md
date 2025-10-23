@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **LLM Node Reasoning Effort Default Selection**: Fixed missing default reasoning effort button selection in Property Editor when a new LLM node is added to the workflow
+  - Added `DEFAULT_LLM_REASONING_EFFORT` constant to centralize 'medium' default across node creation, duplication, and seed data
+  - Updated `createNode` factory in Nodes.tsx to apply default when LLM node lacks reasoning effort
+  - Added `useEffect` hook in PropertyEditor.tsx to backfill missing `reasoningEffort` value on node selection via `onNodeUpdate()`
+  - Updated PropertyEditor button display logic to show 'medium' button as selected when value is undefined using nullish coalescing
+  - Enhanced ExecuteWorkflow.ts to validate and apply 'medium' fallback at runtime when executing LLM nodes, ensuring consistent `reasoning.effort` value sent to Amp SDK
 
 ### Added
 

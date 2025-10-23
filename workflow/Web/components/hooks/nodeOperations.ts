@@ -6,7 +6,7 @@ import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Pr
 import type { GenericVSCodeWrapper } from '../../utils/vscode'
 import type { LLMNode } from '../nodes/LLM_Node'
 import type { LoopStartNode } from '../nodes/LoopStart_Node'
-import { NodeType, type WorkflowNodes, createNode } from '../nodes/Nodes'
+import { DEFAULT_LLM_REASONING_EFFORT, NodeType, type WorkflowNodes, createNode } from '../nodes/Nodes'
 
 interface IndexedNodes {
     byId: Map<string, WorkflowNodes>
@@ -164,6 +164,7 @@ export const useNodeOperations = (
                         ;(newNode as any).data = {
                             ...newNode.data,
                             model: undefined,
+                            reasoningEffort: DEFAULT_LLM_REASONING_EFFORT,
                         }
                         break
                     case NodeType.PREVIEW:

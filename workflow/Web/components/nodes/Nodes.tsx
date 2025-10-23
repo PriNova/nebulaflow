@@ -23,6 +23,8 @@ export enum NodeType {
     IF_ELSE = 'if-else',
 }
 
+export const DEFAULT_LLM_REASONING_EFFORT = 'medium' as const
+
 export interface BaseNodeProps {
     id: string
     data: {
@@ -82,8 +84,17 @@ export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
     switch (node.type) {
         case NodeType.CLI:
             return { ...node, id, data: { ...node.data, needsUserApproval: false } } as CLINode
-        case NodeType.LLM:
-            return { ...node, id } as LLMNode
+        case NodeType.LLM: {
+            const llmNode = node as Omit<LLMNode, 'id'>
+            return {
+                ...llmNode,
+                id,
+                data: {
+                    ...llmNode.data,
+                    reasoningEffort: llmNode.data.reasoningEffort ?? DEFAULT_LLM_REASONING_EFFORT,
+                },
+            } as LLMNode
+        }
         case NodeType.PREVIEW:
             return { ...node, id } as PreviewNode
         case NodeType.INPUT:
@@ -123,6 +134,7 @@ export const defaultWorkflow = (() => {
                 content: 'Generate a commit message for the following git diff: ${1}',
                 active: true,
                 model: undefined,
+                reasoningEffort: 'medium',
             },
             position: { x: 0, y: 100 },
         }),

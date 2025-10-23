@@ -64,13 +64,24 @@ Recommended improvements and optimizations for future implementation.
 - **Why**: Eliminates unnecessary type assertions, reduces literal duplication across files, and improves maintainability by having a single source of truth for valid reasoning effort values.
 - **Priority**: P1 (nice-to-have; improves code clarity and type safety)
 
+### LLM Node Reasoning Effort - Server Expectation Confirmation
+- **Goal**: Validate server-side behavior for reasoning effort defaults
+- **What**: Confirm with Amp SDK that it correctly handles the `reasoning.effort` = "medium" default now being sent unconditionally from ExecuteWorkflow.ts on every LLM node execution
+- **Why**: Backend now always sets `reasoning.effort` to "medium" as fallback when value is missing or invalid. Server behavior should be validated to ensure no regressions or unexpected interaction with SDK's internal defaults
+- **Priority**: P1 (verification step; ensures backend contract alignment)
+
+### LLM Node Reasoning Effort - Performance Optimization
+- **Goal**: Avoid unnecessary object allocations during workflow execution
+- **What**: Hoist `validReasoningEfforts` validation set to module scope in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Application/handlers/ExecuteWorkflow.ts#L392-L396) to prevent re-allocation on each LLM node execution
+- **Why**: Currently creates a new Set on every LLM node execution, allocating memory repeatedly for an immutable set of valid values
+- **Priority**: P3 (optimization; good-to-have for performance polish)
+
 ### LLM Node Reasoning Effort - Accessibility and Performance Polish
 - **Goal**: Enhance accessibility and performance of reasoning effort button group
 - **What**:
 - Add `aria-pressed` attribute to reasoning effort buttons in [PropertyEditor.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/PropertyEditor.tsx#L312-L329) for screen reader users
-- Hoist `validReasoningEfforts` validation set to module scope in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Application/handlers/ExecuteWorkflow.ts#L370-L375) to avoid re-allocation on each LLM node execution
 - Replace `console.log` with `console.debug` in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Application/handlers/ExecuteWorkflow.ts#L368-L369) to reduce log noise
-- **Why**: Improves semantic HTML and screen reader support; reduces unnecessary allocations and log verbosity during workflow execution.
+- **Why**: Improves semantic HTML and screen reader support; reduces log verbosity during workflow execution.
 - **Priority**: P2 (optimization and polish; good-to-have for production quality)
 
 ### Preview Node - Remove Unused Parameter
