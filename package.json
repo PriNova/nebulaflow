@@ -29,7 +29,7 @@
         "check": "npm run -s typecheck && npm run -s biome",
         "lint": "npm run biome",
         "build": "npm run -s typecheck && npm run -s build:webview && npm run -s build:ext",
-        "package:vsix": "npm run -s build && vsce package --no-dependencies --out dist/${npm_package_name}-${npm_package_version}.vsix"
+        "package:vsix": "npm run -s build && rm -f dist/${npm_package_name}-${npm_package_version}.vsix && vsce package --no-dependencies --out dist/${npm_package_name}-${npm_package_version}.vsix"
     },
     "dependencies": {
         "@radix-ui/react-accordion": "^1.1.2",

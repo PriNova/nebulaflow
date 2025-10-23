@@ -1,101 +1,55 @@
 ## High-level summary
-This PR introduces incremental–preview functionality:  
-when any non-preview node finishes executing, every directly-connected Preview node now concatenates the available parent outputs and refreshes immediately.  
-Key elements:
-
-* `getDownstreamPreviewNodes()` – walks the edge list to find direct Preview children of a completed node and collects **all** their inbound edges.  
-* `computePreviewContent()` – sorts parent outputs by an `orderNumber` stored on edges and joins them.  
-* `useMessageHandler()` – signature expanded with `edges` and `nodeResults`; inside the `node_execution_status` handler it now calls the two helpers above to update Preview nodes in real-time.  
-* Flow.tsx passes the new props through.  
-* Changelog and future-enhancements docs updated.
-
-No database/model changes; the scope is limited to the web front-end.
-
----
+Only one change was made: the `package:vsix` NPM script in `package.json` now deletes any pre-existing VSIX file before invoking `vsce package`.  
+Old:  
+```json
+"package:vsix": "npm run -s build && vsce package --no-dependencies --out dist/${npm_package_name}-${npm_package_version}.vsix"
+```  
+New:  
+```json
+"package:vsix": "npm run -s build && rm -f dist/${npm_package_name}-${npm_package_version}.vsix && vsce package --no-dependencies --out dist/${npm_package_name}-${npm_package_version}.vsix"
+```
 
 ## Tour of changes
-Start with `workflow/Web/components/hooks/messageHandling.ts`, because
-1. All runtime logic lives here.
-2. Every other code change (Flow.tsx prop plumbing, docs) merely supports or describes this logic.
-
-After understanding the new helpers and the amended `node_execution_status` branch, the other diffs are straightforward.
-
----
+With only one file affected the review naturally starts and ends in `package.json`. Focusing on the new `rm -f …` clause explains the intent (avoid “file exists” errors) and surfaces the main portability concern.
 
 ## File level review
 
-### `CHANGELOG.md`
-Additions accurately document the new feature and the small optimisation.  
-No issues.
+### `package.json`
+Change summary  
+• Adds `rm -f dist/${npm_package_name}-${npm_package_version}.vsix` before running `vsce package`.
 
-### `future-enhancements.md`
-Minor markdown edits and two follow-up tasks are recorded.  
-Observation: The “Remove Unused Parameter” task is relevant—the parameter is still present in this PR (see below).
+Correctness & behaviour  
+✓ Removing the existing VSIX avoids `vsce`’s “file already exists” failure when repackaging the same version.  
+✓ `-f` silences “file not found” errors, so the command is idempotent.
 
-### `workflow/Web/components/Flow.tsx`
-+ Props `edges` and `nodeResults` are forwarded to `useMessageHandler`.
+Portability / cross-platform issues  
+• `rm` is a POSIX utility; it is not natively available in Windows’ default shell (`cmd.exe` or PowerShell). Running this script on Windows will therefore fail unless the user has a Unix-like environment (Git Bash, WSL, Cygwin, etc.). Because VS Code extension developers often work on Windows, this is a significant regression.
 
-Review:
-* **Correctness** – Assumes the parent `Flow` component already holds authoritative `edges` / `nodeResults`. Verify they are up-to-date and not local stale snapshots; otherwise previews could lag behind.  
-* **Typing** – Component generics unchanged, passing extra props does not harm; ensure `useMessageHandler` declaration is synchronised in every call-site if Flow is reused elsewhere.
+Recommendations  
+1. Replace `rm -f …` with a cross-platform alternative:
+   - `rimraf`:  
+     ```json
+     "package:vsix": "npm run -s build && npx rimraf dist/${npm_package_name}-${npm_package_version}.vsix && vsce package --no-dependencies --out dist/${npm_package_name}-${npm_package_version}.vsix"
+     ```
+   - or `shx rm -f …` (shx wraps coreutils in Node and works on Windows).  
+2. Consider extracting the clean-up into a `prepackage:vsix` script so the intent is clearer:
+   ```json
+   "scripts": {
+     "prepackage:vsix": "rimraf dist/${npm_package_name}-${npm_package_version}.vsix",
+     "package:vsix": "npm run -s build && vsce package --no-dependencies --out dist/${npm_package_name}-${npm_package_version}.vsix"
+   }
+   ```
+3. Ensure the `dist/` directory exists prior to `vsce package`; either create it in an earlier build step or add `mkdir -p dist` (again using a cross-platform tool if necessary).
 
-### `workflow/Web/components/hooks/messageHandling.ts`
+Security / safety  
+No new security risks introduced. The extra command deletes only a predictable, versioned path inside the project’s own output folder.
 
-#### New helpers
-1. `getDownstreamPreviewNodes(completedNodeId, edges, nodes)`  
-   * Complexity: O(E) filtering – good.  
-   * Aggregates all incoming edges for each Preview node: ✔ resolves earlier bug.  
-   * Returns duplicates only once (guard via `result.find`) – fine.  
-   * Potential improvement: Use a `Set` instead of `Array.find` for O(1) duplicate check (minor).
+Performance  
+Negligible impact; a single file deletion.
 
-2. `computePreviewContent(previewNode, parentEdges, nodeResults, edgeOrderMap)`  
-   * `previewNode` parameter is unused – dead code; flagged in future-enhancements.  
-   * Empty-string outputs are skipped (`if (parentOutput)`). If an upstream node legitimately returns `''`, the preview will silently drop it. Consider using `parentOutput !== undefined` instead.  
-   * When multiple edges have the same or missing `orderNumber` they default to `0` and will fallback to source list order of `.sort()`. Clarify tie-break logic.
-
-#### Hook signature changes
-```ts
-export const useMessageHandler = (
-  ...
-  notify,
-  edges,
-  nodeResults
-)
-```
-and dependency array:
-```ts
-}, [
-  ...,
-  edges,
-  nodeResults,
-])
-```
-Good: prevents stale closure.  
-But `edges`/`nodeResults` are likely re-created on every ReactFlow change, so the effect may re-register handlers frequently. Ensure that `vscodeAPI.onMessage` is not duplicated; currently the handler is re-added each time. Consider `useRef` for a stable listener or deregister on cleanup.
-
-#### `node_execution_status` handling
-* Correctly differentiates Preview vs non-Preview nodes.  
-* Builds `edgeOrderMap` once per message. Could hoist **outside** the Preview loop, but negligible.  
-* `updatedResults` mutates a fresh Map copy; safe. Yet it only inserts the **just completed** node – if other parents finished previously, they must already be in `nodeResults` or will be missing in the preview. Assumption seems valid.
-
-Edge cases / bugs:
-1. **Race condition** – If two parents finish nearly simultaneously, both `onMessage` invocations read the same stale `nodeResults`, compute content, and the later one might overwrite the earlier composite. Using the real-time `updatedResults` Map is good, but only one parent’s value is added per call. Consider merging `nodeResults` each time (`new Map(nodeResults)` already contains prior values, so effect is fine).
-2. **Performance** – For large graphs, repeatedly filtering `edges` in helpers may cost. Caching inbound edge lists by node id would remove redundant work.
-3. **Robustness** – If `result` is NULLish the code stores `''`; that treats “node failed/no result” the same as empty string. Might hide errors.
-
-Security: no direct user-supplied input is evaluated; concatenation of parent outputs is inert. Safe.
-
-### Unit / integration tests
-No test additions. A regression test for “preview updates after first parent completes” is recommended.
+Documentation  
+Update any build or release docs to note the additional dependency (rimraf/shx) if adopted.
 
 ---
 
-## Recommendations
-1. Remove the unused `previewNode` parameter in `computePreviewContent()` (already noted).  
-2. Accept empty string outputs (`!== undefined`) to avoid data loss.  
-3. Guard against multiple event-listener registrations or add cleanup in the effect.  
-4. Optional: Replace `result.find()` with a `Set` for minor speed gain.  
-5. Write tests to cover:
-   * Single-parent preview (baseline).  
-   * Multi-parent with differing `orderNumber`.  
-   * Rapid concurrent parent completions.
+Overall the change is functionally correct on Unix-like systems but non-portable. Address the portability concern to keep the release process smooth for all contributors.
