@@ -4,6 +4,24 @@ Recommended improvements and optimizations for future implementation.
 
 ## Pending Enhancements
 
+### CLI Node - Executor Options Type Safety
+- **Goal**: Improve extensibility and maintainability of the shell executor interface
+- **What**: Type the executor options parameter as `Pick<ExecOptions, 'cwd'>` instead of a loose object type
+- **Why**: Provides explicit, typed contract for what executor options are supported, making future extensions (e.g., timeout, env vars) safer and clearer for contributors
+- **Priority**: P1 (nice-to-have; improves type safety and future extensibility)
+
+### CLI Node - Multi-root Workspace Handling
+- **Goal**: Make CLI node behavior configurable for workspaces with multiple root folders
+- **What**: Extend cwd selection beyond hardcoded index 0; consider UI picker or active resource detection
+- **Why**: Currently always uses the first workspace folder. In multi-root setups, users may want to target a specific folder or the folder containing their active file
+- **Priority**: P2 (optional enhancement; improves UX for multi-root workspace users)
+
+### CLI Node - Missing Workspace UX
+- **Goal**: Clarify user intent when no workspace is open
+- **What**: Consider prompting users to open a folder when CLI node is executed without an active workspace, rather than silently falling back to extension directory
+- **Why**: Running commands in the extension process directory can be confusing and lead to failed commands. Explicit prompt surfaces the issue and guides correct setup
+- **Priority**: P2 (UX improvement; helps users avoid setup confusion)
+
 ### Window Title - Conditional URI in Protocol Message
 - **Goal**: Reduce redundant data transmission when workflow filename is already known to the webview
 - **What**: Only include workflow URI in the `workflow_loaded` protocol message when the file path information is necessary for the webview consumer

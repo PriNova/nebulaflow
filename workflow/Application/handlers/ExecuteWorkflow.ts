@@ -464,7 +464,10 @@ async function executeLLMNode(
                             // Auto-approve when dangerouslyAllowAll is enabled, regardless of toAllow content
                             if (shouldApplyAllowAll) {
                                 if (!b.toAllow || b.toAllow.length === 0) {
-                                    console.warn('[ExecuteWorkflow] Auto-approving toolUseID=%s with no explicit toAllow', b.toolUseID)
+                                    console.warn(
+                                        '[ExecuteWorkflow] Auto-approving toolUseID=%s with no explicit toAllow',
+                                        b.toolUseID
+                                    )
                                 }
                                 await amp.sendToolInput({
                                     threadID: thread.id,
@@ -649,8 +652,15 @@ export async function executeCLINode(
         throw new Error('Command cannot be executed')
     }
 
+    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    if (!cwd) {
+        void vscode.window.showInformationMessage(
+            'No workspace folder found. CLI command will run in the extension process directory.'
+        )
+    }
+
     try {
-        const { output, exitCode } = await shellExecute(filteredCommand, abortSignal)
+        const { output, exitCode } = await shellExecute(filteredCommand, abortSignal, { cwd })
         if (exitCode !== '0' && (node as any).data?.shouldAbort) {
             throw new Error(output)
         }

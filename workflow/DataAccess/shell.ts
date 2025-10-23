@@ -9,12 +9,13 @@ export function expandHome(input: string): string {
 
 export function execute(
     command: string,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
+    opts?: { cwd?: string }
 ): Promise<{ output: string; exitCode: string }> {
     return new Promise((resolve, reject) => {
         const proc = exec(
             command,
-            { env: process.env, shell: process.env.SHELL || undefined },
+            { env: process.env, shell: process.env.SHELL || undefined, cwd: opts?.cwd },
             (error, stdout, stderr) => {
                 const code = error && (error as any).code != null ? String((error as any).code) : '0'
                 const output = stdout?.toString() + (stderr ? `\n${stderr.toString()}` : '')

@@ -1,121 +1,73 @@
 ## High-level summary
-Only one functional change is introduced and it lives in  
-`workflow/Application/handlers/ExecuteWorkflow.ts`.  
-The guard that previously auto-approved a blocked tool call **only if**  
-`dangerouslyAllowAll` was enabled **and** the blocked item (`b`) contained a
-non-empty `toAllow` array has been relaxed: now the approval is executed
-whenever `dangerouslyAllowAll` is true, regardless of the contents of
-`b.toAllow`.
+The patch is almost entirely about allowing CLI workflow nodes to run in the user’s workspace directory instead of the extension’s installation directory.  
+Key points  
+• `shell.ts::execute` now accepts an optional `{cwd}` argument and forwards it to `child_process.exec`.  
+• `ExecuteWorkflow.ts::executeCLINode` discovers the first VS Code workspace folder, warns when none is found, and passes that path to `shellExecute`.  
+• A tiny cosmetic change reformats a `console.warn`.
 
-This makes the handler far more permissive and could have security and
-correctness implications.
+---
 
 ## Tour of changes
-Start the review around lines 450-470 in the same file (right where the diff is
-shown). That snippet contains:
+Start with `workflow/DataAccess/shell.ts`.  
+Understanding the new `cwd` option here explains why `executeCLINode` was updated and why all other call-sites remain source-compatible (the new parameter is optional and appended).
 
-```
-if (shouldApplyAllowAll) {
-    await amp.sendToolInput({ … });
-}
-```
-
-Understanding this block (what `shouldApplyAllowAll` means, what `b` looks like,
-and what `sendToolInput` does) is the key to assessing the safety of the new
-behavior and to see whether additional validation is now required elsewhere.
+---
 
 ## File level review
 
+### `workflow/DataAccess/shell.ts`
+```ts
+export function execute(
+    command: string,
+    abortSignal?: AbortSignal,
+    opts?: { cwd?: string }
+): Promise<{ output: string; exitCode: string }>
+```
++ Adds `opts` with optional `cwd` and forwards it to `exec`:
+
+```ts
+exec(command, { env: process.env, shell: process.env.SHELL || undefined, cwd: opts?.cwd }, ...)
+```
+
+Review
+1. Back-compat ✔ – existing calls (two positional args) still compile.
+2. Type safety – `opts` is not marked `Partial<ExecOptions>`; if more options are ever needed the signature may grow awkward. Consider:
+   `opts?: Pick<ExecOptions, 'cwd'>` or directly accept `ExecOptions`.
+3. Missing abort wiring – pre-existing issue: `abortSignal` is accepted but never used (`exec` returns a ChildProcess that can be killed on `abortSignal.aborted`). Since we are touching this function, it is worth fixing rather than growing tech debt.
+4. Security – still exposes the full `process.env`; that’s unchanged. Adding `cwd` does not increase risk but underscores that paths come from the workspace and could reference sensitive areas.  
+   • Validate that the path is within the workspace root (`fs.realpathSync` & compare) if sandboxing is important.  
+   • On Windows an attacker could craft a workspace folder like `C:\Windows\System32` and run privileged utilities unintentionally.
+5. Path expansion – `expandHome` helper exists but is not used when a `cwd` is supplied. If users put `~` into `settings.json` this will silently fail.
+
 ### `workflow/Application/handlers/ExecuteWorkflow.ts`
+Minor log re-formatting – fine.
 
-Change recap
--------------
-Old guard:
-```
-if (shouldApplyAllowAll &&
-    Array.isArray(b.toAllow) &&
-    b.toAllow.length > 0) {
-    …
-}
-```
-New guard:
-```
-if (shouldApplyAllowAll) {
-    …
-}
+`executeCLINode` changes:
+
+```ts
+const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+...
+const { output, exitCode } = await shellExecute(filteredCommand, abortSignal, { cwd })
 ```
 
-Observations
-------------
+Review
+1. Folder selection – always picks index 0.  
+   • Works for single-root workspaces, but multi-root users might expect the node to run in the current file’s workspace or the one mapped in the workflow definition. Consider making it configurable or at least documenting.
+2. Fallback UX – shows an Info message when no workspace, then runs in extension directory.  
+   • That directory is frequently read-only; command failures could confuse users. Maybe prompt to pick a folder instead.
+3. `cwd` may be `undefined`; the downstream code handles that (Node falls back to current process working dir).
+4. Error propagation unchanged.
 
-1. Security / Safety  
-   • `dangerouslyAllowAll` already signals that the user wants to bypass manual
-     checking, but the removed `toAllow` checks provided a small extra safety
-     net: it guaranteed that there was at least some declared input set by the
-     model (`b.toAllow`) before blindly invoking `sendToolInput`.  
-   • Without that check, the code will auto-approve even if `b.toAllow` is
-     `undefined`, `null`, empty, or any other shape. If the downstream
-     executor expects a populated structure, this could:
-     - Execute a tool with empty/default arguments (maybe benign, maybe not).
-     - Throw runtime errors if the executor assumes arguments exist.
-     - Open the door for unexpected behavior because the model’s intent was
-       unclear.
+### Cosmetic change in the same file
+`console.warn` split across lines for linting; no functional effect. ✔
 
-2. Correctness  
-   • If `amp.sendToolInput` ends up relying on `b.toAllow` to construct its
-     payload (e.g., `{ toolUseID, input: b.toAllow[0] }`), calling it when
-     `b.toAllow` is falsy will raise an exception.  
-   • Conversely, if `sendToolInput` tolerates missing input and executes with
-     defaults, the change could inadvertently start running previously
-     impossible invocations.
+---
 
-3. Error handling  
-   • The rest of the loop already adds each `toolUseID` to `handledBlocked`
-     before attempting `sendToolInput`; therefore, if `sendToolInput` now
-     throws due to missing `toAllow`, that blocked item will not be retried
-     (it’s marked handled). This creates the possibility of silent, unretried
-     failures.
+## Recommendations
+1. Wire `abortSignal` to `proc.kill()` in `shell.ts` for completeness.  
+2. Replace custom `opts` object with `execOptions` or at least `Partial<ExecOptions>` to avoid signature churn.
+3. Validate / normalize the workspace path.  
+4. Consider multi-root workspace support.  
+5. Update unit tests (if any) for the new parameter.
 
-4. Logging / observability  
-   • No logging was added to compensate for the looser guard. Consider adding a
-     log line when approving a tool without explicit arguments.
-
-5. Documentation mismatch  
-   • If external documentation still says “will only auto-approve when the
-     model supplied arguments”, the docs are now inaccurate.
-
-6. Potential alternative fix  
-   • If the previous condition was too restrictive (e.g., Bash commands with
-     no arguments), consider loosening it more incrementally:
-     ```
-     if (shouldApplyAllowAll &&
-         (b.toAllow === undefined || (Array.isArray(b.toAllow) && b.toAllow.length > 0))) { … }
-     ```
-     …or validate per-tool requirements rather than blanket removal.
-
-Recommendations
----------------
-1. Confirm the contract of `amp.sendToolInput`:
-   • Is an argument array required?  
-   • What happens when it’s empty?  
-   • Does it perform its own validation?
-
-2. If missing/empty `toAllow` is truly acceptable, at least add a comment that
-   explains the rationale and any downstream safeguards.
-
-3. Add logging when `toAllow` is empty to aid debugging:
-   ```
-   if (!b.toAllow || b.toAllow.length === 0) {
-       logger.warn('Auto-approving toolUseID=%s with no explicit input', b.toolUseID);
-   }
-   ```
-
-4. Update documentation for `dangerouslyAllowAll`.
-
-5. Add unit tests covering:
-   • Auto-approve with populated `toAllow` (existing behavior).  
-   • Auto-approve with undefined/empty `toAllow` (new behavior).  
-   • Failure path when `sendToolInput` rejects due to bad input.
-
-### (No other files modified)
-No further review needed.
+Overall, a safe, incremental improvement with minor polish items needed.

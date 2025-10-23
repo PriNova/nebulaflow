@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **CLI Node Workspace Directory Resolution**: Fixed CLI node commands failing with ENOENT when executed in workspace paths other than VS Code installation directory
+  - Extended shell executor to accept optional `cwd` parameter
+  - CLI node now resolves the first workspace folder via `vscode.workspace.workspaceFolders` and passes it to the executor
+  - When no workspace is open, gracefully falls back to extension process directory with user notification
+  - Allows `npm run package:vsix` and other workspace-relative commands to execute correctly
+
+### Fixed
 - **LLM Node Dangerously Allow All Commands Regression**: Fixed regression where "Dangerously allow all commands" setting was not auto-approving blocked bash commands when the SDK's `toAllow` array was empty or missing
   - Broadened auto-approval condition to check `shouldApplyAllowAll` flag directly, ensuring all blocked commands are auto-approved when "dangerously allow all" is enabled, regardless of `toAllow` enumeration
   - Added observability logging when auto-approving without explicit `toAllow` list for audit trail visibility
