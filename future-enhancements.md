@@ -66,3 +66,12 @@ Recommended improvements and optimizations for future implementation.
 - **What**: Enhance `getDownstreamPreviewNodes()` and the `node_execution_status` handler to recursively update preview nodes connected to other preview nodes (A → Preview1 → Preview2 chain)
 - **Why**: Currently only direct previews connected to completed nodes are updated. Multi-hop chains would be blank until the intervening preview executes, limiting preview utility in complex workflows
 - **Priority**: P2 (optional enhancement; improves preview coverage for advanced workflows)
+
+### LLM Node Dangerously Allow All - Documentation and Tests
+- **Goal**: Improve maintainability and reliability of the dangerously allow all commands feature
+- **What**: 
+  - Update documentation/labels explaining that "dangerously allow all" auto-approves all blocked commands regardless of SDK `toAllow` enumeration
+  - Add unit and integration tests covering auto-approval scenarios with and without `toAllow` arrays
+  - Document failure modes and observability hooks (audit logging) in feature documentation
+- **Why**: The feature behavior now unconditionally auto-approves when enabled; documenting this intent and testing both paths ensures future maintainers understand the design and can safely refactor without regressions
+- **Priority**: P2 (quality assurance; improves test coverage and clarity for future changes)

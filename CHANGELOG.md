@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **LLM Node Dangerously Allow All Commands Regression**: Fixed regression where "Dangerously allow all commands" setting was not auto-approving blocked bash commands when the SDK's `toAllow` array was empty or missing
+  - Broadened auto-approval condition to check `shouldApplyAllowAll` flag directly, ensuring all blocked commands are auto-approved when "dangerously allow all" is enabled, regardless of `toAllow` enumeration
+  - Added observability logging when auto-approving without explicit `toAllow` list for audit trail visibility
+  - Guard remains active: if Bash tool is disabled, `shouldApplyAllowAll` is false and user approval flow activates as safeguard
+
 ### Added
 - **Preview Node Displays Parent Output Immediately**: Fixed Preview node to show content as soon as parent node completes, rather than waiting for Preview node execution
   - Added `getDownstreamPreviewNodes()` and `computePreviewContent()` helpers to resolve graph topology and aggregate parent outputs

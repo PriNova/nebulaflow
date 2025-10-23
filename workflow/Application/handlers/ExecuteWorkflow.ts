@@ -461,12 +461,11 @@ async function executeLLMNode(
                             if (handledBlocked.has(b.toolUseID)) continue
                             handledBlocked.add(b.toolUseID)
 
-                            // Auto-approve command execution when dangerouslyAllowAll is enabled and Bash is available
-                            if (
-                                shouldApplyAllowAll &&
-                                Array.isArray(b.toAllow) &&
-                                b.toAllow.length > 0
-                            ) {
+                            // Auto-approve when dangerouslyAllowAll is enabled, regardless of toAllow content
+                            if (shouldApplyAllowAll) {
+                                if (!b.toAllow || b.toAllow.length === 0) {
+                                    console.warn('[ExecuteWorkflow] Auto-approving toolUseID=%s with no explicit toAllow', b.toolUseID)
+                                }
                                 await amp.sendToolInput({
                                     threadID: thread.id,
                                     toolUseID: b.toolUseID,
