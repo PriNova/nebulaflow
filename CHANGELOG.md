@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+
+### Added
+
+### Changed
+
+### Removed
+
+## [NebulaFlow 0.1.9]
+
+### Fixed
 - **CLI Node Workspace Directory Resolution**: Fixed CLI node commands failing with ENOENT when executed in workspace paths other than VS Code installation directory
   - Extended shell executor to accept optional `cwd` parameter
   - CLI node now resolves the first workspace folder via `vscode.workspace.workspaceFolders` and passes it to the executor
