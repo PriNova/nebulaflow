@@ -121,7 +121,9 @@ export const Flow: React.FC<{
         vscodeAPI,
         setCustomNodes,
         setNodeAssistantContent,
-        notify
+        notify,
+        edges,
+        nodeResults
     )
 
     const { sidebarWidth, handleMouseDown } = useSidebarResize(256, 200, 600, {

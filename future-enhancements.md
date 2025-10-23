@@ -49,8 +49,20 @@ Recommended improvements and optimizations for future implementation.
 ### LLM Node Reasoning Effort - Accessibility and Performance Polish
 - **Goal**: Enhance accessibility and performance of reasoning effort button group
 - **What**:
-   - Add `aria-pressed` attribute to reasoning effort buttons in [PropertyEditor.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/PropertyEditor.tsx#L312-L329) for screen reader users
-   - Hoist `validReasoningEfforts` validation set to module scope in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Application/handlers/ExecuteWorkflow.ts#L370-L375) to avoid re-allocation on each LLM node execution
-   - Replace `console.log` with `console.debug` in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Application/handlers/ExecuteWorkflow.ts#L368-L369) to reduce log noise
+- Add `aria-pressed` attribute to reasoning effort buttons in [PropertyEditor.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/PropertyEditor.tsx#L312-L329) for screen reader users
+- Hoist `validReasoningEfforts` validation set to module scope in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Application/handlers/ExecuteWorkflow.ts#L370-L375) to avoid re-allocation on each LLM node execution
+- Replace `console.log` with `console.debug` in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Application/handlers/ExecuteWorkflow.ts#L368-L369) to reduce log noise
 - **Why**: Improves semantic HTML and screen reader support; reduces unnecessary allocations and log verbosity during workflow execution.
 - **Priority**: P2 (optimization and polish; good-to-have for production quality)
+
+### Preview Node - Remove Unused Parameter
+- **Goal**: Clean up dead code in preview content computation
+- **What**: Remove unused `previewNode` parameter from `computePreviewContent()` function in [messageHandling.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/messageHandling.ts#L34-L39)
+- **Why**: Parameter was intended for potential future use but is not accessed in the current implementation; removing it reduces cognitive load and clarifies intent
+- **Priority**: P2 (code quality; trivial cleanup)
+
+### Preview Node - Multi-hop Content Propagation
+- **Goal**: Extend preview updates to transitive chains of preview nodes
+- **What**: Enhance `getDownstreamPreviewNodes()` and the `node_execution_status` handler to recursively update preview nodes connected to other preview nodes (A → Preview1 → Preview2 chain)
+- **Why**: Currently only direct previews connected to completed nodes are updated. Multi-hop chains would be blank until the intervening preview executes, limiting preview utility in complex workflows
+- **Priority**: P2 (optional enhancement; improves preview coverage for advanced workflows)

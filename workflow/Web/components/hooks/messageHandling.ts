@@ -4,6 +4,59 @@ import type { GenericVSCodeWrapper } from '../../utils/vscode'
 import type { Edge } from '../CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
 
+const getDownstreamPreviewNodes = (
+    completedNodeId: string,
+    edges: Edge[],
+    nodes: WorkflowNodes[]
+): Array<{ id: string; parentEdges: Edge[] }> => {
+    const nodeMap = new Map(nodes.map(n => [n.id, n]))
+    const result: Array<{ id: string; parentEdges: Edge[] }> = []
+
+    // Find all edges where the completed node is the source
+    const parentEdges = edges.filter(e => e.source === completedNodeId)
+
+    // For each edge target, check if it's a Preview node
+    for (const edge of parentEdges) {
+        const targetNode = nodeMap.get(edge.target)
+        if (targetNode?.type === NodeType.PREVIEW) {
+            let preview = result.find(p => p.id === edge.target)
+            if (!preview) {
+                // Aggregate ALL incoming edges to the preview, not just from completed node
+                const allIncomingEdges = edges.filter(e => e.target === edge.target)
+                preview = { id: edge.target, parentEdges: allIncomingEdges }
+                result.push(preview)
+            }
+        }
+    }
+
+    return result
+}
+
+const computePreviewContent = (
+    previewNode: WorkflowNodes,
+    parentEdges: Edge[],
+    nodeResults: Map<string, string>,
+    edgeOrderMap: Map<string, number>
+): string => {
+    // Sort edges to this preview by their order (source order at the preview target)
+    const sortedEdges = [...parentEdges].sort((a, b) => {
+        const aOrder = edgeOrderMap.get(a.id) ?? 0
+        const bOrder = edgeOrderMap.get(b.id) ?? 0
+        return aOrder - bOrder
+    })
+
+    // Concatenate parent outputs in order
+    const contents: string[] = []
+    for (const edge of sortedEdges) {
+        const parentOutput = nodeResults.get(edge.source)
+        if (parentOutput) {
+            contents.push(parentOutput)
+        }
+    }
+
+    return contents.join('\n')
+}
+
 export const useMessageHandler = (
     nodes: WorkflowNodes[],
     setNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>,
@@ -20,7 +73,9 @@ export const useMessageHandler = (
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>,
     setCustomNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>,
     setNodeAssistantContent: React.Dispatch<React.SetStateAction<Map<string, any[]>>>,
-    notify: (p: { type: 'success' | 'error'; text: string }) => void
+    notify: (p: { type: 'success' | 'error'; text: string }) => void,
+    edges: Edge[],
+    nodeResults: Map<string, string>
 ) => {
     const batchUpdateNodeResults = useCallback(
         (updates: Map<string, string>) => {
@@ -77,6 +132,34 @@ export const useMessageHandler = (
                             const node = nodes.find(n => n.id === nodeId)
                             if (node?.type === NodeType.PREVIEW) {
                                 onNodeUpdate(node.id, { content: result as any })
+                            } else {
+                                // Propagate completion to downstream Preview nodes
+                                const downstreamPreviews = getDownstreamPreviewNodes(
+                                    nodeId,
+                                    edges,
+                                    nodes
+                                )
+                                // Build edge order map once to avoid O(E²) lookups
+                                const edgeOrderMap = new Map(
+                                    edges.map(e => [e.id, e.data?.orderNumber ?? 0])
+                                )
+                                for (const preview of downstreamPreviews) {
+                                    // Create a map with the just-completed node's result
+                                    const updatedResults = new Map(nodeResults).set(nodeId, result ?? '')
+                                    const previewNode = nodes.find(n => n.id === preview.id)
+                                    if (previewNode) {
+                                        const content = computePreviewContent(
+                                            previewNode,
+                                            preview.parentEdges,
+                                            updatedResults,
+                                            edgeOrderMap
+                                        )
+                                        // Only update if content has changed to avoid unnecessary updates
+                                        if (content !== previewNode.data.content) {
+                                            onNodeUpdate(preview.id, { content })
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             setExecutingNodeId(null)
@@ -138,5 +221,7 @@ export const useMessageHandler = (
         setNodeAssistantContent,
         vscodeAPI,
         notify,
+        edges,
+        nodeResults,
     ])
 }

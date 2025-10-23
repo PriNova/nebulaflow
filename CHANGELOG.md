@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Preview Node Displays Parent Output Immediately**: Fixed Preview node to show content as soon as parent node completes, rather than waiting for Preview node execution
+  - Added `getDownstreamPreviewNodes()` and `computePreviewContent()` helpers to resolve graph topology and aggregate parent outputs
+  - Enhanced `useMessageHandler` hook to accept `edges` and `nodeResults` parameters for tracking parent completions
+  - Updated `node_execution_status` message handler to propagate completion to downstream Preview nodes: when any non-Preview node finishes, connected Preview nodes compute new content from available parent outputs and update via `onNodeUpdate()`
+  - Edge ordering (via optional `orderNumber` field) determines output concatenation order for multi-parent previews
+  - Token count calculation preserved through `onNodeUpdate()` call
+  - **Why**: Users expect preview content to appear as parents finish, providing immediate feedback during workflow execution rather than seeing blank previews until all nodes complete
+
 - **Window Title Shows Loaded Workflow**: Display workflow filename in the NebulaFlow window title for multi-instance differentiation
   - Window title shows "NebulaFlow — <filename.json>" when a workflow is loaded, or "NebulaFlow — Untitled" when no file is open
   - Each panel instance maintains independent workflow state, allowing multiple workflows to be open simultaneously without blocking each other
@@ -19,6 +27,10 @@ All notable changes to this project will be documented in this file.
   - Version bumped to reflect new feature
 
 ### Changed
+- **Preview Node Message Handler Optimization**: Improved performance and correctness of preview content computation
+  - Pre-built `Map<edgeId, orderNumber>` to eliminate O(E²) sorting overhead from repeated `edges.find()` calls in comparator (now O(E log E))
+  - Fixed parent aggregation to gather all incoming edges to preview node, not just from the recently completed parent
+
 - **Sidebar Layout Restructuring**: Extracted action header from WorkflowSidebar into dedicated SidebarActionsBar component
   - SidebarActionsBar now positioned outside scroll container in Flow.tsx, fixed at the top of the left panel
   - Flow.tsx left sidebar refactored from single container to two-part layout: fixed actions bar + scrollable content area
