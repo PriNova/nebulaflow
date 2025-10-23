@@ -6,7 +6,14 @@ import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Pr
 import type { GenericVSCodeWrapper } from '../../utils/vscode'
 import type { LLMNode } from '../nodes/LLM_Node'
 import type { LoopStartNode } from '../nodes/LoopStart_Node'
-import { DEFAULT_LLM_REASONING_EFFORT, NodeType, type WorkflowNodes, createNode } from '../nodes/Nodes'
+import {
+    DEFAULT_LLM_MODEL_ID,
+    DEFAULT_LLM_MODEL_TITLE,
+    DEFAULT_LLM_REASONING_EFFORT,
+    NodeType,
+    type WorkflowNodes,
+    createNode,
+} from '../nodes/Nodes'
 
 interface IndexedNodes {
     byId: Map<string, WorkflowNodes>
@@ -163,7 +170,7 @@ export const useNodeOperations = (
                     case NodeType.LLM:
                         ;(newNode as any).data = {
                             ...newNode.data,
-                            model: undefined,
+                            model: { id: DEFAULT_LLM_MODEL_ID, title: DEFAULT_LLM_MODEL_TITLE },
                             reasoningEffort: DEFAULT_LLM_REASONING_EFFORT,
                         }
                         break

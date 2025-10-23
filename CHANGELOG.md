@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **LLM Node Default Model Selection**: Fixed new LLM nodes defaulting to undefined model; now defaults to Sonnet 4.5
+  - Added `DEFAULT_LLM_MODEL_ID` and `DEFAULT_LLM_MODEL_TITLE` constants for centralized model defaults across node creation and seed data
+  - Updated `onNodeAdd` in nodeOperations.ts to assign default model when creating new LLM nodes
+  - Enhanced `normalizeModelsInWorkflow` migration to handle legacy workflows without models by injecting Sonnet 4.5 defaults at load time, ensuring backward compatibility
+
 - **LLM Node Reasoning Effort Default Selection**: Fixed missing default reasoning effort button selection in Property Editor when a new LLM node is added to the workflow
   - Added `DEFAULT_LLM_REASONING_EFFORT` constant to centralize 'medium' default across node creation, duplication, and seed data
   - Updated `createNode` factory in Nodes.tsx to apply default when LLM node lacks reasoning effort

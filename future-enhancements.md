@@ -104,3 +104,9 @@ Recommended improvements and optimizations for future implementation.
   - Document failure modes and observability hooks (audit logging) in feature documentation
 - **Why**: The feature behavior now unconditionally auto-approves when enabled; documenting this intent and testing both paths ensures future maintainers understand the design and can safely refactor without regressions
 - **Priority**: P2 (quality assurance; improves test coverage and clarity for future changes)
+
+### LLM Node Default Model - Unit Test Coverage
+- **Goal**: Add test coverage for default model assignment during node creation and workflow loading
+- **What**: Create unit tests asserting that new LLM nodes receive Sonnet 4.5 as default model and that legacy workflows without models are normalized correctly on load
+- **Why**: Ensures default model behavior is validated and protected against future regressions; complements the existing migration logic
+- **Priority**: P2 (quality assurance; improves confidence in default model behavior)

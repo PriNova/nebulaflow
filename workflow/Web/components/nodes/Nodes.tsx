@@ -24,6 +24,8 @@ export enum NodeType {
 }
 
 export const DEFAULT_LLM_REASONING_EFFORT = 'medium' as const
+export const DEFAULT_LLM_MODEL_ID = 'anthropic/claude-sonnet-4-5-20250929' as const
+export const DEFAULT_LLM_MODEL_TITLE = 'Sonnet 4.5' as const
 
 export interface BaseNodeProps {
     id: string
@@ -133,7 +135,7 @@ export const defaultWorkflow = (() => {
                 title: 'Generate Commit Message',
                 content: 'Generate a commit message for the following git diff: ${1}',
                 active: true,
-                model: undefined,
+                model: { id: DEFAULT_LLM_MODEL_ID, title: DEFAULT_LLM_MODEL_TITLE },
                 reasoningEffort: 'medium',
             },
             position: { x: 0, y: 100 },

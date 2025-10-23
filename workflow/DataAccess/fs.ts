@@ -38,6 +38,7 @@ function isSupportedVersion(version: unknown): boolean {
 }
 
 // Normalize LLM node model IDs to SDK keys for save/load robustness
+// Also migrate legacy LLM nodes without model to default
 function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): WorkflowPayloadDTO {
     try {
         // Dynamically require the SDK so the extension still works if it's not linked
@@ -46,15 +47,34 @@ function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): WorkflowPayloadDTO
         const resolveModel:
             | ((args: { key: string } | { displayName: string; provider?: unknown }) => { key: string })
             | undefined = sdk?.resolveModel
-        if (typeof resolveModel !== 'function') {
-            return data
-        }
+
+        const DEFAULT_MODEL_ID = 'anthropic/claude-sonnet-4-5-20250929'
+        const DEFAULT_MODEL_TITLE = 'Sonnet 4.5'
+
         const nodes = (data.nodes ?? []).map(node => {
             if (!node || typeof node !== 'object' || (node as any).type !== 'llm') return node
             const n: any = node
-            const model = n.data?.model
+            let model = n.data?.model
+
+            // Migrate legacy LLM nodes without model
+            if (!model) {
+                model = { id: DEFAULT_MODEL_ID, title: DEFAULT_MODEL_TITLE }
+            }
+
             const id = model?.id
-            if (!id || typeof id !== 'string') return node
+            if (!id || typeof id !== 'string') {
+                // Ensure model is set even if missing ID
+                return {
+                    ...node,
+                    data: { ...n.data, model: { id: DEFAULT_MODEL_ID, title: DEFAULT_MODEL_TITLE } },
+                }
+            }
+
+            // Skip normalization if SDK is unavailable
+            if (typeof resolveModel !== 'function') {
+                return { ...node, data: { ...n.data, model } }
+            }
+
             try {
                 // First try resolving as a key
                 const r1 = resolveModel({ key: id })
@@ -69,7 +89,7 @@ function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): WorkflowPayloadDTO
                     }
                 } catch {}
             } catch {}
-            return node
+            return { ...node, data: { ...n.data, model } }
         })
         return { ...data, nodes }
     } catch {
