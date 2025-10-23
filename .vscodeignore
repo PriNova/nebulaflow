@@ -21,6 +21,8 @@ node_modules/**
 
 # Build outputs we keep
 !dist/**
+# Exclude packaged artifacts from dist
+dist/*.vsix
 README.md
 package.json
 LICENSE
