@@ -110,3 +110,39 @@ Recommended improvements and optimizations for future implementation.
 - **What**: Create unit tests asserting that new LLM nodes receive Sonnet 4.5 as default model and that legacy workflows without models are normalized correctly on load
 - **Why**: Ensures default model behavior is validated and protected against future regressions; complements the existing migration logic
 - **Priority**: P2 (quality assurance; improves confidence in default model behavior)
+
+### Input Node - Output Normalization Configurability
+- **Goal**: Provide workflow-level control over line ending normalization on live INPUT output
+- **What**: Add an optional configuration flag to control CRLF normalization behavior when rendering active INPUT nodes in live-preview mode
+- **Why**: CRLF normalization can alter workflow semantics for users working with files that require specific line endings (e.g., Windows batch files, shell scripts with CRLF requirements). Making this optional prevents silent data mutation for workflows with strict line-ending requirements.
+- **Priority**: P2 (optional enhancement; improves workflow portability across platforms)
+
+### Input Node - Naming Clarity for `getInactiveNodes` Helper
+- **Goal**: Reduce semantic confusion in ExecuteWorkflow helper functions
+- **What**: Rename `getInactiveNodes` to `getReachableNodes` or document its true purpose (returns nodes reachable from a given node), and update all call sites accordingly
+- **Why**: The current name is misleading; the function actually computes forward-reachable nodes, not inactive ones. Renaming prevents future maintainers from making incorrect assumptions about its behavior.
+- **Priority**: P2 (code quality; improves maintainability and reduces misuse risk)
+
+### Input Node - Performance Optimization for `allowedNodes` Construction
+- **Goal**: Reduce computational overhead during workflow execution resumption
+- **What**: Replace edge array iteration with direct `edgeIndex.bySource` lookup when constructing `allowedNodes` for resume filtering
+- **Why**: Current approach scans the entire edge array; using a pre-indexed map structure (if available) would reduce time complexity from O(E) to O(1) per lookup, improving performance on large workflows.
+- **Priority**: P3 (optimization; good-to-have for scalability)
+
+### Input Node - Type Safety for Input Node Data Content
+- **Goal**: Eliminate `any` type assertions in INPUT node output rendering
+- **What**: Add typed `content?: string` field to INPUT node data contract instead of casting to `(parentNode as any).data?.content`
+- **Why**: Explicit typing provides compile-time safety and clarifies the data shape for future developers working with INPUT nodes.
+- **Priority**: P2 (code quality; improves type safety)
+
+### Workflow Execution - Resume Filter Redundancy
+- **Goal**: Simplify guard logic in workflow resumption filtering
+- **What**: Remove redundant `resume?.fromNodeId` check in the resume filter, keeping only the `allowedNodes` validation
+- **Why**: The `allowedNodes` set already encodes which nodes are executable; the additional `fromNodeId` check is redundant and adds unnecessary cognitive load.
+- **Priority**: P3 (code quality; minor simplification)
+
+### Workflow Execution - Debug Logging for Skipped Nodes
+- **Goal**: Improve observability during workflow resumption
+- **What**: Add debug logging or UI status indicator when nodes are skipped during resume due to resume filters
+- **Why**: Silent skipping makes it difficult for users to understand why certain nodes didn't execute during a resume operation. Debug logs or UI feedback surfaces the reason.
+- **Priority**: P2 (UX/observability; improves debugging experience)

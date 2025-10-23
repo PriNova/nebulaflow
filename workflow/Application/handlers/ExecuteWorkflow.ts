@@ -127,6 +127,13 @@ export async function executeWorkflow(
         }
     }
 
+    // Limit execution to the reachable subgraph when resuming from a specific node
+    const allowedNodes: Set<string> | undefined = (() => {
+        if (!resume?.fromNodeId) return undefined
+        const allEdges = Array.from(edgeIndex.byId.values())
+        return getInactiveNodes(allEdges, resume.fromNodeId)
+    })()
+
     await safePost(webview, { type: 'execution_started' } as ExtensionToWorkflow)
 
     let resumeStarted = !resume?.fromNodeId
@@ -138,6 +145,11 @@ export async function executeWorkflow(
             } else {
                 continue
             }
+        }
+
+        // Skip nodes outside the reachable subgraph when resuming
+        if (resume?.fromNodeId && allowedNodes && !allowedNodes.has(node.id)) {
+            continue
         }
         const shouldSkip = Array.from(context.ifelseSkipPaths?.values() ?? []).some(skipNodes =>
             skipNodes.has(node.id)
@@ -319,11 +331,32 @@ export function replaceIndexedInputs(
 
 export function combineParentOutputsByConnectionOrder(
     nodeId: string,
-    context?: IndexedExecutionContext
+    context?: IndexedExecutionContext,
+    visited?: Set<string>
 ): string[] {
     const parentEdges = context?.edgeIndex.byTarget.get(nodeId) || []
+    const localVisited = visited || new Set<string>()
+
+    if (localVisited.has(nodeId)) {
+        return []
+    }
+    localVisited.add(nodeId)
+
     return parentEdges
         .map(edge => {
+            const parentNode = context?.nodeIndex.get(edge.source)
+
+            if (parentNode?.type === NodeType.INPUT && parentNode.data?.active !== false) {
+                const parentInputs = combineParentOutputsByConnectionOrder(
+                    parentNode.id,
+                    context,
+                    localVisited
+                )
+                const template = ((parentNode as any).data?.content || '').toString()
+                const text = template ? replaceIndexedInputs(template, parentInputs, context) : ''
+                return text.replace(/\r\n/g, '\n')
+            }
+
             let output = context?.nodeOutputs.get(edge.source)
             if (Array.isArray(output)) {
                 output = output.join('\n')
@@ -331,7 +364,7 @@ export function combineParentOutputsByConnectionOrder(
             if (output === undefined) {
                 return ''
             }
-            return output.replace(/\r\n/g, '\n').trim()
+            return output.replace(/\r\n/g, '\n')
         })
         .filter(output => output !== undefined)
 }

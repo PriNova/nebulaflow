@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Input Node Live Rendering Recursion Guard**: Protected workflow execution from infinite loops when live-rendering active INPUT nodes in `combineParentOutputsByConnectionOrder`
+  - Added cycle detection via `visited` set tracking to prevent recursive traversal through misconfigured edges
+  - Avoids undefined behavior if workflows contain cycles in their edge graph
+
+- **Input Node Output Integrity**: Preserved workflow data integrity by removing unintended trimming on live INPUT node output
+  - Removed `.trim()` normalization that was breaking workflows dependent on trailing whitespace or newlines
+  - Retained CRLF normalization for consistent line ending handling
+
 - **LLM Node Default Model Selection**: Fixed new LLM nodes defaulting to undefined model; now defaults to Sonnet 4.5
   - Added `DEFAULT_LLM_MODEL_ID` and `DEFAULT_LLM_MODEL_TITLE` constants for centralized model defaults across node creation and seed data
   - Updated `onNodeAdd` in nodeOperations.ts to assign default model when creating new LLM nodes
