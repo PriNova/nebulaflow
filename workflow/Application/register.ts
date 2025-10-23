@@ -14,12 +14,17 @@ import { executeWorkflow } from './handlers/ExecuteWorkflow'
 import { fromProtocolPayload, toProtocolPayload } from './messaging/converters'
 import { safePost } from './messaging/safePost'
 
-let activeAbortController: AbortController | null = null
-let pendingApproval: {
-    resolve: (value: ApprovalResult) => void
-    reject: (error: unknown) => void
-    removeAbortListener?: () => void
-} | null = null
+interface ExecutionContext {
+    abortController: AbortController | null
+    pendingApproval: {
+        resolve: (value: ApprovalResult) => void
+        reject: (error: unknown) => void
+        removeAbortListener?: () => void
+    } | null
+}
+
+const panelExecutionRegistry = new WeakMap<vscode.Webview, ExecutionContext>()
+const activeAbortControllers = new Set<AbortController>()
 
 function formatPanelTitle(uri?: vscode.Uri): string {
     if (!uri) {
@@ -29,27 +34,44 @@ function formatPanelTitle(uri?: vscode.Uri): string {
     return `NebulaFlow — ${filename}`
 }
 
-function waitForApproval(_nodeId: string): Promise<ApprovalResult> {
-    return new Promise((resolve, reject) => {
-        const current: {
-            resolve: (value: ApprovalResult) => void
-            reject: (error: unknown) => void
-            removeAbortListener?: () => void
-        } = { resolve, reject }
-        const signal = activeAbortController?.signal
-        if (signal) {
-            const onAbort = () => {
-                current.resolve({ type: 'aborted' })
-                if (pendingApproval === current) {
-                    pendingApproval = null
-                }
-                current.removeAbortListener = undefined
+function getOrCreatePanelContext(webview: vscode.Webview): ExecutionContext {
+    let context = panelExecutionRegistry.get(webview)
+    if (!context) {
+        context = { abortController: null, pendingApproval: null }
+        panelExecutionRegistry.set(webview, context)
+    }
+    return context
+}
+
+function createWaitForApproval(webview: vscode.Webview): (nodeId: string) => Promise<ApprovalResult> {
+    return (_nodeId: string): Promise<ApprovalResult> => {
+        return new Promise((resolve, reject) => {
+            const context = getOrCreatePanelContext(webview)
+            // Guard: reject concurrent approval requests
+            if (context.pendingApproval) {
+                reject(new Error('Approval already pending; concurrent approvals not allowed'))
+                return
             }
-            signal.addEventListener('abort', onAbort, { once: true })
-            current.removeAbortListener = () => signal.removeEventListener('abort', onAbort)
-        }
-        pendingApproval = current
-    })
+            const current: {
+                resolve: (value: ApprovalResult) => void
+                reject: (error: unknown) => void
+                removeAbortListener?: () => void
+            } = { resolve, reject }
+            const signal = context.abortController?.signal
+            if (signal) {
+                const onAbort = () => {
+                    current.resolve({ type: 'aborted' })
+                    if (context.pendingApproval === current) {
+                        context.pendingApproval = null
+                    }
+                    current.removeAbortListener = undefined
+                }
+                signal.addEventListener('abort', onAbort, { once: true })
+                current.removeAbortListener = () => signal.removeEventListener('abort', onAbort)
+            }
+            context.pendingApproval = current
+        })
+    }
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -147,7 +169,8 @@ export function activate(context: vscode.ExtensionContext): void {
                         break
                     }
                     case 'execute_workflow': {
-                        if (activeAbortController) {
+                        const panelContext = getOrCreatePanelContext(panel.webview)
+                        if (panelContext.abortController) {
                             void vscode.window.showInformationMessage(
                                 'NebulaFlow Workflow Editor: execution already in progress'
                             )
@@ -159,33 +182,37 @@ export function activate(context: vscode.ExtensionContext): void {
                             break
                         }
                         if (message.data?.nodes && message.data?.edges) {
-                            activeAbortController = new AbortController()
+                            panelContext.abortController = new AbortController()
+                            activeAbortControllers.add(panelContext.abortController)
                             try {
                                 const { nodes, edges } = fromProtocolPayload(message.data)
                                 const resume = (message as any)?.data?.resume
+                                const approvalHandler = createWaitForApproval(panel.webview)
                                 await executeWorkflow(
                                     nodes,
                                     edges,
                                     panel.webview,
-                                    activeAbortController.signal,
-                                    waitForApproval,
+                                    panelContext.abortController.signal,
+                                    approvalHandler,
                                     resume
                                 )
                             } finally {
-                                activeAbortController = null
+                                activeAbortControllers.delete(panelContext.abortController)
+                                panelContext.abortController = null
                             }
                         }
                         break
                     }
                     case 'abort_workflow': {
-                        if (pendingApproval) {
-                            pendingApproval.removeAbortListener?.()
-                            pendingApproval.resolve({ type: 'aborted' })
-                            pendingApproval = null
+                        const panelContext = getOrCreatePanelContext(panel.webview)
+                        if (panelContext.pendingApproval) {
+                            panelContext.pendingApproval.removeAbortListener?.()
+                            panelContext.pendingApproval.resolve({ type: 'aborted' })
+                            panelContext.pendingApproval = null
                         }
-                        if (activeAbortController) {
-                            activeAbortController.abort()
-                            activeAbortController = null
+                        if (panelContext.abortController) {
+                            panelContext.abortController.abort()
+                            panelContext.abortController = null
                         }
                         break
                     }
@@ -202,21 +229,25 @@ export function activate(context: vscode.ExtensionContext): void {
                         break
                     }
                     case 'node_approved': {
-                        if (pendingApproval) {
-                            pendingApproval.removeAbortListener?.()
-                            pendingApproval.resolve({
+                        const panelContext = getOrCreatePanelContext(panel.webview)
+                        if (panelContext.pendingApproval) {
+                            panelContext.pendingApproval.removeAbortListener?.()
+                            panelContext.pendingApproval.resolve({
                                 type: 'approved',
                                 command: message.data.modifiedCommand,
                             })
-                            pendingApproval = null
+                            panelContext.pendingApproval = null
                         }
                         break
                     }
                     case 'node_rejected': {
-                        if (pendingApproval) {
-                            pendingApproval.removeAbortListener?.()
-                            pendingApproval.reject(new Error('Command execution rejected by user'))
-                            pendingApproval = null
+                        const panelContext = getOrCreatePanelContext(panel.webview)
+                        if (panelContext.pendingApproval) {
+                            panelContext.pendingApproval.removeAbortListener?.()
+                            panelContext.pendingApproval.reject(
+                                new Error('Command execution rejected by user')
+                            )
+                            panelContext.pendingApproval = null
                         }
                         break
                     }
@@ -273,11 +304,19 @@ export function activate(context: vscode.ExtensionContext): void {
         )
 
         panel.onDidDispose(() => {
-            if (activeAbortController) {
-                activeAbortController.abort()
-                activeAbortController = null
+            const panelContext = getOrCreatePanelContext(panel.webview)
+            // Resolve any pending approval as aborted to unblock waiting code paths
+            if (panelContext.pendingApproval) {
+                panelContext.pendingApproval.removeAbortListener?.()
+                panelContext.pendingApproval.resolve({ type: 'aborted' })
+                panelContext.pendingApproval = null
             }
-            panel.dispose()
+            // Abort any in-flight execution to stop further work and messaging
+            if (panelContext.abortController) {
+                panelContext.abortController.abort()
+                panelContext.abortController = null
+            }
+            // No need to call panel.dispose() inside onDidDispose
         })
 
         const webviewPath = vscode.Uri.joinPath(context.extensionUri, 'dist/webviews')
@@ -323,8 +362,10 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-    if (activeAbortController) {
-        activeAbortController.abort()
-        activeAbortController = null
+    // Abort all active workflows deterministically to ensure clean shutdown
+    // even if VS Code deactivates the extension while panels remain open (e.g., hot-reload)
+    for (const controller of activeAbortControllers) {
+        controller.abort()
     }
+    activeAbortControllers.clear()
 }

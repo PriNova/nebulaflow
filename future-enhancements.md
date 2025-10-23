@@ -4,6 +4,18 @@ Recommended improvements and optimizations for future implementation.
 
 ## Pending Enhancements
 
+### Workflow Execution - Extract PendingApproval Type
+- **Goal**: Improve code clarity and maintainability of approval state management
+- **What**: Extract `PendingApproval` type definition in [register.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Application/register.ts#L46-L55) to a dedicated type or interface, and remove the unused `_nodeId` field
+- **Why**: Explicit typing improves readability and makes the pending approval contract clearer for future developers. The unused `_nodeId` field adds cognitive load and should be removed as part of type cleanup.
+- **Priority**: P1 (nice-to-have; improves code clarity)
+
+### Workflow Execution - Concurrent Approval Request Queuing
+- **Goal**: Prevent approval overwrites during rapid sequential approval requests within a single panel
+- **What**: Implement an approval queue instead of single `pendingApproval` per panel to handle cases where a second approval request arrives before the first is resolved
+- **Why**: Current implementation stores a single pending approval promise per panel. While rare given sequential node execution, concurrent approval requests could overwrite earlier pending approvals, leading to one request never resolving. A queue ensures all approvals are processed in order.
+- **Priority**: P2 (optional enhancement; rare edge case but improves robustness)
+
 ### CLI Node - Executor Options Type Safety
 - **Goal**: Improve extensibility and maintainability of the shell executor interface
 - **What**: Type the executor options parameter as `Pick<ExecOptions, 'cwd'>` instead of a loose object type

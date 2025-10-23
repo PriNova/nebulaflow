@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+
+### Added
+
+### Changed
+
+### Removed
+
+## [NebulaFlow 0.2.0]
+
+### Added
+- **Parallel Workflow Execution**: Enabled multiple NebulaFlow panes to execute workflows concurrently without blocking each other
+  - Refactored global execution state to per-panel execution context using WeakMap keyed by webview
+  - Each panel now manages its own `AbortController`, approval state, and execution lifecycle independently
+  - `panelExecutionRegistry` stores execution context (controller, pending approval promise) per webview
+  - All message handlers (`execute_workflow`, `abort_workflow`, `node_approved`, `node_rejected`) scoped to requesting panel
+  - Panel disposal cleanup and deactivation now abort only respective panel's controller deterministically via active controller tracking Set
+  - **Why**: Users can now open multiple workflows and execute them simultaneously without the "execution blocked" notification
+
+### Fixed
+- **Workflow Execution - Concurrent Approval Guard**: Prevented approval overwrites when multiple approval requests arrive in rapid succession
+  - Added validation to reject concurrent approval requests with a clear error message
+  - Only one approval can be pending per panel at any time, ensuring approval promises resolve correctly and deterministically
+
+- **Workflow Execution - Robust Disposed Webview Detection**: Improved reliability of disposed webview detection across VS Code versions and localizations
+  - Replaced string inclusion check with regex pattern `/webview\s+is\s+disposed/i` to tolerate version variations and localized error messages
+  - Maintains simplicity while handling edge cases in messaging layer where webviews may be disposed
+
 - **Input Node Live Rendering Recursion Guard**: Protected workflow execution from infinite loops when live-rendering active INPUT nodes in `combineParentOutputsByConnectionOrder`
   - Added cycle detection via `visited` set tracking to prevent recursive traversal through misconfigured edges
   - Avoids undefined behavior if workflows contain cycles in their edge graph

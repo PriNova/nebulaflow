@@ -1,88 +1,99 @@
-## High-level summary
-The patch introduces two independent features in `ExecuteWorkflow.ts`:
+## High-level summary  
+The patch removes the previous *process-wide* singletons that controlled workflow execution and approval and replaces them with a per-webview (per-panel) execution context stored in a `WeakMap`.  
+Key user-visible win: several NebulaFlow editors can now run workflows simultaneously without blocking each other.  
 
-1. **Sub-graph limiting when resuming**  
-   • Builds a set of nodes reachable from the `resume.fromNodeId` and ignores all others during execution.  
+Code changes reside in:
 
-2. **Live content preference for INPUT nodes**  
-   • While aggregating parent outputs, if a parent is an active `INPUT` node the code now re-renders its content template with the most recent upstream data, instead of using the cached output.
+* `workflow/Application/register.ts` – major refactor (execution context, message handlers, clean-up, deactivate).  
+* `workflow/Application/messaging/safePost.ts` – adds defensive error handling and richer docs.  
+* Three markdown files (CHANGELOG, amp-review.md, future-enhancements.md) – documentation.  
 
-No other files are touched.
-
----
-
-## Tour of changes
-Begin with the constructor of `allowedNodes` (≈L128-L135 in the diff). It establishes the *reachable node* filter that later influences the main execution loop and is core to understanding the patch.
-
-After that, jump to the new `if (resume?.fromNodeId && allowedNodes && !allowedNodes.has(node.id))` guard in the loop (≈L149-L153). This shows how the filter is applied.
-
-Finally, review the deeper change in `combineParentOutputsByConnectionOrder` (≈L336-L350) which adds the “live INPUT” logic. This portion is isolated from the resume feature and has separate correctness considerations.
+No other runtime behaviour is modified.
 
 ---
 
-## File level review
+## Tour of changes  
+Begin with the **new context infrastructure** at the top of `workflow/Application/register.ts`:
 
-### `workflow/Application/handlers/ExecuteWorkflow.ts`
+```ts
+interface ExecutionContext { … }
+const panelExecutionRegistry = new WeakMap<vscode.Webview, ExecutionContext>()
+const activeAbortControllers = new Set<AbortController>()
+```
 
-1. Reachable sub-graph calculation
-   ```ts
-   const allowedNodes: Set<string> | undefined = (() => {
-       if (!resume?.fromNodeId) return undefined
-       const allEdges = Array.from(edgeIndex.byId.values())
-       return getInactiveNodes(allEdges, resume.fromNodeId)
-   })()
-   ```
-   • **Correctness & naming**: `getInactiveNodes` appears to be mis-named: we are actually retrieving *reachable/active* nodes. Verify that this helper truly returns the intended set; otherwise execution may silently skip needed nodes.  
-   • **Performance**: Creating the full edge list each resume could be expensive in very large graphs. Consider giving `getInactiveNodes` direct access to the index or memoising.  
-   • **Undefined vs empty set**: Returning `undefined` when not resuming is fine, but later checks use `allowedNodes && !allowedNodes.has(node.id)`. No risk there, yet passing around two sentinel concepts (undefined vs Set) can complicate typing; an empty set with a boolean flag may be clearer.
-
-2. Filtering during execution
-   ```ts
-   if (resume?.fromNodeId && allowedNodes && !allowedNodes.has(node.id)) {
-       continue
-   }
-   ```
-   • **No pre-condition race**: `allowedNodes` is guaranteed when `resume.fromNodeId` is truthy, so you can drop one of the two checks.  
-   • **Diagnostics**: Skipped nodes are silent. Consider logging for debug or returning a more explicit status in `ExtensionToWorkflow` so UI reflects that some nodes were ignored.
-
-3. Combine parent outputs – live INPUT branch
-   ```ts
-   if (parentNode?.type === NodeType.INPUT && parentNode.data?.active !== false) {
-       const parentInputs = combineParentOutputsByConnectionOrder(parentNode.id, context)
-       const template = ((parentNode as any).data?.content || '').toString()
-       const text = template ? replaceIndexedInputs(template, parentInputs, context) : ''
-       return text.replace(/\r\n/g, '\n').trim()
-   }
-   ```
-   • **Recursion-safety**: This method now calls itself recursively through `parentNode.id`. Ensure there is no possibility of cycles causing infinite recursion, especially when INPUT nodes can chain to each other.  
-   • **Efficiency**: Recomputing the template on every consumer call can be redundant if the INPUT hasn’t changed. Consider caching the resolved text keyed by execution tick+node id.  
-   • **Side-effects**: No output is stored in `context.nodeOutputs`, meaning downstream callers may still pick up old values when they reference `nodeOutputs` directly. Verify downstream code always calls `combineParentOutputsByConnectionOrder` instead of relying on `nodeOutputs`.  
-   • **CRLF normalisation & trim**: Good addition for consistent text; however, stripping trailing whitespace may be undesirable for some workflows (e.g., newlines significant). Maybe make this behaviour configurable.
-
-4. Fallback path unchanged; still joins arrays with `'\n'`. Nothing to flag here.
-
-5. Typing / readability
-   • The forced cast to `(parentNode as any)` suggests inadequate type coverage for `data.content`. Extend type definition of `InputNodeData` to include `content: string | undefined` to avoid `any`.  
-   • Prefer using a helper `isInputNodeActive(node): boolean` to improve readability and unit testability.
-
-6. Security considerations
-   • If `template` content can include user-supplied placeholders, ensure `replaceIndexedInputs` is safe against prototype pollution or malicious template injection.  
-   • No new external surface added by this patch; remote code execution risk unchanged.
-
-7. Tests
-   • Add unit tests:  
-     – Resume from mid-graph ensures only reachable nodes execute.  
-     – INPUT node live re-render updates downstream outputs when content changes.  
-     – Cycle detection in `combineParentOutputsByConnectionOrder`.
+Understanding how each webview now looks up its own `ExecutionContext` (`getOrCreatePanelContext`) unlocks every subsequent hunk; the rest of the file is largely mechanical replacement of global variables with context look-ups.  
+After that, review the newly factored `createWaitForApproval` helper (same file) and finally scan the modified message branches to ensure parity.  
+`safePost.ts` is independent and can be reviewed last.
 
 ---
 
-### Summary of recommendations
-1. Verify `getInactiveNodes` semantics and possibly rename.  
-2. Drop redundant guard, add optional debug logging for skipped nodes.  
-3. Add cycle-detection or recursion-depth guard in `combineParentOutputsByConnectionOrder`.  
-4. Consider caching resolved INPUT output.  
-5. Strengthen typings to remove `any`.  
-6. Expand automated test coverage for the new behaviours.
+## File level review  
 
-Overall, the features are valuable and generally sound, but tightening naming, recursion safety, and performance will make them production-ready.
+### `CHANGELOG.md`  
+Adds an “Added” section explaining the concurrent-execution feature. Accurate and user-facing; no issues.
+
+### `amp-review.md`  
+Internal review note rewritten to match the new design. No runtime impact.
+
+### `future-enhancements.md`  
+Records a follow-up task (approval queue) plus another type-safety todo. Good to have.
+
+### `workflow/Application/messaging/safePost.ts`  
+
+Changes  
+1. Adds a JSDoc header and inline comments.  
+2. Wraps the `postMessage` call in `try/…catch` and returns early when the webview is disposed or delivery fails.  
+3. Adds optional `strict` logging.
+
+Review  
+✔️  Prevents extension crashes if the panel was closed between preparing and sending the message.  
+✔️  Still performs runtime validation via `isExtensionToWorkflow`.  
+❗  `strict` is now overloaded – it controls both validation *and* error logging. Consider two separate flags (`strictValidate`, `verboseErrors`) for clarity.  
+❗  `err.message` string matching (`includes('webview is disposed')`) is fragile to localisation; safer: test `err instanceof Error && /disposed/i.test(err.message ?? '')`.  
+Performance/Security: negligible overhead; no new attack surface.
+
+### `workflow/Application/register.ts`  
+
+Key additions  
+1. `ExecutionContext`, `panelExecutionRegistry` (WeakMap), `activeAbortControllers` (Set).  
+2. `getOrCreatePanelContext(webview)` – lazy init.  
+3. `createWaitForApproval(webview)` – closure that stores pending approval inside that panel’s context and auto-resolves on abort.  
+4. All message branches (`execute_workflow`, `abort_workflow`, `node_approved`, `node_rejected`) now fetch the panel context and act on its fields only.  
+5. `panel.onDidDispose` cleans up its own context.  
+6. `deactivate()` now aborts every controller still in `activeAbortControllers`.
+
+Correctness  
+✔️  Removes cross-panel interference; each panel’s abort or approval cannot impact others.  
+✔️  `finally` block guarantees controller is cleared even on execution error.  
+✔️  `panel.onDidDispose` resolves hanging `pendingApproval` promises so `executeWorkflow` never dangles.
+
+Edge-cases  
+• Concurrent approval requests in the *same* workflow still overwrite each other (`pendingApproval` is a single slot). The patch documents this in `future-enhancements.md`, but consider at least asserting/throwing when an overwrite is detected to avoid silent hangs.  
+• `deactivate()` now iterates the `activeAbortControllers` Set for deterministic shutdown – good, but entries are deleted in `finally`, so any controller leaked due to an uncaught exception elsewhere could remain in the Set. That is unlikely but worth a comment.  
+• `panel.dispose()` is removed from the `onDidDispose` handler (correct – it would recur).
+
+Performance  
+WeakMap lookup is O(1) and negligible. No extra listeners beyond one per panel.
+
+Type-safety / readability  
+✔️  Removes `any` casts around approval functions.  
+❗  The inline object literal describing `pendingApproval` is repeated in two places – could be extracted into its own type to stay DRY.  
+❗  `createWaitForApproval` shadows `nodeId` parameter with `_nodeId`; if it is unused, remove it to prevent eslint warnings.
+
+Security  
+Isolating execution context reduces risk of leaking commands between panels. No new APIs exposed.
+
+---
+
+## Recommendations  
+
+1. Hard-fail or queue when a second approval request arrives before the first completes (listed in future-enhancements but higher priority in practice).  
+2. Factor the `PendingApproval` shape into a named type to avoid duplication.  
+3. Strengthen localisation-safe error detection in `safePost.ts`.  
+4. Consider tracking controllers with `WeakRef` instead of Set to avoid theoretical leaks; or ensure `finally` blocks cannot be bypassed.  
+5. Unit tests:  
+   • Parallel executions (two panels) must not block each other.  
+   • Approvals resolve correctly after panel dispose.  
+   • `safePost` swallows errors when webview is closed.
+
+Overall, the refactor is clean, well-documented, and materially improves user experience with minimal risk.
