@@ -14,10 +14,12 @@ export const useWorkflowExecution = (
     const [isExecuting, setIsExecuting] = useState(false)
     const [abortController, setAbortController] = useState<AbortController | null>(null)
     const [nodeErrors, setNodeErrors] = useState<Map<string, string>>(new Map())
-    const [executingNodeId, setExecutingNodeId] = useState<string | null>(null)
+    const [executingNodeIds, setExecutingNodeIds] = useState<Set<string>>(new Set())
     const [interruptedNodeId, setInterruptedNodeId] = useState<string | null>(null)
+    const [stoppedAtNodeId, setStoppedAtNodeId] = useState<string | null>(null)
     const [nodeResults, setNodeResults] = useState<Map<string, string>>(new Map())
     const [nodeAssistantContent, setNodeAssistantContent] = useState<Map<string, any[]>>(new Map())
+    const [ifElseDecisions, setIfElseDecisions] = useState<Map<string, 'true' | 'false'>>(new Map())
     const [executionRunId, setExecutionRunId] = useState(0)
 
     const resetExecutionState = useCallback(() => {
@@ -25,11 +27,13 @@ export const useWorkflowExecution = (
         setEdges([])
         setIsExecuting(false)
         setNodeErrors(new Map())
-        setExecutingNodeId(null)
+        setExecutingNodeIds(new Set())
         setInterruptedNodeId(null)
+        setStoppedAtNodeId(null)
         setAbortController(null)
         setNodeResults(new Map())
         setNodeAssistantContent(new Map())
+        setIfElseDecisions(new Map())
     }, [setEdges, setNodes])
 
     const onExecute = useCallback(() => {
@@ -64,6 +68,7 @@ export const useWorkflowExecution = (
         setAbortController(controller)
         setIsExecuting(true)
         setInterruptedNodeId(null)
+        setStoppedAtNodeId(null)
         vscodeAPI.postMessage({ type: 'execute_workflow', data: { nodes: updatedNodes, edges } } as any)
     }, [nodes, edges, setNodes, vscodeAPI])
 
@@ -73,41 +78,71 @@ export const useWorkflowExecution = (
             setAbortController(controller)
             setIsExecuting(true)
             setInterruptedNodeId(null)
+            setStoppedAtNodeId(null)
             // Do not clear existing node results or nodes; we want to reuse them
+            // Include If/Else decisions from previous execution in seeds to ensure branch consistency
+            const seedsDecisions = Object.fromEntries(ifElseDecisions)
+            // Also include variable seeds: map variableName -> last known value
+            const seedsVariables: Record<string, string> = {}
+            for (const n of nodes) {
+                if (n.type === NodeType.VARIABLE) {
+                    const varName = (n as any).data?.variableName as string | undefined
+                    if (varName) {
+                        const v = (seedsOutputs as any)[n.id] ?? undefined
+                        // Prefer explicit node result if present; otherwise fall back to current state map if available later
+                        if (typeof v === 'string') seedsVariables[varName] = v
+                    }
+                }
+            }
             vscodeAPI.postMessage({
                 type: 'execute_workflow',
-                data: { nodes, edges, resume: { fromNodeId, seeds: { outputs: seedsOutputs } } },
+                data: {
+                    nodes,
+                    edges,
+                    resume: {
+                        fromNodeId,
+                        seeds: {
+                            outputs: seedsOutputs,
+                            decisions: seedsDecisions,
+                            variables: seedsVariables,
+                        },
+                    },
+                },
             } as any)
         },
-        [nodes, edges, vscodeAPI]
+        [nodes, edges, ifElseDecisions, vscodeAPI]
     )
 
     const onAbort = useCallback(() => {
         if (abortController) {
             abortController.abort()
             setAbortController(null)
-            setIsExecuting(false)
-            vscodeAPI.postMessage({ type: 'abort_workflow' } as any)
         }
+        setIsExecuting(false)
+        vscodeAPI.postMessage({ type: 'abort_workflow' } as any)
     }, [abortController, vscodeAPI])
 
     return {
         isExecuting,
-        executingNodeId,
+        executingNodeIds,
         nodeErrors,
         nodeResults,
         interruptedNodeId,
+        stoppedAtNodeId,
         nodeAssistantContent,
+        ifElseDecisions,
         executionRunId,
         onExecute,
         onResume,
         onAbort,
         resetExecutionState,
-        setExecutingNodeId,
+        setExecutingNodeIds,
         setIsExecuting,
         setInterruptedNodeId,
+        setStoppedAtNodeId,
         setNodeResults,
         setNodeErrors,
         setNodeAssistantContent,
+        setIfElseDecisions,
     }
 }

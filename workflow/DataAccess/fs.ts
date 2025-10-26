@@ -124,10 +124,8 @@ export async function saveWorkflow(
                 return { error: 'mkdir failed' }
             }
             const normalized = normalizeModelsInWorkflow(data)
-            const content = Buffer.from(
-                JSON.stringify({ ...normalized, version: '1.0.0' }, null, 2),
-                'utf-8'
-            )
+            const version = '1.1.0'
+            const content = Buffer.from(JSON.stringify({ ...normalized, version }, null, 2), 'utf-8')
             await vscode.workspace.fs.writeFile(result, content)
             void vscode.window.showInformationMessage('Workflow saved successfully!')
             return { uri: result }
@@ -179,14 +177,15 @@ export async function loadWorkflow(): Promise<{ dto: WorkflowPayloadDTO; uri: vs
                 return null
             }
 
-            // Validate minimal schema
-            if (!isWorkflowPayloadDTO(data)) {
+            // Validate minimal schema and preserve state if present
+            const { version, ...payloadData } = data
+            if (!isWorkflowPayloadDTO(payloadData)) {
                 void vscode.window.showErrorMessage('Invalid workflow schema')
                 return null
             }
 
             void vscode.window.showInformationMessage('Workflow loaded successfully!')
-            const dto = normalizeModelsInWorkflow(data)
+            const dto = normalizeModelsInWorkflow({ ...payloadData, state: payloadData.state })
             return { dto, uri: result[0] }
         } catch (error) {
             void vscode.window.showErrorMessage(`Failed to load workflow: ${error}`)

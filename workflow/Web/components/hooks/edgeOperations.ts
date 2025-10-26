@@ -47,6 +47,7 @@ export const useEdgeOperations = (
                 ...edge,
                 type: 'ordered-edge',
                 data: {
+                    ...edge.data,
                     orderNumber: edgeIndex.bySourceTarget.get(`${edge.source}-${edge.target}`) || 0,
                 },
             })),
@@ -64,7 +65,7 @@ export const useEdgeOperations = (
         (params: Connection) => {
             setEdges(eds => {
                 if (!isValidEdgeConnection(params, eds)) return eds
-                return [...addEdge({ ...params, type: 'smoothstep' } as Edge, eds)]
+                return [...addEdge({ ...params, data: { edgeStyle: 'bezier' } } as Edge, eds)]
             })
         },
         [setEdges]

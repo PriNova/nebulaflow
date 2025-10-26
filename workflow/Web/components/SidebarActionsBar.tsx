@@ -3,6 +3,7 @@ import type React from 'react'
 import { useState } from 'react'
 import { Button } from '../ui/shadcn/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/shadcn/ui/tooltip'
+import { ConfirmDeleteWorkflowModal } from './ConfirmDeleteWorkflowModal'
 import { HelpModal } from './HelpModal'
 
 interface SidebarActionsBarProps {
@@ -23,6 +24,7 @@ export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
     isExecuting,
 }) => {
     const [isHelpOpen, setIsHelpOpen] = useState(false)
+    const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
 
     return (
         <>
@@ -80,7 +82,7 @@ export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
                                 variant="outline"
                                 size="sm"
                                 className="tw-w-full"
-                                onClick={onClear}
+                                onClick={() => setIsDeleteConfirmOpen(true)}
                                 aria-label="Clear"
                             >
                                 <Trash2 size={18} />
@@ -105,6 +107,14 @@ export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
                 </div>
             </div>
             <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+            <ConfirmDeleteWorkflowModal
+                isOpen={isDeleteConfirmOpen}
+                onConfirm={() => {
+                    onClear()
+                    setIsDeleteConfirmOpen(false)
+                }}
+                onCancel={() => setIsDeleteConfirmOpen(false)}
+            />
         </>
     )
 }

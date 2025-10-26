@@ -2,6 +2,32 @@ import { useOnSelectionChange } from '@xyflow/react'
 import { useCallback } from 'react'
 import type { WorkflowNodes } from '../nodes/Nodes'
 
+export interface SelectionSummary {
+    selectedNodeId: string | null
+    selectedNodeLabel: string | null
+    selectedNodeType: string | null
+    selectedCount: number
+}
+
+export const buildSelectionSummary = (selectedNodes: WorkflowNodes[]): SelectionSummary => {
+    if (selectedNodes.length === 0) {
+        return {
+            selectedNodeId: null,
+            selectedNodeLabel: null,
+            selectedNodeType: null,
+            selectedCount: 0,
+        }
+    }
+
+    const firstNode = selectedNodes[0]
+    return {
+        selectedNodeId: firstNode.id,
+        selectedNodeLabel: firstNode.data.title ?? firstNode.id,
+        selectedNodeType: firstNode.type,
+        selectedCount: selectedNodes.length,
+    }
+}
+
 export const useInteractionHandling = (
     setSelectedNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>,
     setActiveNode: React.Dispatch<React.SetStateAction<WorkflowNodes | null>>

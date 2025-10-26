@@ -3,10 +3,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { unstable_batchedUpdates } from 'react-dom'
 import { v4 as uuidv4 } from 'uuid'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
+import { toWorkflowNodeDTO } from '../../utils/nodeDto'
 import type { GenericVSCodeWrapper } from '../../utils/vscode'
 import type { LLMNode } from '../nodes/LLM_Node'
 import type { LoopStartNode } from '../nodes/LoopStart_Node'
 import {
+    type BaseNodeData,
     DEFAULT_LLM_MODEL_ID,
     DEFAULT_LLM_MODEL_TITLE,
     DEFAULT_LLM_REASONING_EFFORT,
@@ -153,13 +155,19 @@ export const useNodeOperations = (
     )
 
     const onNodeAdd = useCallback(
-        (nodeOrLabel: WorkflowNodes | string, nodeType?: NodeType) => {
+        (
+            nodeOrLabel: WorkflowNodes | string,
+            nodeType?: NodeType,
+            options?: { position?: { x: number; y: number }; initialData?: Partial<BaseNodeData> }
+        ) => {
             const flowElement = document.querySelector('.react-flow')
             const flowBounds = flowElement?.getBoundingClientRect()
-            const centerPosition = flowInstance.screenToFlowPosition({
-                x: flowBounds ? flowBounds.x + flowBounds.width / 2 : 0,
-                y: flowBounds ? flowBounds.y + flowBounds.height / 2 : 0,
-            })
+            const centerPosition =
+                options?.position ??
+                flowInstance.screenToFlowPosition({
+                    x: flowBounds ? flowBounds.x + flowBounds.width / 2 : 0,
+                    y: flowBounds ? flowBounds.y + flowBounds.height / 2 : 0,
+                })
             if (typeof nodeOrLabel === 'string') {
                 const newNode = createNode({
                     type: nodeType!,
@@ -181,6 +189,9 @@ export const useNodeOperations = (
                     case NodeType.LOOP_START:
                         ;(newNode as any).data = { ...newNode.data, iterations: 1, loopVariable: 'loop' }
                         break
+                }
+                if (options?.initialData) {
+                    newNode.data = { ...newNode.data, ...options.initialData }
                 }
                 setNodes(nodes => [...nodes, newNode])
                 if (AUTO_SELECT_ON_ADD) {
@@ -244,7 +255,9 @@ export const useCustomNodes = (
     }, [vscodeAPI])
     const onSaveCustomNode = useCallback(
         (node: WorkflowNodes) => {
-            vscodeAPI.postMessage({ type: 'save_customNode', data: node } as any)
+            // Send a sanitized DTO to avoid DataCloneError from functions/symbols
+            const dto = toWorkflowNodeDTO(node)
+            vscodeAPI.postMessage({ type: 'save_customNode', data: dto } as any)
         },
         [vscodeAPI]
     )

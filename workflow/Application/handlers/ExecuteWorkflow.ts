@@ -1,5 +1,5 @@
 import * as vscode from 'vscode'
-import { processGraphComposition } from '../../Core/engine/node-sorting'
+import { type ParallelCallbacks, executeWorkflowParallel } from '../../Core/engine/parallel-scheduler'
 import { AbortedError } from '../../Core/models'
 import type { ApprovalResult, AssistantContentItem, ExtensionToWorkflow } from '../../Core/models'
 import {
@@ -12,6 +12,7 @@ import {
 import { isToolDisabled } from '../../Core/toolUtils'
 import { expandHome, execute as shellExecute } from '../../DataAccess/shell'
 import { safePost } from '../messaging/safePost'
+import { routeNodeExecution } from './NodeDispatch'
 
 const DEFAULT_LLM_TIMEOUT_MS = 300_000
 
@@ -36,6 +37,20 @@ export interface IndexedExecutionContext {
     ifelseSkipPaths?: Map<string, Set<string>>
 }
 
+function envFlagEnabled(name: string): boolean {
+    const v = process.env[name]
+    return !!v && /^(1|true|yes|on)$/i.test(v)
+}
+
+function hasUnsupportedNodesForParallel(nodes: WorkflowNodes[]): boolean {
+    return nodes.some(
+        n =>
+            n.type === NodeType.IF_ELSE || n.type === NodeType.LOOP_START || n.type === NodeType.LOOP_END
+    )
+}
+
+// Parallel is default now; keep helpers for potential future gating.
+
 export async function executeWorkflow(
     nodes: WorkflowNodes[],
     edges: Edge[],
@@ -44,12 +59,99 @@ export async function executeWorkflow(
     approvalHandler: (nodeId: string) => Promise<ApprovalResult>,
     resume?: { fromNodeId: string; seeds?: { outputs?: Record<string, string> } }
 ): Promise<void> {
+    // Early guard: invalid resume target
+    if (resume?.fromNodeId && !nodes.some(n => n.id === resume.fromNodeId)) {
+        void vscode.window.showErrorMessage(`Resume failed: node ${resume.fromNodeId} not found`)
+        await safePost(webview, { type: 'execution_completed' } as ExtensionToWorkflow)
+        return
+    }
+
+    // Parallel scheduler path (default for all runs)
+    let lastExecutedNodeId: string | null = null
+    let interruptedNodeId: string | null = null
+    await safePost(webview, { type: 'execution_started' } as ExtensionToWorkflow)
+    try {
+        const callbacks: ParallelCallbacks = {
+            runNode: async (node, pctx, signal) => {
+                const ctx = pctx as unknown as IndexedExecutionContext
+                return await routeNodeExecution(node, 'workflow', {
+                    runCLI: (..._args: any[]) =>
+                        executeCLINode(node, signal, webview, approvalHandler, ctx),
+                    runLLM: (..._args: any[]) =>
+                        executeLLMNode(node, ctx, signal, webview, approvalHandler),
+                    runPreview: (..._args: any[]) => executePreviewNode(node.id, webview, ctx),
+                    runInput: (..._args: any[]) => executeInputNode(node, ctx),
+                    runIfElse: (..._args: any[]) => executeIfElseNode(ctx, node),
+                    runAccumulator: async (..._args: any[]) => {
+                        const inputs = combineParentOutputsByConnectionOrder(node.id, ctx)
+                        const inputValue = node.data.content
+                            ? replaceIndexedInputs(node.data.content, inputs, ctx)
+                            : ''
+                        const variableName = (node as any).data.variableName as string
+                        const initialValue = (node as any).data.initialValue as string | undefined
+                        let accumulatedValue =
+                            ctx.accumulatorValues?.get(variableName) || initialValue || ''
+                        accumulatedValue += '\n' + inputValue
+                        ctx.accumulatorValues?.set(variableName, accumulatedValue)
+                        return accumulatedValue
+                    },
+                    runVariable: async (..._args: any[]) => {
+                        const inputs = combineParentOutputsByConnectionOrder(node.id, ctx)
+                        const inputValue = node.data.content
+                            ? replaceIndexedInputs(node.data.content, inputs, ctx)
+                            : ''
+                        const variableName = (node as any).data.variableName as string
+                        const initialValue = (node as any).data.initialValue as string | undefined
+                        let variableValue = ctx.variableValues?.get(variableName) || initialValue || ''
+                        variableValue = inputValue
+                        ctx.variableValues?.set(variableName, variableValue)
+                        return variableValue
+                    },
+                    runLoopStart: undefined,
+                    runLoopEnd: undefined,
+                })
+            },
+            onStatus: payload => {
+                if (payload.status === 'completed') {
+                    lastExecutedNodeId = payload.nodeId
+                } else if (payload.status === 'interrupted') {
+                    interruptedNodeId = payload.nodeId
+                }
+                return safePost(webview, {
+                    type: 'node_execution_status',
+                    data: payload,
+                } as ExtensionToWorkflow)
+            },
+        }
+
+        const options = {
+            onError: 'fail-fast',
+            perType: { [NodeType.LLM]: 2, [NodeType.CLI]: 2 },
+            seeds: resume?.seeds,
+        } as const
+        await executeWorkflowParallel(nodes, edges, callbacks, options, abortSignal)
+    } catch (err) {
+        // Surface error and finish
+        const msg = err instanceof Error ? err.message : String(err)
+        void vscode.window.showErrorMessage(`Workflow Error: ${msg}`)
+    } finally {
+        const stoppedAt = interruptedNodeId || lastExecutedNodeId
+        const event: ExtensionToWorkflow = {
+            type: 'execution_completed',
+            ...(stoppedAt ? { stoppedAtNodeId: stoppedAt } : {}),
+        }
+        await safePost(webview, event)
+    }
+    return
+
+    /* Legacy sequential path disabled
     const edgeIndex = createEdgeIndex(edges)
     const nodeIndex = new Map(nodes.map(node => [node.id, node]))
 
-    // Guard: invalid resume target
-    if (resume?.fromNodeId && !nodeIndex.has(resume.fromNodeId)) {
-        void vscode.window.showErrorMessage(`Resume failed: node ${resume.fromNodeId} not found`)
+    // Guard: invalid resume target (already checked above, but preserve existing logic)
+    const resumeFromId = resume?.fromNodeId
+    if (resumeFromId && !nodeIndex.has(resumeFromId!)) {
+        void vscode.window.showErrorMessage(`Resume failed: node ${resumeFromId!} not found`)
         await safePost(webview, { type: 'execution_completed' } as ExtensionToWorkflow)
         return
     }
@@ -65,22 +167,23 @@ export async function executeWorkflow(
         ifelseSkipPaths: new Map(),
     }
 
-    if (resume?.seeds?.outputs) {
-        for (const [nodeId, value] of Object.entries(resume.seeds.outputs)) {
+    const resumeSeedOutputs = resume?.seeds?.outputs
+    if (resumeSeedOutputs) {
+        for (const [nodeId, value] of Object.entries(resumeSeedOutputs as Record<string, string>)) {
             context.nodeOutputs.set(nodeId, value)
             const n = nodeIndex.get(nodeId)
             if (n?.type === NodeType.VARIABLE) {
-                const varName = (n as any).data?.variableName as string | undefined
+                const varName = ((n as any).data?.variableName ?? '') as string
                 if (varName) context.variableValues?.set(varName, value)
             }
             if (n?.type === NodeType.ACCUMULATOR) {
-                const varName = (n as any).data?.variableName as string | undefined
+                const varName = ((n as any).data?.variableName ?? '') as string
                 if (varName) context.accumulatorValues?.set(varName, value)
             }
         }
     }
 
-    const allInactiveNodes = new Set<string>()
+  const allInactiveNodes = new Set<string>()
     for (const node of nodes) {
         if (node.data.active === false) {
             const dependentInactiveNodes = getInactiveNodes(edges, node.id)
@@ -92,7 +195,8 @@ export async function executeWorkflow(
     const sortedNodes = processGraphComposition(nodes, edges, true)
 
     // Precompute IF/ELSE skip paths based on reachability to resume node
-    if (resume?.fromNodeId) {
+    const resumeFrom = resume?.fromNodeId
+    if (resumeFrom) {
         const allEdges = Array.from(edgeIndex.byId.values())
         const isReachable = (start: string, target: string): boolean => {
             if (start === target) return true
@@ -112,26 +216,25 @@ export async function executeWorkflow(
         for (const node of sortedNodes) {
             if ((node as WorkflowNodes).type !== NodeType.IF_ELSE) continue
             const out = edgeIndex.bySource.get(node.id) || []
-            const trueEdge = out.find(e => e.sourceHandle === 'true')
-            const falseEdge = out.find(e => e.sourceHandle === 'false')
-            if (!trueEdge || !falseEdge) continue
-            const reachesTrue = isReachable(trueEdge.target, resume.fromNodeId)
-            const reachesFalse = isReachable(falseEdge.target, resume.fromNodeId)
+            const tE = out.find(e => e.sourceHandle === 'true')
+            const fE = out.find(e => e.sourceHandle === 'false')
+            if (!tE || !fE) continue
+            const reachesTrue = isReachable(tE!.target, resumeFrom!)
+            const reachesFalse = isReachable(fE!.target, resumeFrom!)
             if (reachesTrue === reachesFalse) continue // ambiguous or neither
-            const nonTakenTarget = reachesTrue ? falseEdge.target : trueEdge.target
-            let skipNodes = context.ifelseSkipPaths?.get(node.id)
-            skipNodes = new Set<string>()
-            context.ifelseSkipPaths?.set(node.id, skipNodes)
+            const nonTakenTarget = reachesTrue ? fE!.target : tE!.target
+            const newSkipNodes = new Set<string>()
+            context.ifelseSkipPaths?.set(node.id, newSkipNodes)
             const nodesToSkip = getInactiveNodes(allEdges, nonTakenTarget)
-            for (const nid of nodesToSkip) skipNodes.add(nid)
+            for (const nid of nodesToSkip) newSkipNodes.add(nid)
         }
     }
 
     // Limit execution to the reachable subgraph when resuming from a specific node
     const allowedNodes: Set<string> | undefined = (() => {
-        if (!resume?.fromNodeId) return undefined
+        if (!resumeFrom) return undefined
         const allEdges = Array.from(edgeIndex.byId.values())
-        return getInactiveNodes(allEdges, resume.fromNodeId)
+        return getInactiveNodes(allEdges, resumeFrom!)
     })()
 
     await safePost(webview, { type: 'execution_started' } as ExtensionToWorkflow)
@@ -148,8 +251,11 @@ export async function executeWorkflow(
         }
 
         // Skip nodes outside the reachable subgraph when resuming
-        if (resume?.fromNodeId && allowedNodes && !allowedNodes.has(node.id)) {
-            continue
+        if (resumeFrom) {
+            const allow = allowedNodes ?? new Set<string>()
+            if (!allow.has(node.id)) {
+                continue
+            }
         }
         const shouldSkip = Array.from(context.ifelseSkipPaths?.values() ?? []).some(skipNodes =>
             skipNodes.has(node.id)
@@ -256,7 +362,7 @@ export async function executeWorkflow(
 
         context.nodeOutputs.set(node.id, result)
         const safeResult = Array.isArray(result)
-            ? result.join('\n')
+            ? (result as string[]).join('\n')
             : typeof result === 'string'
               ? result
               : JSON.stringify(result)
@@ -267,7 +373,7 @@ export async function executeWorkflow(
     }
 
     await safePost(webview, { type: 'execution_completed' } as ExtensionToWorkflow)
-    context.loopStates.clear()
+*/
 }
 
 export function createEdgeIndex(edges: Edge[]): IndexedEdges {
@@ -303,11 +409,13 @@ export function replaceIndexedInputs(
     })
 
     if (context) {
-        for (const [, loopState] of context.loopStates) {
-            result = result.replace(
-                new RegExp(`\\$\{${loopState.variable}}(?!\\w)`, 'g'),
-                String(loopState.currentIteration)
-            )
+        if (context.loopStates) {
+            for (const [, loopState] of context.loopStates) {
+                result = result.replace(
+                    new RegExp(`\\$\{${loopState.variable}}(?!\\w)`, 'g'),
+                    String(loopState.currentIteration)
+                )
+            }
         }
         const accumulatorVars = context.accumulatorValues
             ? Array.from(context.accumulatorValues.keys())
@@ -397,8 +505,9 @@ async function executeLLMNode(
         throw new Error('AMP_API_KEY is not set')
     }
 
-    const workspaceRoots = (vscode.workspace.workspaceFolders || []).map(f => f.uri.fsPath)
-    console.log('[ExecuteWorkflow] LLM Node workspace roots:', workspaceRoots)
+    const { getActiveWorkspaceRoots } = await import('../workspace.js')
+    const workspaceRoots = getActiveWorkspaceRoots()
+    console.debug('executeLLMNode: ', JSON.stringify(workspaceRoots, null, 2))
 
     // Determine model key from node selection, validating with SDK when available
     const defaultModelKey = 'anthropic/claude-sonnet-4-5-20250929'

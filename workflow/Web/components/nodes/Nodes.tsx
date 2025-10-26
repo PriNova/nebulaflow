@@ -59,6 +59,8 @@ export type BaseNodeData = {
     interrupted?: boolean
     result?: string
     shouldAbort?: boolean
+    isEditing?: boolean
+    onUpdate?: (partial: Partial<BaseNodeData>) => void
 }
 
 export type WorkflowNode = Omit<ReactFlowNode, 'data' | 'position' | 'type' | 'id' | 'selected'> & {
@@ -100,7 +102,7 @@ export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
         case NodeType.PREVIEW:
             return { ...node, id } as PreviewNode
         case NodeType.INPUT:
-            return { ...node, id } as TextNode
+            return { ...node, id, data: { ...node.data, isEditing: false } } as TextNode
         case NodeType.IF_ELSE:
             return {
                 ...node,
@@ -118,7 +120,6 @@ export const createEdge = (sourceNode: WorkflowNode, targetNode: WorkflowNode): 
     id: `${sourceNode.id}-${targetNode.id}`,
     source: sourceNode.id,
     target: targetNode.id,
-    type: 'smoothstep',
     style: { strokeWidth: 1 },
 })
 

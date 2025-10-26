@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react'
 import RunFromHereButton from '../RunFromHereButton'
+import RunOnlyThisButton from '../RunOnlyThisButton'
 import {
     type BaseNodeData,
     type BaseNodeProps,
@@ -46,6 +47,12 @@ export const VariableNode: React.FC<BaseNodeProps> = ({ id, data, selected }) =>
                 }}
             >
                 <div className="tw-flex-grow tw-text-center">VARIABLE</div>
+                <RunOnlyThisButton
+                    nodeId={id}
+                    className="tw-w-[1.75rem] tw-h-[1.75rem]"
+                    title="Run only this node"
+                    disabled={!!data.executing}
+                />
                 <RunFromHereButton nodeId={id} className="tw-w-[1.75rem] tw-h-[1.75rem]" />
             </div>
             <div className="tw-flex tw-items-center tw-justify-center">

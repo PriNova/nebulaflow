@@ -7,44 +7,158 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '..
 import { Button } from '../ui/shadcn/ui/button'
 import { Textarea } from '../ui/shadcn/ui/textarea'
 import RunFromHereButton from './RunFromHereButton'
+import type { SelectionSummary } from './hooks/selectionHandling'
 import { NodeType, type WorkflowNodes } from './nodes/Nodes'
 
 interface RightSidebarProps {
     sortedNodes: WorkflowNodes[]
     nodeResults: Map<string, string>
-    executingNodeId: string | null
+    executingNodeIds: Set<string>
     pendingApprovalNodeId: string | null
     onApprove: (nodeId: string, approved: boolean, modifiedCommand?: string) => void
     interruptedNodeId: string | null
+    stoppedAtNodeId: string | null
     nodeAssistantContent: Map<string, AssistantContentItem[]>
     executionRunId: number
     onRunFromHere?: (nodeId: string) => void
+    selection?: SelectionSummary
+    parallelSteps?: string[][]
+    parallelStepByNodeId?: Map<string, number>
+    branchByIfElseId?: Map<string, { true: Set<string>; false: Set<string> }>
 }
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
     sortedNodes,
     nodeResults,
-    executingNodeId,
+    executingNodeIds,
     pendingApprovalNodeId,
     onApprove,
     interruptedNodeId,
+    stoppedAtNodeId,
     nodeAssistantContent,
     executionRunId,
     onRunFromHere,
+    selection,
+    parallelSteps,
+    parallelStepByNodeId,
+    branchByIfElseId,
 }) => {
     const filteredByActiveNodes = useMemo(
         () => sortedNodes.filter(node => node.type !== NodeType.PREVIEW && node.data.active !== false),
         [sortedNodes]
     )
 
+    const hasParallelAnalysis = !!(parallelSteps && parallelStepByNodeId)
+
+    const { parallelGroups, sequentialItems, allItemsInOrder } = useMemo(() => {
+        if (!parallelSteps || !parallelStepByNodeId) {
+            return { parallelGroups: [], sequentialItems: [], allItemsInOrder: [] }
+        }
+
+        const parallel: Array<{
+            stepIndex: number
+            nodeIds: string[]
+            nodes: WorkflowNodes[]
+        }> = []
+        const sequential: Array<{
+            stepIndex: number
+            node: WorkflowNodes
+        }> = []
+
+        parallelSteps.forEach((stepNodeIds, index) => {
+            const stepNodes = stepNodeIds
+                .map(nodeId => filteredByActiveNodes.find(n => n.id === nodeId))
+                .filter(Boolean) as WorkflowNodes[]
+
+            if (stepNodes.length > 1) {
+                parallel.push({
+                    stepIndex: index,
+                    nodeIds: stepNodeIds,
+                    nodes: stepNodes,
+                })
+            } else if (stepNodes.length === 1) {
+                sequential.push({
+                    stepIndex: index,
+                    node: stepNodes[0],
+                })
+            }
+        })
+
+        // Build ordered list by stepIndex
+        const ordered: Array<
+            | { type: 'parallel'; stepIndex: number; nodeIds: string[]; nodes: WorkflowNodes[] }
+            | { type: 'sequential'; stepIndex: number; node: WorkflowNodes }
+        > = []
+        let pIdx = 0
+        let sIdx = 0
+        while (pIdx < parallel.length || sIdx < sequential.length) {
+            if (
+                pIdx < parallel.length &&
+                (sIdx >= sequential.length || parallel[pIdx].stepIndex <= sequential[sIdx].stepIndex)
+            ) {
+                ordered.push({
+                    type: 'parallel',
+                    stepIndex: parallel[pIdx].stepIndex,
+                    nodeIds: parallel[pIdx].nodeIds,
+                    nodes: parallel[pIdx].nodes,
+                })
+                pIdx++
+            } else if (sIdx < sequential.length) {
+                ordered.push({
+                    type: 'sequential',
+                    stepIndex: sequential[sIdx].stepIndex,
+                    node: sequential[sIdx].node,
+                })
+                sIdx++
+            }
+        }
+
+        return {
+            parallelGroups: parallel,
+            sequentialItems: sequential,
+            allItemsInOrder: ordered,
+        }
+    }, [parallelSteps, parallelStepByNodeId, filteredByActiveNodes])
+
     const getBorderColorClass = (nodeId: string): string => {
-        if (nodeId === executingNodeId) {
+        if (executingNodeIds.has(nodeId)) {
             return 'tw-border-[var(--vscode-charts-yellow)]'
         }
-        if (nodeId === interruptedNodeId) {
+        if (nodeId === interruptedNodeId || nodeId === stoppedAtNodeId) {
             return 'tw-border-[var(--vscode-charts-orange)]'
         }
+        if (selection?.selectedNodeId === nodeId) {
+            return 'tw-border-[var(--vscode-testing-iconPassed)]'
+        }
         return 'tw-border-transparent'
+    }
+
+    const getStepLabel = (stepIndex: number, visibleNodeCount: number): string | null => {
+        if (visibleNodeCount <= 1) return null
+        if (stepIndex === -1) return 'Unsupported (Loop)'
+        return `Parallel Step ${stepIndex + 1} (${visibleNodeCount})`
+    }
+
+    const getStepBranchSuffix = (nodeIds: string[]): string => {
+        if (!branchByIfElseId || branchByIfElseId.size === 0) return ''
+
+        const trueOnlyCount = nodeIds.filter(nodeId => {
+            for (const [, { true: trueSet }] of branchByIfElseId) {
+                if (!trueSet.has(nodeId)) return false
+            }
+            return true
+        }).length
+
+        const falseOnlyCount = nodeIds.filter(nodeId => {
+            for (const [, { false: falseSet }] of branchByIfElseId) {
+                if (!falseSet.has(nodeId)) return false
+            }
+            return true
+        }).length
+
+        if (trueOnlyCount === nodeIds.length) return ' – True'
+        if (falseOnlyCount === nodeIds.length) return ' – False'
+        return ''
     }
     const [openItemId, setOpenItemId] = useState<string | undefined>(undefined)
     const [modifiedCommands, setModifiedCommands] = useState<Map<string, string>>(new Map())
@@ -368,10 +482,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         }
     }, [pendingApprovalNodeId])
     useEffect(() => {
-        if (executingNodeId !== null) {
+        if (executingNodeIds.size > 0) {
             setModifiedCommands(new Map())
         }
-    }, [executingNodeId])
+    }, [executingNodeIds])
     useEffect(() => {
         if (pendingApprovalNodeId !== null) {
             setModifiedCommands(new Map())
@@ -387,6 +501,186 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             assistantScrollRefs.current.clear()
         }
     }, [executionRunId])
+
+    const renderNodeItem = (node: WorkflowNodes, isInParallelGroup = false) => (
+        <div
+            className={clsx(
+                'tw-flex tw-flex-col tw-gap-1 tw-px-2 tw-py-1 tw-rounded tw-bg-[var(--vscode-sideBar-dropBackground)]',
+                'tw-border tw-w-full',
+                getBorderColorClass(node.id)
+            )}
+        >
+            <Accordion
+                type="single"
+                collapsible
+                value={openItemId}
+                onValueChange={value => setOpenItemId(value || '')}
+            >
+                <AccordionItem value={node.id}>
+                    <AccordionTrigger className="tw-w-full tw-text-sm tw-h-6 tw-py-[.1rem]">
+                        <div className="tw-flex tw-items-center tw-w-full">
+                            <div className="tw-w-4 tw-mr-2">
+                                {executingNodeIds.has(node.id) && (
+                                    <Loader2Icon
+                                        stroke="#33ffcc"
+                                        strokeWidth={3}
+                                        size={24}
+                                        className="tw-h-4 tw-w-4 tw-animate-spin"
+                                    />
+                                )}
+                            </div>
+                            {node.data.title}
+                            {onRunFromHere && (
+                                <RunFromHereButton
+                                    nodeId={node.id}
+                                    className="tw-ml-auto tw-w-[1.75rem] tw-h-[1.75rem]"
+                                    disabled={executingNodeIds.size > 0}
+                                    onClick={() => onRunFromHere(node.id)}
+                                />
+                            )}
+                        </div>
+                    </AccordionTrigger>
+                    <AccordionContent>
+                        {(nodeResults.has(node.id) ||
+                            (node.type === NodeType.LLM && nodeAssistantContent.has(node.id))) && (
+                            <div className="tw-mt-1 tw-space-y-4">
+                                {node.type === NodeType.LLM && nodeAssistantContent.has(node.id) && (
+                                    <div
+                                        className="tw-max-h-64 tw-overflow-y-auto"
+                                        ref={el => {
+                                            if (el) {
+                                                assistantScrollRefs.current.set(node.id, el)
+                                            } else {
+                                                assistantScrollRefs.current.delete(node.id)
+                                            }
+                                        }}
+                                        onScroll={e => handleAssistantScroll(node.id, e.currentTarget)}
+                                    >
+                                        <Accordion type="multiple">
+                                            {(() => {
+                                                const items = nodeAssistantContent.get(node.id) || []
+
+                                                const filterLastTextMatchingResult = (
+                                                    arr: AssistantContentItem[],
+                                                    result: string | undefined
+                                                ): AssistantContentItem[] => {
+                                                    const r = (result || '').trim()
+                                                    if (!r) return arr
+                                                    for (let i = arr.length - 1; i >= 0; i--) {
+                                                        const it = arr[i]
+                                                        if (it.type === 'text' && it.text.trim() === r) {
+                                                            return [
+                                                                ...arr.slice(0, i),
+                                                                ...arr.slice(i + 1),
+                                                            ]
+                                                        }
+                                                    }
+                                                    return arr
+                                                }
+
+                                                const finalResult = nodeResults.get(node.id)
+                                                const displayItems =
+                                                    node.type === NodeType.LLM
+                                                        ? filterLastTextMatchingResult(
+                                                              items,
+                                                              finalResult
+                                                          )
+                                                        : items
+
+                                                const pairedMap = new Map<string, string | undefined>()
+                                                for (const it of items) {
+                                                    if (it.type === 'tool_result' && it.toolUseID) {
+                                                        pairedMap.set(it.toolUseID, it.resultJSON)
+                                                    }
+                                                }
+                                                return displayItems
+                                                    .filter(it => it.type !== 'tool_result')
+                                                    .map((it, idx) =>
+                                                        renderAssistantAccordionItem(
+                                                            it,
+                                                            idx,
+                                                            node.id,
+                                                            it.type === 'tool_use'
+                                                                ? pairedMap.get(it.id)
+                                                                : undefined
+                                                        )
+                                                    )
+                                            })()}
+                                        </Accordion>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <h4 className="tw-text-xs tw-font-semibold tw-text-[var(--vscode-foreground)] tw-mb-1">
+                                        Result
+                                    </h4>
+                                    {node.id === pendingApprovalNodeId ? (
+                                        <Textarea
+                                            value={
+                                                modifiedCommands.get(node.id) ||
+                                                nodeResults.get(node.id) ||
+                                                ''
+                                            }
+                                            readOnly={
+                                                !(
+                                                    node.type === NodeType.CLI &&
+                                                    node.id === pendingApprovalNodeId
+                                                )
+                                            }
+                                            onChange={e => handleCommandChange(node.id, e.target.value)}
+                                        />
+                                    ) : (
+                                        <Textarea
+                                            value={nodeResults.get(node.id) || ''}
+                                            readOnly={true}
+                                            style={{
+                                                backgroundColor: 'var(--vscode-sideBar-background)',
+                                            }}
+                                        />
+                                    )}
+                                </div>
+
+                                {node.id === pendingApprovalNodeId && (
+                                    <div className="tw-flex tw-w-full tw-gap-2 tw-mt-2 tw-justify-center">
+                                        <Button
+                                            size="sm"
+                                            onClick={() =>
+                                                onApprove(
+                                                    node.id,
+                                                    true,
+                                                    node.type === NodeType.CLI
+                                                        ? modifiedCommands.get(node.id)
+                                                        : undefined
+                                                )
+                                            }
+                                            variant="secondary"
+                                            style={{
+                                                backgroundColor: 'var(--vscode-testing-iconPassed)',
+                                                color: 'var(--vscode-button-foreground)',
+                                            }}
+                                        >
+                                            Approve
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={() => onApprove(node.id, false)}
+                                            variant="secondary"
+                                            style={{
+                                                backgroundColor: 'var(--vscode-charts-red)',
+                                                color: 'var(--vscode-button-foreground)',
+                                            }}
+                                        >
+                                            Reject
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
+        </div>
+    )
 
     // Auto-scroll: on assistant content updates or when user resumes bottom, scroll to bottom for nodes not paused
     const assistantItemsTick = (() => {
@@ -413,244 +707,40 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             style={{ paddingBottom: '20px' }}
         >
             <div className="tw-flex tw-flex-col tw-gap-2 tw-mb-4">
-                <h3 className="tw-text-[var(--vscode-sideBarTitle-foreground)] tw-font-medium tw-mb-4">
-                    Workflow Execution Order & Results
+                <h3 className="tw-text-[var(--vscode-sideBarTitle-foreground)] tw-font-medium tw-mb-4 tw-text-center">
+                    Playbox
                 </h3>
                 <div className="tw-space-y-2">
-                    {filteredByActiveNodes.map(node => (
-                        <div
-                            key={node.id}
-                            className={clsx(
-                                'tw-flex tw-flex-col tw-gap-1 tw-px-2 tw-py-1 tw-rounded tw-bg-[var(--vscode-sideBar-dropBackground)]',
-                                'tw-border',
-                                getBorderColorClass(node.id)
-                            )}
-                        >
-                            <Accordion
-                                type="single"
-                                collapsible
-                                value={openItemId}
-                                onValueChange={value => setOpenItemId(value || '')}
-                            >
-                                <AccordionItem value={node.id}>
-                                    <AccordionTrigger className="tw-w-full tw-text-sm tw-h-6 tw-py-[.1rem]">
-                                        <div className="tw-flex tw-items-center tw-w-full">
-                                            <div className="tw-w-4 tw-mr-2">
-                                                {node.id === executingNodeId && (
-                                                    <Loader2Icon
-                                                        stroke="#33ffcc"
-                                                        strokeWidth={3}
-                                                        size={24}
-                                                        className="tw-h-4 tw-w-4 tw-animate-spin"
-                                                    />
-                                                )}
-                                            </div>
-                                            {node.data.title}
-                                            {onRunFromHere && (
-                                                <RunFromHereButton
-                                                    nodeId={node.id}
-                                                    className="tw-ml-auto tw-w-[1.75rem] tw-h-[1.75rem]"
-                                                    disabled={!!executingNodeId}
-                                                    onClick={() => onRunFromHere(node.id)}
-                                                />
-                                            )}
-                                        </div>
-                                    </AccordionTrigger>
-                                    <AccordionContent>
-                                        {(nodeResults.has(node.id) ||
-                                            (node.type === NodeType.LLM &&
-                                                nodeAssistantContent.has(node.id))) && (
-                                            <div className="tw-mt-1 tw-space-y-4">
-                                                {node.type === NodeType.LLM &&
-                                                    nodeAssistantContent.has(node.id) && (
-                                                        <div
-                                                            className="tw-max-h-64 tw-overflow-y-auto"
-                                                            ref={el => {
-                                                                if (el) {
-                                                                    assistantScrollRefs.current.set(
-                                                                        node.id,
-                                                                        el
-                                                                    )
-                                                                } else {
-                                                                    assistantScrollRefs.current.delete(
-                                                                        node.id
-                                                                    )
-                                                                }
-                                                            }}
-                                                            onScroll={e =>
-                                                                handleAssistantScroll(
-                                                                    node.id,
-                                                                    e.currentTarget
-                                                                )
-                                                            }
-                                                        >
-                                                            <Accordion type="multiple">
-                                                                {(() => {
-                                                                    const items =
-                                                                        nodeAssistantContent.get(
-                                                                            node.id
-                                                                        ) || []
-
-                                                                    const filterLastTextMatchingResult =
-                                                                        (
-                                                                            arr: AssistantContentItem[],
-                                                                            result: string | undefined
-                                                                        ): AssistantContentItem[] => {
-                                                                            const r = (
-                                                                                result || ''
-                                                                            ).trim()
-                                                                            if (!r) return arr
-                                                                            for (
-                                                                                let i = arr.length - 1;
-                                                                                i >= 0;
-                                                                                i--
-                                                                            ) {
-                                                                                const it = arr[i]
-                                                                                if (
-                                                                                    it.type === 'text' &&
-                                                                                    it.text.trim() === r
-                                                                                ) {
-                                                                                    return [
-                                                                                        ...arr.slice(
-                                                                                            0,
-                                                                                            i
-                                                                                        ),
-                                                                                        ...arr.slice(
-                                                                                            i + 1
-                                                                                        ),
-                                                                                    ]
-                                                                                }
-                                                                            }
-                                                                            return arr
-                                                                        }
-
-                                                                    const finalResult = nodeResults.get(
-                                                                        node.id
-                                                                    )
-                                                                    const displayItems =
-                                                                        node.type === NodeType.LLM
-                                                                            ? filterLastTextMatchingResult(
-                                                                                  items,
-                                                                                  finalResult
-                                                                              )
-                                                                            : items
-
-                                                                    const pairedMap = new Map<
-                                                                        string,
-                                                                        string | undefined
-                                                                    >()
-                                                                    for (const it of items) {
-                                                                        if (
-                                                                            it.type === 'tool_result' &&
-                                                                            it.toolUseID
-                                                                        ) {
-                                                                            pairedMap.set(
-                                                                                it.toolUseID,
-                                                                                it.resultJSON
-                                                                            )
-                                                                        }
-                                                                    }
-                                                                    return displayItems
-                                                                        .filter(
-                                                                            it =>
-                                                                                it.type !== 'tool_result'
-                                                                        )
-                                                                        .map((it, idx) =>
-                                                                            renderAssistantAccordionItem(
-                                                                                it,
-                                                                                idx,
-                                                                                node.id,
-                                                                                it.type === 'tool_use'
-                                                                                    ? pairedMap.get(
-                                                                                          it.id
-                                                                                      )
-                                                                                    : undefined
-                                                                            )
-                                                                        )
-                                                                })()}
-                                                            </Accordion>
-                                                        </div>
-                                                    )}
-
-                                                <div>
-                                                    <h4 className="tw-text-xs tw-font-semibold tw-text-[var(--vscode-foreground)] tw-mb-1">
-                                                        Result
-                                                    </h4>
-                                                    {node.id === pendingApprovalNodeId ? (
-                                                        <Textarea
-                                                            value={
-                                                                modifiedCommands.get(node.id) ||
-                                                                nodeResults.get(node.id) ||
-                                                                ''
-                                                            }
-                                                            readOnly={
-                                                                !(
-                                                                    node.type === NodeType.CLI &&
-                                                                    node.id === pendingApprovalNodeId
-                                                                )
-                                                            }
-                                                            onChange={e =>
-                                                                handleCommandChange(
-                                                                    node.id,
-                                                                    e.target.value
-                                                                )
-                                                            }
-                                                        />
-                                                    ) : (
-                                                        <Textarea
-                                                            value={nodeResults.get(node.id) || ''}
-                                                            readOnly={true}
-                                                            style={{
-                                                                backgroundColor:
-                                                                    'var(--vscode-sideBar-background)',
-                                                            }}
-                                                        />
-                                                    )}
-                                                </div>
-
-                                                {node.id === pendingApprovalNodeId && (
-                                                    <div className="tw-flex tw-w-full tw-gap-2 tw-mt-2 tw-justify-center">
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                onApprove(
-                                                                    node.id,
-                                                                    true,
-                                                                    node.type === NodeType.CLI
-                                                                        ? modifiedCommands.get(node.id)
-                                                                        : undefined
-                                                                )
-                                                            }
-                                                            variant="secondary"
-                                                            style={{
-                                                                backgroundColor:
-                                                                    'var(--vscode-testing-iconPassed)',
-                                                                color: 'var(--vscode-button-foreground)',
-                                                            }}
-                                                        >
-                                                            Approve
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={() => onApprove(node.id, false)}
-                                                            variant="secondary"
-                                                            style={{
-                                                                backgroundColor:
-                                                                    'var(--vscode-charts-red)',
-                                                                color: 'var(--vscode-button-foreground)',
-                                                            }}
-                                                        >
-                                                            Reject
-                                                        </Button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </AccordionContent>
-                                </AccordionItem>
-                            </Accordion>
-                        </div>
-                    ))}
+                    {hasParallelAnalysis && parallelGroups.length > 0
+                        ? allItemsInOrder.map(item => {
+                              if (item.type === 'parallel') {
+                                  const stepLabel = getStepLabel(item.stepIndex, item.nodes.length)
+                                  return (
+                                      <div
+                                          key={`step-${item.stepIndex}`}
+                                          className="tw-rounded tw-p-3 tw-space-y-2 tw-border tw-border-[var(--vscode-panel-border)]"
+                                      >
+                                          {stepLabel && (
+                                              <div className="tw-text-xs tw-text-[var(--vscode-sideBarTitle-foreground)] tw-font-medium tw-px-2 tw-py-1">
+                                                  {stepLabel}
+                                                  {getStepBranchSuffix(item.nodeIds)}
+                                              </div>
+                                          )}
+                                          {item.nodes.map(node => (
+                                              <div key={node.id}>{renderNodeItem(node, true)}</div>
+                                          ))}
+                                      </div>
+                                  )
+                              }
+                              return (
+                                  <div key={`node-${item.node.id}`}>
+                                      {renderNodeItem(item.node, false)}
+                                  </div>
+                              )
+                          })
+                        : filteredByActiveNodes.map(node => (
+                              <div key={node.id}>{renderNodeItem(node, false)}</div>
+                          ))}
                 </div>
             </div>
         </div>

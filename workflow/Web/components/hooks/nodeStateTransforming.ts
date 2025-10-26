@@ -8,10 +8,11 @@ export const useNodeStateTransformation = (
     nodes: WorkflowNodes[],
     selectedNodes: WorkflowNodes[],
     movingNodeId: string | null,
-    executingNodeId: string | null,
+    executingNodeIds: Set<string>,
     nodeErrors: Map<string, string>,
     nodeResults: Map<string, string>,
     interruptedNodeId: string | null,
+    stoppedAtNodeId: string | null,
     edges: FlowEdge[]
 ): WorkflowNodes[] => {
     const selectedNodeIds = useMemo(() => new Set(selectedNodes.map(node => node.id)), [selectedNodes])
@@ -37,8 +38,8 @@ export const useNodeStateTransformation = (
             const nodeId = node.id
             const nodeIsSelected = selectedNodeIds.has(nodeId)
             const nodeIsMoving = nodeId === movingNodeId
-            const nodeIsExecuting = nodeId === executingNodeId
-            const nodeIsInterrupted = nodeId === interruptedNodeId
+            const nodeIsExecuting = executingNodeIds.has(nodeId)
+            const nodeIsInterrupted = nodeId === interruptedNodeId || nodeId === stoppedAtNodeId
             const nodeHasError = nodeErrors.has(nodeId)
             const nodeResult = nodeResults.get(nodeId)
             const nodeIsActive = !allInactiveNodes.has(nodeId) && node.data.active !== false
@@ -66,10 +67,11 @@ export const useNodeStateTransformation = (
         nodes,
         selectedNodeIds,
         movingNodeId,
-        executingNodeId,
+        executingNodeIds,
         nodeErrors,
         nodeResults,
         interruptedNodeId,
+        stoppedAtNodeId,
         allInactiveNodes,
     ])
 }
@@ -97,5 +99,5 @@ export const memoizedTopologicalSort = (nodes: WorkflowNodes[], edges: FlowEdge[
         sourceHandle: (e as any).sourceHandle ?? undefined,
         targetHandle: (e as any).targetHandle ?? undefined,
     }))
-    return processGraphComposition(nodes, sanitized, false)
+    return processGraphComposition(nodes, sanitized, false, { mode: 'display' })
 }

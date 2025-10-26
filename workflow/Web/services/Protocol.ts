@@ -3,6 +3,8 @@ export type {
     Model,
     BaseWorkflowMessage,
     NodeExecutionPayload,
+    NodeSavedState,
+    WorkflowStateDTO,
     WorkflowPayloadDTO,
     WorkflowNodeDTO,
     EdgeDTO,

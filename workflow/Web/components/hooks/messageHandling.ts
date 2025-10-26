@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
 import type { GenericVSCodeWrapper } from '../../utils/vscode'
 import type { Edge } from '../CustomOrderedEdge'
@@ -64,7 +64,8 @@ export const useMessageHandler = (
     setNodeErrors: React.Dispatch<React.SetStateAction<Map<string, string>>>,
     setNodeResults: React.Dispatch<React.SetStateAction<Map<string, string>>>,
     setInterruptedNodeId: React.Dispatch<React.SetStateAction<string | null>>,
-    setExecutingNodeId: React.Dispatch<React.SetStateAction<string | null>>,
+    setStoppedAtNodeId: React.Dispatch<React.SetStateAction<string | null>>,
+    setExecutingNodeIds: React.Dispatch<React.SetStateAction<Set<string>>>,
     setIsExecuting: React.Dispatch<React.SetStateAction<boolean>>,
     onNodeUpdate: (nodeId: string, data: Partial<WorkflowNodes['data']>) => void,
     calculatePreviewNodeTokens: (nodes: WorkflowNodes[]) => void,
@@ -73,10 +74,13 @@ export const useMessageHandler = (
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>,
     setCustomNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>,
     setNodeAssistantContent: React.Dispatch<React.SetStateAction<Map<string, any[]>>>,
+    setIfElseDecisions: React.Dispatch<React.SetStateAction<Map<string, 'true' | 'false'>>>,
     notify: (p: { type: 'success' | 'error'; text: string }) => void,
     edges: Edge[],
-    nodeResults: Map<string, string>
+    nodeResults: Map<string, string>,
+    requestFitOnNextRender: () => void = () => {}
 ) => {
+    const lastExecutedNodeIdRef = useRef<string | null>(null)
     const batchUpdateNodeResults = useCallback(
         (updates: Map<string, string>) => {
             setNodeResults(prev => new Map([...prev, ...updates]))
@@ -92,12 +96,34 @@ export const useMessageHandler = (
         const messageHandler = (event: MessageEvent<ExtensionToWorkflow>) => {
             switch (event.data.type) {
                 case 'workflow_loaded': {
-                    const { nodes, edges } = event.data.data
+                    const { nodes, edges, state } = event.data.data as any
                     if (nodes && edges) {
                         calculatePreviewNodeTokens(nodes as any)
                         setNodes(nodes as any)
                         setEdges(edges as any)
                         setNodeErrors(new Map())
+
+                        // Hydrate saved state if present
+                        if (state?.nodeResults) {
+                            const results = new Map<string, string>()
+                            for (const [nodeId, savedState] of Object.entries(
+                                state.nodeResults as any
+                            )) {
+                                results.set(nodeId, (savedState as any).output || '')
+                            }
+                            setNodeResults(results)
+                        }
+                        if (state?.ifElseDecisions) {
+                            const decisions = new Map<string, 'true' | 'false'>()
+                            for (const [nodeId, decision] of Object.entries(state.ifElseDecisions)) {
+                                if (decision === 'true' || decision === 'false') {
+                                    decisions.set(nodeId, decision)
+                                }
+                            }
+                            setIfElseDecisions(decisions)
+                        }
+
+                        requestFitOnNextRender()
                     }
                     break
                 }
@@ -114,22 +140,46 @@ export const useMessageHandler = (
                     if (nodeId && status) {
                         if (status === 'interrupted') {
                             setInterruptedNodeId(nodeId)
+                            setExecutingNodeIds(prev => {
+                                const next = new Set(prev)
+                                next.delete(nodeId)
+                                return next
+                            })
                         }
                         if (status === 'pending_approval') {
                             setPendingApprovalNodeId(nodeId)
                         } else if (status === 'running') {
-                            setExecutingNodeId(nodeId)
+                            setExecutingNodeIds(prev => {
+                                const next = new Set(prev)
+                                next.add(nodeId)
+                                return next
+                            })
                             setNodeErrors(prev => {
                                 const updated = new Map(prev)
                                 updated.delete(nodeId)
                                 return updated
                             })
                         } else if (status === 'error') {
-                            setExecutingNodeId(null)
+                            setExecutingNodeIds(prev => {
+                                const next = new Set(prev)
+                                next.delete(nodeId)
+                                return next
+                            })
                             setNodeErrors(prev => new Map(prev).set(nodeId, result ?? ''))
                         } else if (status === 'completed') {
-                            setExecutingNodeId(null)
+                            lastExecutedNodeIdRef.current = nodeId
+                            setExecutingNodeIds(prev => {
+                                const next = new Set(prev)
+                                next.delete(nodeId)
+                                return next
+                            })
                             const node = nodes.find(n => n.id === nodeId)
+                            // Capture If/Else decisions for resume
+                            if (node?.type === NodeType.IF_ELSE) {
+                                const decision =
+                                    result?.trim().toLowerCase() === 'true' ? 'true' : 'false'
+                                setIfElseDecisions(prev => new Map(prev).set(nodeId, decision))
+                            }
                             if (node?.type === NodeType.PREVIEW) {
                                 onNodeUpdate(node.id, { content: result as any })
                             } else {
@@ -162,7 +212,7 @@ export const useMessageHandler = (
                                 }
                             }
                         } else {
-                            setExecutingNodeId(null)
+                            setExecutingNodeIds(prev => new Set())
                         }
                         setNodeResults(prev => new Map(prev).set(nodeId, result ?? ''))
                     }
@@ -170,10 +220,17 @@ export const useMessageHandler = (
                 }
                 case 'execution_started':
                     setIsExecuting(true)
+                    lastExecutedNodeIdRef.current = null
                     break
-                case 'execution_completed':
+                case 'execution_completed': {
+                    const eventData = event.data as any
                     setIsExecuting(false)
+                    setExecutingNodeIds(new Set())
+                    const stoppedAtFromEvent = eventData.stoppedAtNodeId
+                    const stoppedAt = stoppedAtFromEvent || lastExecutedNodeIdRef.current
+                    setStoppedAtNodeId(stoppedAt)
                     break
+                }
                 case 'token_count': {
                     const { count, nodeId } = event.data.data as any
                     const updates = new Map([[`${nodeId}_tokens`, String(count)]])
@@ -207,8 +264,9 @@ export const useMessageHandler = (
         nodes,
         onNodeUpdate,
         setEdges,
-        setExecutingNodeId,
+        setExecutingNodeIds,
         setInterruptedNodeId,
+        setStoppedAtNodeId,
         setIsExecuting,
         setNodeErrors,
         setNodeResults,
@@ -219,9 +277,11 @@ export const useMessageHandler = (
         setModels,
         setCustomNodes,
         setNodeAssistantContent,
+        setIfElseDecisions,
         vscodeAPI,
         notify,
         edges,
         nodeResults,
+        requestFitOnNextRender,
     ])
 }

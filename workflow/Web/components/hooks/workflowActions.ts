@@ -10,12 +10,27 @@ export const useWorkflowActions = (
     edges: Edge[],
     setPendingApprovalNodeId: React.Dispatch<React.SetStateAction<string | null>>,
     setNodeErrors: React.Dispatch<React.SetStateAction<Map<string, string>>>,
-    setIsExecuting: React.Dispatch<React.SetStateAction<boolean>>
+    setIsExecuting: React.Dispatch<React.SetStateAction<boolean>>,
+    nodeResults: Map<string, string>,
+    ifElseDecisions: Map<string, 'true' | 'false'>
 ) => {
     const onSave = useCallback(() => {
-        const workflowData = { nodes, edges }
+        const state =
+            nodeResults.size > 0 || ifElseDecisions.size > 0
+                ? {
+                      nodeResults: Object.fromEntries(
+                          Array.from(nodeResults.entries()).map(([nodeId, output]) => [
+                              nodeId,
+                              { status: 'completed' as const, output },
+                          ])
+                      ),
+                      ifElseDecisions:
+                          ifElseDecisions.size > 0 ? Object.fromEntries(ifElseDecisions) : undefined,
+                  }
+                : undefined
+        const workflowData = { nodes, edges, state }
         vscodeAPI.postMessage({ type: 'save_workflow', data: workflowData } as any)
-    }, [nodes, edges, vscodeAPI])
+    }, [nodes, edges, nodeResults, ifElseDecisions, vscodeAPI])
 
     const onLoad = useCallback(() => {
         vscodeAPI.postMessage({ type: 'load_workflow' } as any)

@@ -44,10 +44,25 @@ export interface NodeExecutionPayload {
     command?: string
 }
 
+// Saved state for a single node after execution
+export interface NodeSavedState {
+    status: 'completed' | 'error' | 'interrupted'
+    output: string
+    error?: string
+    tokenCount?: number
+}
+
+// Workflow state envelope persisted across save/load
+export interface WorkflowStateDTO {
+    nodeResults: Record<string, NodeSavedState>
+    ifElseDecisions?: Record<string, 'true' | 'false'>
+}
+
 // Common workflow payload for commands/events
 export interface WorkflowPayloadDTO {
     nodes?: WorkflowNodeDTO[]
     edges?: EdgeDTO[]
+    state?: WorkflowStateDTO
 }
 
 // To Extension (from webview)
@@ -119,6 +134,7 @@ interface ExecutionStartedEvent extends BaseWorkflowMessage {
 
 interface ExecutionCompletedEvent extends BaseWorkflowMessage {
     type: 'execution_completed'
+    stoppedAtNodeId?: string
 }
 
 interface NodeExecutionStatusEvent extends BaseWorkflowMessage {
@@ -161,12 +177,23 @@ interface ProvideCustomModelsEvent extends BaseWorkflowMessage {
     data: WorkflowNodeDTO[]
 }
 
+interface ExecuteNodeCommand extends BaseWorkflowMessage {
+    type: 'execute_node'
+    data: {
+        node: WorkflowNodeDTO
+        inputs?: string[]
+        runId?: number
+        variables?: Record<string, string>
+    }
+}
+
 export type WorkflowToExtension =
     | OpenExternalLink
     | GetModelsCommand
     | SaveWorkflowCommand
     | LoadWorkflowCommand
     | ExecuteWorkflowCommand
+    | ExecuteNodeCommand
     | AbortWorkflowCommand
     | CalculateTokensCommand
     | NodeApprovalCommand

@@ -254,31 +254,35 @@ function findPostLoopNodes(
     return kahnSortbyOrderedEdges([...postLoopNodes], postLoopEdges)
 }
 
+type GraphCompositionMode = 'execution' | 'display'
+
 export function processGraphComposition(
     nodes: WorkflowNodes[],
     edges: Edge[],
-    shouldIterateLoops = true
+    shouldIterateLoops = true,
+    options?: { mode?: GraphCompositionMode }
 ): WorkflowNodes[] {
-    const processedNodes = nodes.map(node => ({ ...node, data: { ...node.data } }))
-    const activeNodes = processedNodes.filter(node => node.data.active !== false)
-    const activeEdges = edges.filter(
-        edge =>
-            activeNodes.some(node => node.id === edge.source) &&
-            activeNodes.some(node => node.id === edge.target)
-    )
+    const mode: GraphCompositionMode = options?.mode ?? 'execution'
 
-    const loopStartNodes = activeNodes.filter(node => node.type === NodeType.LOOP_START)
+    const processedNodes = nodes.map(node => ({ ...node, data: { ...node.data } }))
+
+    const nodeSet =
+        mode === 'execution' ? processedNodes.filter(n => n.data.active !== false) : processedNodes
+    const nodeIdSet = new Set(nodeSet.map(n => n.id))
+    const edgeSet = filterEdgesForNodeSet(edges, nodeIdSet)
+
+    const loopStartNodes = nodeSet.filter(node => node.type === NodeType.LOOP_START)
 
     if (loopStartNodes.some(n => n.type === NodeType.LOOP_START)) {
-        return processLoopWithCycles(activeNodes, activeEdges, shouldIterateLoops)
+        return processLoopWithCycles(nodeSet, edgeSet, shouldIterateLoops)
     }
     if (loopStartNodes.length === 0) {
-        const subgraphComponents = findStronglyConnectedComponents(activeNodes, activeEdges)
+        const subgraphComponents = findStronglyConnectedComponents(nodeSet, edgeSet)
         const flatSubs = subgraphComponents.flatMap(components => components)
-        return kahnSortbyOrderedEdges(flatSubs, activeEdges)
+        return kahnSortbyOrderedEdges(flatSubs, edgeSet)
     }
 
-    return activeNodes
+    return nodeSet
 }
 
 interface NodeState {

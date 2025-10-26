@@ -6,8 +6,10 @@ import type {
     EdgeDTO,
     ExtensionToWorkflow,
     NodeExecutionPayload,
+    NodeSavedState,
     WorkflowNodeDTO,
     WorkflowPayloadDTO,
+    WorkflowStateDTO,
     WorkflowToExtension,
 } from './Protocol'
 
@@ -65,6 +67,43 @@ export function isWorkflowNodeDTO(value: unknown): value is WorkflowNodeDTO {
     return true
 }
 
+function isNodeSavedState(value: unknown): value is NodeSavedState {
+    if (!isObject(value)) return false
+    const status = (value as any).status
+    if (!['completed', 'error', 'interrupted'].includes(status)) return false
+    if (!isString((value as any).output)) return false
+    if (
+        'error' in (value as any) &&
+        (value as any).error !== undefined &&
+        !isString((value as any).error)
+    )
+        return false
+    if (
+        'tokenCount' in (value as any) &&
+        (value as any).tokenCount !== undefined &&
+        !isNumber((value as any).tokenCount)
+    )
+        return false
+    return true
+}
+
+function isWorkflowStateDTO(value: unknown): value is WorkflowStateDTO {
+    if (!isObject(value)) return false
+    const nodeResults = (value as any).nodeResults
+    if (!isObject(nodeResults)) return false
+    for (const [, result] of Object.entries(nodeResults)) {
+        if (!isNodeSavedState(result)) return false
+    }
+    if ('ifElseDecisions' in (value as any) && (value as any).ifElseDecisions !== undefined) {
+        const decisions = (value as any).ifElseDecisions
+        if (!isObject(decisions)) return false
+        for (const [, decision] of Object.entries(decisions)) {
+            if (!['true', 'false'].includes(decision as string)) return false
+        }
+    }
+    return true
+}
+
 export function isWorkflowPayloadDTO(value: unknown): value is WorkflowPayloadDTO {
     if (!isObject(value)) return false
     if ('nodes' in (value as any) && (value as any).nodes !== undefined) {
@@ -73,6 +112,9 @@ export function isWorkflowPayloadDTO(value: unknown): value is WorkflowPayloadDT
     }
     if ('edges' in (value as any) && (value as any).edges !== undefined) {
         if (!Array.isArray((value as any).edges) || !(value as any).edges.every(isEdgeDTO)) return false
+    }
+    if ('state' in (value as any) && (value as any).state !== undefined) {
+        if (!isWorkflowStateDTO((value as any).state)) return false
     }
     return true
 }
@@ -127,6 +169,32 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
             return true
         case 'calculate_tokens':
             return isObject(msg.data) && isString(msg.data.text) && isString(msg.data.nodeId)
+        case 'execute_node': {
+            const data = msg.data
+            if (!isObject(data)) return false
+            if (!('node' in data) || !isWorkflowNodeDTO((data as any).node)) return false
+            if (
+                'inputs' in data &&
+                (data as any).inputs !== undefined &&
+                !(
+                    Array.isArray((data as any).inputs) &&
+                    (data as any).inputs.every((v: unknown) => isString(v))
+                )
+            )
+                return false
+            if ('runId' in data && (data as any).runId !== undefined && !isNumber((data as any).runId))
+                return false
+            if (
+                'variables' in data &&
+                (data as any).variables !== undefined &&
+                !(
+                    isObject((data as any).variables) &&
+                    Object.values((data as any).variables).every(v => isString(v))
+                )
+            )
+                return false
+            return true
+        }
         case 'node_approved':
             return (
                 isObject(msg.data) &&

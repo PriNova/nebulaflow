@@ -14,6 +14,7 @@ export function toProtocolNode(node: WorkflowNode): WorkflowNodeDTO {
 export function toProtocolPayload(payload: {
     nodes: WorkflowNodes[]
     edges: Edge[]
+    state?: any
 }): WorkflowPayloadDTO {
     const nodes = payload.nodes.map(n => toProtocolNode(n as WorkflowNode))
     const edges: EdgeDTO[] = payload.edges.map(e => ({
@@ -23,7 +24,7 @@ export function toProtocolPayload(payload: {
         sourceHandle: e.sourceHandle,
         targetHandle: e.targetHandle,
     }))
-    return { nodes, edges }
+    return { nodes, edges, state: payload.state }
 }
 
 export function fromProtocolNode(dto: WorkflowNodeDTO): WorkflowNode {
@@ -36,7 +37,11 @@ export function fromProtocolNode(dto: WorkflowNodeDTO): WorkflowNode {
     }
 }
 
-export function fromProtocolPayload(dto: WorkflowPayloadDTO): { nodes: WorkflowNodes[]; edges: Edge[] } {
+export function fromProtocolPayload(dto: WorkflowPayloadDTO): {
+    nodes: WorkflowNodes[]
+    edges: Edge[]
+    state?: any
+} {
     const nodes: WorkflowNodes[] = (dto.nodes ?? []).map(n => fromProtocolNode(n))
     const edges: Edge[] = (dto.edges ?? []).map(e => ({
         id: e.id,
@@ -45,5 +50,5 @@ export function fromProtocolPayload(dto: WorkflowPayloadDTO): { nodes: WorkflowN
         sourceHandle: e.sourceHandle,
         targetHandle: e.targetHandle,
     }))
-    return { nodes, edges }
+    return { nodes, edges, state: dto.state }
 }

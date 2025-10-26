@@ -1,7 +1,7 @@
 {
     "name": "nebula-flow",
     "displayName": "NebulaFlow Workflow Editor",
-    "version": "0.2.0",
+    "version": "0.2.4",
     "publisher": "prinova",
     "engines": {
         "vscode": ">=1.90.0"
@@ -23,6 +23,8 @@
         "watch:webview": "vite build --watch --config workflow/Web/vite.config.mts --mode development",
         "prebuild:ext": "npm run -s sync:sdk",
         "build:ext": "node scripts/bundle-ext.mjs",
+        "watch:ext": "node scripts/bundle-ext.mjs --watch",
+        "watch": "node scripts/dev-watch.mjs",
         "typecheck": "tsc -p . && tsc -p workflow/Web/tsconfig.json",
         "biome": "biome check --apply --error-on-warnings .",
         "format": "npm run biome",

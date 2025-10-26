@@ -17,7 +17,20 @@ export function getGenericVSCodeAPI<W, E>(): GenericVSCodeWrapper<W, E> {
     if (!api) {
         const vsCodeApi = acquireVsCodeApi()
         api = {
-            postMessage: (message: W) => vsCodeApi.postMessage(message),
+            postMessage: (message: W) => {
+                try {
+                    // Any non-structured-clone-safe payload will throw here (e.g., functions)
+                    // Keep this tight and observable for debugging regressions.
+                    vsCodeApi.postMessage(message)
+                } catch (err: any) {
+                    const type = (message as any)?.type
+                    console.error('VSCode postMessage failed', {
+                        error: err?.message || String(err),
+                        type,
+                    })
+                    throw err
+                }
+            },
             onMessage: (callback: (event: MessageEvent<E>) => void) => {
                 const listener = (event: MessageEvent<E>): void => callback(event)
                 window.addEventListener('message', listener)

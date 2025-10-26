@@ -3,6 +3,7 @@ import type React from 'react'
 import nebulaMark from '../../assets/nebula-mark.svg'
 import type { Model } from '../../services/Protocol'
 import RunFromHereButton from '../RunFromHereButton'
+import RunOnlyThisButton from '../RunOnlyThisButton'
 import {
     type BaseNodeData,
     type BaseNodeProps,
@@ -60,6 +61,12 @@ export const LLMNode: React.FC<BaseNodeProps> = ({ id, data, selected }) => (
                     style={{ width: '21px', height: '21px', marginRight: '0.25rem' }}
                 />
                 <div className="tw-text-center tw-flex-grow">Agent</div>
+                <RunOnlyThisButton
+                    nodeId={id}
+                    className="tw-w-[1.75rem] tw-h-[1.75rem]"
+                    title="Run only this node"
+                    disabled={!!data.executing}
+                />
                 <RunFromHereButton nodeId={id} className="tw-w-[1.75rem] tw-h-[1.75rem]" />
             </div>
             <div className="tw-flex tw-items-center tw-justify-center">

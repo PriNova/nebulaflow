@@ -10,9 +10,11 @@ import {
     saveCustomNode,
     saveWorkflow,
 } from '../DataAccess/fs'
+import { executeSingleNode } from './handlers/ExecuteSingleNode'
 import { executeWorkflow } from './handlers/ExecuteWorkflow'
 import { fromProtocolPayload, toProtocolPayload } from './messaging/converters'
 import { safePost } from './messaging/safePost'
+import { setActiveWorkflowUri } from './workspace'
 
 interface ExecutionContext {
     abortController: AbortController | null
@@ -89,8 +91,12 @@ export function activate(context: vscode.ExtensionContext): void {
             }
         )
 
+        // Capture the webview reference once to avoid property access after disposal
+        const webview = panel.webview
+        let isDisposed = false
+
         const isDev = context.extensionMode === vscode.ExtensionMode.Development
-        panel.webview.onDidReceiveMessage(
+        webview.onDidReceiveMessage(
             async (message: unknown) => {
                 if (!isWorkflowToExtension(message)) {
                     return
@@ -105,16 +111,16 @@ export function activate(context: vscode.ExtensionContext): void {
                                 | undefined = sdk?.listModels
                             const models =
                                 typeof listModels === 'function'
-                                    ? listModels().map(m => ({ id: m.key, title: m.displayName }))
+                                    ? listModels().map((m: any) => ({ id: m.key, title: m.displayName }))
                                     : []
                             await safePost(
-                                panel.webview,
+                                webview,
                                 { type: 'models_loaded', data: models } as ExtensionToWorkflow,
                                 { strict: isDev }
                             )
                         } catch {
                             await safePost(
-                                panel.webview,
+                                webview,
                                 { type: 'models_loaded', data: [] } as ExtensionToWorkflow,
                                 { strict: isDev }
                             )
@@ -126,8 +132,9 @@ export function activate(context: vscode.ExtensionContext): void {
                         if (result && 'uri' in result) {
                             currentWorkflowUri = result.uri
                             panel.title = formatPanelTitle(currentWorkflowUri)
+                            setActiveWorkflowUri(currentWorkflowUri)
                             await safePost(
-                                panel.webview,
+                                webview,
                                 {
                                     type: 'workflow_saved',
                                     data: { path: result.uri.fsPath },
@@ -136,7 +143,7 @@ export function activate(context: vscode.ExtensionContext): void {
                             )
                         } else if (result && 'error' in result) {
                             await safePost(
-                                panel.webview,
+                                webview,
                                 {
                                     type: 'workflow_save_failed',
                                     data: { error: result.error },
@@ -145,7 +152,7 @@ export function activate(context: vscode.ExtensionContext): void {
                             )
                         } else {
                             await safePost(
-                                panel.webview,
+                                webview,
                                 {
                                     type: 'workflow_save_failed',
                                     data: { error: 'cancelled' },
@@ -160,8 +167,9 @@ export function activate(context: vscode.ExtensionContext): void {
                         if (result) {
                             currentWorkflowUri = result.uri
                             panel.title = formatPanelTitle(currentWorkflowUri)
+                            setActiveWorkflowUri(currentWorkflowUri)
                             await safePost(
-                                panel.webview,
+                                webview,
                                 { type: 'workflow_loaded', data: result.dto } as ExtensionToWorkflow,
                                 { strict: isDev }
                             )
@@ -169,13 +177,13 @@ export function activate(context: vscode.ExtensionContext): void {
                         break
                     }
                     case 'execute_workflow': {
-                        const panelContext = getOrCreatePanelContext(panel.webview)
+                        const panelContext = getOrCreatePanelContext(webview)
                         if (panelContext.abortController) {
                             void vscode.window.showInformationMessage(
                                 'NebulaFlow Workflow Editor: execution already in progress'
                             )
                             await safePost(
-                                panel.webview,
+                                webview,
                                 { type: 'execution_completed' } as ExtensionToWorkflow,
                                 { strict: isDev }
                             )
@@ -187,14 +195,70 @@ export function activate(context: vscode.ExtensionContext): void {
                             try {
                                 const { nodes, edges } = fromProtocolPayload(message.data)
                                 const resume = (message as any)?.data?.resume
-                                const approvalHandler = createWaitForApproval(panel.webview)
+                                const approvalHandler = createWaitForApproval(webview)
+
+                                let filteredResume = resume
+
+                                // When resuming from a node, prune to the forward subgraph reachable from that node
+                                let execNodes = nodes
+                                let execEdges = edges
+                                if (resume?.fromNodeId) {
+                                    const allowed = new Set<string>()
+                                    const bySource = new Map<string, typeof edges>()
+                                    for (const e of edges) {
+                                        const arr = bySource.get(e.source) || []
+                                        arr.push(e)
+                                        bySource.set(e.source, arr)
+                                    }
+                                    const q: string[] = [resume.fromNodeId]
+                                    while (q.length) {
+                                        const cur = q.shift()!
+                                        if (allowed.has(cur)) continue
+                                        allowed.add(cur)
+                                        for (const e of bySource.get(cur) || []) {
+                                            q.push(e.target)
+                                        }
+                                    }
+                                    execNodes = nodes.filter(n => allowed.has(n.id))
+                                    const seedIds = new Set(
+                                        Object.keys(
+                                            (resume?.seeds?.outputs as
+                                                | Record<string, string>
+                                                | undefined) || {}
+                                        )
+                                    )
+                                    execEdges = edges.filter(e => allowed.has(e.target))
+
+                                    // Filter seeds to exclude nodes in the forward subgraph that will be re-executed
+                                    const allowedIds = allowed
+                                    const outputsEntries = Object.entries(
+                                        (resume?.seeds?.outputs as Record<string, string> | undefined) ||
+                                            {}
+                                    ).filter(([id]) => !allowedIds.has(id))
+                                    const decisionsEntries = Object.entries(
+                                        (resume?.seeds?.decisions as
+                                            | Record<string, 'true' | 'false'>
+                                            | undefined) || {}
+                                    ).filter(([id]) => !allowedIds.has(id))
+                                    filteredResume = {
+                                        ...resume,
+                                        seeds: {
+                                            outputs: Object.fromEntries(outputsEntries),
+                                            decisions: Object.fromEntries(decisionsEntries),
+                                            // Keep variable seeds as-is (by name); they are safe to over-provide and will be
+                                            // overwritten by re-executed Variable nodes where applicable
+                                            variables: (resume?.seeds as any)?.variables,
+                                        },
+                                    }
+                                }
+
                                 await executeWorkflow(
-                                    nodes,
-                                    edges,
-                                    panel.webview,
+                                    execNodes,
+                                    execEdges,
+                                    webview,
                                     panelContext.abortController.signal,
                                     approvalHandler,
-                                    resume
+                                    filteredResume
                                 )
                             } finally {
                                 activeAbortControllers.delete(panelContext.abortController)
@@ -203,8 +267,45 @@ export function activate(context: vscode.ExtensionContext): void {
                         }
                         break
                     }
+                    case 'execute_node': {
+                        const panelContext = getOrCreatePanelContext(webview)
+                        if (panelContext.abortController) {
+                            void vscode.window.showInformationMessage(
+                                'NebulaFlow Workflow Editor: execution already in progress'
+                            )
+                            break
+                        }
+                        panelContext.abortController = new AbortController()
+                        activeAbortControllers.add(panelContext.abortController)
+                        try {
+                            const approvalHandler = createWaitForApproval(webview)
+                            await safePost(
+                                webview,
+                                { type: 'execution_started' } as ExtensionToWorkflow,
+                                {
+                                    strict: isDev,
+                                }
+                            )
+                            await executeSingleNode(
+                                (message as any).data,
+                                webview,
+                                panelContext.abortController.signal,
+                                approvalHandler
+                            )
+                        } finally {
+                            await safePost(
+                                webview,
+                                { type: 'execution_completed' } as ExtensionToWorkflow,
+                                { strict: isDev }
+                            )
+                            activeAbortControllers.delete(panelContext.abortController)
+                            panelContext.abortController = null
+                        }
+                        break
+                    }
+
                     case 'abort_workflow': {
-                        const panelContext = getOrCreatePanelContext(panel.webview)
+                        const panelContext = getOrCreatePanelContext(webview)
                         if (panelContext.pendingApproval) {
                             panelContext.pendingApproval.removeAbortListener?.()
                             panelContext.pendingApproval.resolve({ type: 'aborted' })
@@ -219,7 +320,7 @@ export function activate(context: vscode.ExtensionContext): void {
                     case 'calculate_tokens': {
                         const text = message.data.text || ''
                         await safePost(
-                            panel.webview,
+                            webview,
                             {
                                 type: 'token_count',
                                 data: { nodeId: message.data.nodeId, count: text.length },
@@ -229,7 +330,7 @@ export function activate(context: vscode.ExtensionContext): void {
                         break
                     }
                     case 'node_approved': {
-                        const panelContext = getOrCreatePanelContext(panel.webview)
+                        const panelContext = getOrCreatePanelContext(webview)
                         if (panelContext.pendingApproval) {
                             panelContext.pendingApproval.removeAbortListener?.()
                             panelContext.pendingApproval.resolve({
@@ -241,7 +342,7 @@ export function activate(context: vscode.ExtensionContext): void {
                         break
                     }
                     case 'node_rejected': {
-                        const panelContext = getOrCreatePanelContext(panel.webview)
+                        const panelContext = getOrCreatePanelContext(webview)
                         if (panelContext.pendingApproval) {
                             panelContext.pendingApproval.removeAbortListener?.()
                             panelContext.pendingApproval.reject(
@@ -265,7 +366,7 @@ export function activate(context: vscode.ExtensionContext): void {
                             type: 'provide_custom_nodes',
                             data: toProtocolPayload({ nodes, edges: [] }).nodes!,
                         } as ExtensionToWorkflow
-                        await safePost(panel.webview, msg, { strict: isDev })
+                        await safePost(webview, msg, { strict: isDev })
                         break
                     }
                     case 'get_custom_nodes': {
@@ -274,7 +375,7 @@ export function activate(context: vscode.ExtensionContext): void {
                             type: 'provide_custom_nodes',
                             data: toProtocolPayload({ nodes, edges: [] }).nodes!,
                         } as ExtensionToWorkflow
-                        await safePost(panel.webview, msg, { strict: isDev })
+                        await safePost(webview, msg, { strict: isDev })
                         break
                     }
                     case 'delete_customNode': {
@@ -284,7 +385,7 @@ export function activate(context: vscode.ExtensionContext): void {
                             type: 'provide_custom_nodes',
                             data: toProtocolPayload({ nodes, edges: [] }).nodes!,
                         } as ExtensionToWorkflow
-                        await safePost(panel.webview, msg, { strict: isDev })
+                        await safePost(webview, msg, { strict: isDev })
                         break
                     }
                     case 'rename_customNode': {
@@ -294,7 +395,7 @@ export function activate(context: vscode.ExtensionContext): void {
                             type: 'provide_custom_nodes',
                             data: toProtocolPayload({ nodes, edges: [] }).nodes!,
                         } as ExtensionToWorkflow
-                        await safePost(panel.webview, msg, { strict: isDev })
+                        await safePost(webview, msg, { strict: isDev })
                         break
                     }
                 }
@@ -304,7 +405,8 @@ export function activate(context: vscode.ExtensionContext): void {
         )
 
         panel.onDidDispose(() => {
-            const panelContext = getOrCreatePanelContext(panel.webview)
+            isDisposed = true
+            const panelContext = getOrCreatePanelContext(webview)
             // Resolve any pending approval as aborted to unblock waiting code paths
             if (panelContext.pendingApproval) {
                 panelContext.pendingApproval.removeAbortListener?.()
@@ -316,6 +418,8 @@ export function activate(context: vscode.ExtensionContext): void {
                 panelContext.abortController.abort()
                 panelContext.abortController = null
             }
+            // Clear active workflow association on panel close
+            setActiveWorkflowUri(undefined)
             // No need to call panel.dispose() inside onDidDispose
         })
 
@@ -323,13 +427,15 @@ export function activate(context: vscode.ExtensionContext): void {
         const root = vscode.Uri.joinPath(webviewPath, 'workflow.html')
 
         async function render() {
+            if (isDisposed) return
             try {
                 const bytes = await vscode.workspace.fs.readFile(root)
+                if (isDisposed) return
                 const decoded = new TextDecoder('utf-8').decode(bytes)
-                const resources = panel.webview.asWebviewUri(webviewPath)
-                panel.webview.html = decoded
+                const resources = webview.asWebviewUri(webviewPath)
+                webview.html = decoded
                     .replaceAll('./', `${resources.toString()}/`)
-                    .replaceAll('{cspSource}', panel.webview.cspSource)
+                    .replaceAll('{cspSource}', webview.cspSource)
             } catch (err) {
                 const detail = err instanceof Error ? err.message : String(err)
                 void vscode.window.showErrorMessage(
@@ -344,17 +450,22 @@ export function activate(context: vscode.ExtensionContext): void {
             const watcher = vscode.workspace.createFileSystemWatcher(
                 new vscode.RelativePattern(webviewPath, '**/*')
             )
-            const debounced = (() => {
-                let timeout: NodeJS.Timeout | undefined
-                return () => {
-                    clearTimeout(timeout)
-                    timeout = setTimeout(() => void render(), 150)
-                }
-            })()
+            let reloadTimer: NodeJS.Timeout | undefined
+            const debounced = () => {
+                if (isDisposed) return
+                clearTimeout(reloadTimer)
+                reloadTimer = setTimeout(() => {
+                    if (isDisposed) return
+                    void render()
+                }, 150)
+            }
             watcher.onDidChange(debounced)
             watcher.onDidCreate(debounced)
             watcher.onDidDelete(debounced)
-            panel.onDidDispose(() => watcher.dispose())
+            panel.onDidDispose(() => {
+                watcher.dispose()
+                if (reloadTimer) clearTimeout(reloadTimer)
+            })
         }
     })
 
