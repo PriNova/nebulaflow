@@ -147,7 +147,7 @@ export const Flow: React.FC<{
         setNodeErrors,
         setNodeAssistantContent,
         setIfElseDecisions,
-    } = useWorkflowExecution(vscodeAPI, nodes, edges, setNodes, setEdges)
+    } = useWorkflowExecution(vscodeAPI, nodes, edges, setNodes, setEdges, nodeResults)
 
     const { onSave, onLoad, calculatePreviewNodeTokens, handleNodeApproval } = useWorkflowActions(
         vscodeAPI,
@@ -180,6 +180,7 @@ export const Flow: React.FC<{
         setIfElseDecisions,
         notify,
         edges,
+        orderedEdges,
         nodeResults,
         requestFitOnNextRender
     )
@@ -201,7 +202,10 @@ export const Flow: React.FC<{
 
     const reactFlowInstance = useReactFlow()
 
-    const isValidConnection = useCallback((conn: any) => isValidEdgeConnection(conn, edges), [edges])
+    const isValidConnection = useCallback(
+        (conn: any) => isValidEdgeConnection(conn, edges, nodes),
+        [edges, nodes]
+    )
 
     const handleCanvasDragOver = useCallback((e: React.DragEvent) => {
         const nodeType = e.dataTransfer.types.includes('application/x-amp-node-type')
@@ -247,7 +251,7 @@ export const Flow: React.FC<{
         nodeResults,
         interruptedNodeId,
         stoppedAtNodeId,
-        edges
+        orderedEdges
     )
 
     const { onSaveCustomNode, onDeleteCustomNode, onRenameCustomNode } = useCustomNodes(vscodeAPI)
@@ -324,6 +328,20 @@ export const Flow: React.FC<{
         return () => window.removeEventListener('nebula-edit-node' as any, handleEditNode as any)
     }, [onNodeUpdate])
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: setters are always stable
+    const onResetResults = useCallback(() => {
+        setNodeResults(new Map())
+        setNodeAssistantContent(new Map())
+        setNodeErrors(new Map())
+        setNodes(prev =>
+            prev.map(n =>
+                n.type === NodeType.PREVIEW
+                    ? { ...n, data: { ...n.data, content: '', tokenCount: 0 } }
+                    : n
+            )
+        )
+    }, [])
+
     useEffect(() => {
         const handler = (e: any) => {
             const nodeId = e?.detail?.nodeId
@@ -387,6 +405,7 @@ export const Flow: React.FC<{
                     onLoad={onLoad}
                     onExecute={onExecute}
                     onClear={resetExecutionState}
+                    onReset={onResetResults}
                     isExecuting={isExecuting}
                     onAbort={onAbort}
                 />

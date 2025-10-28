@@ -1,9 +1,10 @@
-import { Handle, Position } from '@xyflow/react'
+import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react'
 import type React from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Textarea } from '../../ui/shadcn/ui/textarea'
+import { useCallback, useEffect, useState } from 'react'
 import RunFromHereButton from '../RunFromHereButton'
 import RunOnlyThisButton from '../RunOnlyThisButton'
+import { TextEditorModal } from '../TextEditorModal'
+import { FanInTargetHandles } from './FanInTargetHandles'
 import {
     type BaseNodeData,
     type BaseNodeProps,
@@ -17,14 +18,21 @@ export type TextNode = Omit<WorkflowNode, 'data'> & { type: NodeType.INPUT; data
 
 export const TextNode: React.FC<BaseNodeProps & { data: BaseNodeData }> = ({ id, data, selected }) => {
     const [draft, setDraft] = useState('')
-    const textareaRef = useRef<HTMLTextAreaElement>(null)
-    const shouldRefocusRef = useRef(false)
+    const updateNodeInternals = useUpdateNodeInternals()
+
+    // Keep React Flow's handle registry in sync when fan-in ports change
+    // biome-ignore lint/correctness/useExhaustiveDependencies: we must refresh handles when the count changes
+    useEffect(() => {
+        if (data?.fanInEnabled) {
+            updateNodeInternals(id)
+        }
+    }, [id, data?.fanInEnabled, data?.inputPortCount, updateNodeInternals])
 
     const dispatchEditEvent = useCallback(
-        (action: 'start' | 'commit' | 'cancel', content?: string) => {
+        (action: 'start' | 'commit' | 'cancel', payload?: any) => {
             const detail: any = { id, action }
-            if (content !== undefined) {
-                detail.content = content
+            if (payload?.content !== undefined) {
+                detail.content = payload.content
             }
             window.dispatchEvent(
                 new CustomEvent('nebula-edit-node', {
@@ -36,39 +44,21 @@ export const TextNode: React.FC<BaseNodeProps & { data: BaseNodeData }> = ({ id,
     )
 
     useEffect(() => {
-        if (data.isEditing && textareaRef.current) {
+        if (data.isEditing) {
             setDraft(data.content || '')
-            textareaRef.current.focus()
-            textareaRef.current.selectionStart = textareaRef.current.value.length
-            textareaRef.current.selectionEnd = textareaRef.current.value.length
         }
     }, [data.isEditing, data.content])
 
-    const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        // Allow Shift+Enter to create a newline but prevent bubbling to background handlers
-        if (e.key === 'Enter' && e.shiftKey) {
-            e.stopPropagation()
-            return
-        }
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            e.stopPropagation()
-            dispatchEditEvent('commit', draft)
-        } else if (e.key === 'Escape') {
-            e.preventDefault()
-            e.stopPropagation()
-            dispatchEditEvent('cancel')
-        }
-    }
-
-    const handleTextareaBlur = () => {
-        if (data.isEditing && !shouldRefocusRef.current) {
-            dispatchEditEvent('commit', draft)
-        }
-    }
-
     const handleBodyDoubleClick = () => {
         dispatchEditEvent('start')
+    }
+
+    const handleCommit = () => {
+        dispatchEditEvent('commit', { content: draft })
+    }
+
+    const handleCancel = () => {
+        dispatchEditEvent('cancel')
     }
 
     return (
@@ -85,7 +75,14 @@ export const TextNode: React.FC<BaseNodeProps & { data: BaseNodeData }> = ({ id,
                 data.interrupted
             )}
         >
-            <Handle type="target" position={Position.Top} />
+            {data?.fanInEnabled ? (
+                <FanInTargetHandles
+                    count={data?.inputPortCount ?? 1}
+                    edgeByHandle={data?.inputEdgeIdByHandle}
+                />
+            ) : (
+                <Handle type="target" position={Position.Top} />
+            )}
             <div className="tw-flex tw-flex-col">
                 <div
                     className="tw-flex tw-items-center tw-mb-1 tw-rounded-t-sm tw-font-bold tw-pl-1 tw-pr-1"
@@ -113,31 +110,20 @@ export const TextNode: React.FC<BaseNodeProps & { data: BaseNodeData }> = ({ id,
                     />
                     <RunFromHereButton nodeId={id} className="tw-w-[1.75rem] tw-h-[1.75rem]" />
                 </div>
-                {data.isEditing ? (
-                    <Textarea
-                        ref={textareaRef}
-                        className="tw-w-full tw-h-24 tw-p-2 tw-rounded nodrag tw-resize tw-border-2 tw-border-solid tw-border-[var(--xy-node-border-default)]"
-                        style={{
-                            color: 'var(--vscode-editor-foreground)',
-                            backgroundColor: 'var(--vscode-input-background)',
-                            outline: 'none',
-                        }}
-                        value={draft}
-                        onChange={e => {
-                            setDraft(e.currentTarget.value)
-                        }}
-                        onKeyDown={handleTextareaKeyDown}
-                        onBlur={handleTextareaBlur}
-                        onMouseDown={e => e.stopPropagation()}
-                    />
-                ) : (
-                    <div
-                        className="tw-flex tw-items-center tw-justify-center tw-cursor-text"
-                        onDoubleClick={handleBodyDoubleClick}
-                    >
-                        <span style={{ whiteSpace: 'pre-wrap' }}>{data.title || 'Text'}</span>
-                    </div>
-                )}
+                <div
+                    className="tw-flex tw-items-center tw-justify-center tw-cursor-text"
+                    onDoubleClick={handleBodyDoubleClick}
+                >
+                    <span style={{ whiteSpace: 'pre-wrap' }}>{data.title || 'Text'}</span>
+                </div>
+                <TextEditorModal
+                    isOpen={data.isEditing === true}
+                    value={draft}
+                    onChange={setDraft}
+                    onConfirm={handleCommit}
+                    onCancel={handleCancel}
+                    title={data.title ?? 'Edit Text'}
+                />
             </div>
             <Handle type="source" position={Position.Bottom} />
         </div>

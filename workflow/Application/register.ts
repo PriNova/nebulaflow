@@ -229,17 +229,23 @@ export function activate(context: vscode.ExtensionContext): void {
                                     )
                                     execEdges = edges.filter(e => allowed.has(e.target))
 
-                                    // Filter seeds to exclude nodes in the forward subgraph that will be re-executed
+                                    // Filter seeds to exclude nodes in the forward subgraph that will be re-executed,
+                                    // but preserve seeds for nodes marked with bypass=true
                                     const allowedIds = allowed
+                                    const bypassIds = new Set(
+                                        execNodes
+                                            .filter(n => (n as any)?.data?.bypass === true)
+                                            .map(n => n.id)
+                                    )
                                     const outputsEntries = Object.entries(
                                         (resume?.seeds?.outputs as Record<string, string> | undefined) ||
                                             {}
-                                    ).filter(([id]) => !allowedIds.has(id))
+                                    ).filter(([id]) => !allowedIds.has(id) || bypassIds.has(id))
                                     const decisionsEntries = Object.entries(
                                         (resume?.seeds?.decisions as
                                             | Record<string, 'true' | 'false'>
                                             | undefined) || {}
-                                    ).filter(([id]) => !allowedIds.has(id))
+                                    ).filter(([id]) => !allowedIds.has(id) || bypassIds.has(id))
                                     filteredResume = {
                                         ...resume,
                                         seeds: {

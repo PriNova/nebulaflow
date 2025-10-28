@@ -4,6 +4,116 @@ Recommended improvements and optimizations for future implementation.
 
 ## Pending Enhancements
 
+### Bypass Checkbox - Remove Unnecessary Any Casts
+
+- **Goal**: Improve type safety of bypass node field access
+- **What**: Remove unnecessary `any` casts around `data.bypass` field accesses in [parallel-scheduler.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Core/engine/parallel-scheduler.ts) at lines 123, 162, and 523
+  - Current pattern: `(parent as any)?.data?.bypass`
+  - Recommended: `parent.data?.bypass` (bypass is typed in BaseNodeData)
+- **Why**: The `bypass?: boolean` field is already defined in the node data type, so casting to `any` is unnecessary and reduces type safety. Direct property access provides compile-time type checking.
+- **Priority**: P2 (code quality; improves type safety)
+
+### Bypass Checkbox - Update Comment for Bypass Exception
+
+- **Goal**: Clarify bypass semantics in bypass node in-degree calculation
+- **What**: Update comment at [parallel-scheduler.ts L119](file:///home/prinova/CodeProjects/amp-editor/workflow/Core/engine/parallel-scheduler.ts#L119-L126) to reflect bypass exception
+  - Current: "Treat seeded parents as satisfied"
+  - Recommended: "Treat seeded parents as satisfied unless the parent is included and bypassed"
+- **Why**: The code now includes a special case for bypass nodes marked with `bypass === true`, but the comment still reflects the older logic. Updated comment prevents future maintainers from misinterpreting the conditional logic.
+- **Priority**: P2 (code quality; improves code clarity and maintainability)
+
+### Bypass Checkbox - Silent Fallback Behavior Documentation
+
+- **Goal**: Clarify and document behavior when bypassing nodes without cached results
+- **What**: Add UI hint or tooltip explaining that empty strings are used as fallback when a bypassed node has no prior result cached
+  - Consider visual indicator (icon or small label) in PropertyEditor checkbox row
+  - Or add help text: "Node will use previous result if available; empty string if none"
+- **Why**: Silent fallback to empty string when no cached result exists could confuse users. Explicit documentation prevents expectation mismatches.
+- **Priority**: P2 (UX/documentation; nice-to-have for clarity)
+
+### Bypass Checkbox - Distinguish "No Result Yet" vs "Intentionally Empty"
+
+- **Goal**: Improve semantics and observability of bypass fallback behavior
+- **What**: Add optional warning or status indicator when bypass is enabled on a node that currently has no cached result, or when the cached result is an empty string
+  - Could display: "No cached result available" badge during property editor display
+  - Or log/notify when bypass executes without a prior result
+- **Why**: Users should understand when bypass will execute with an empty value. A visual cue distinguishes "never executed" from "intentionally empty result" scenarios.
+- **Priority**: P2 (UX; nice-to-have improvement for workflow clarity)
+
+### Bypass Checkbox - Resume Filter Cleanup
+
+- **Goal**: Clean up dead code in resume filter pruning logic
+- **What**: Remove unused `seedIds` local variable in [register.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Application/register.ts#L223-L229) where bypass seeds are preserved during resume
+- **Why**: Variable is computed but never referenced. Removing it reduces cognitive load and clarifies the actual pruning semantics.
+- **Priority**: P2 (code quality; minor cleanup)
+
+### Bypass Checkbox - Extract Bypass Seed Computation Helper
+
+- **Goal**: Reduce duplication of bypass seed computation logic
+- **What**: Extract the bypass seed computation logic from [workflowExecution.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/workflowExecution.ts#L73-L80) and [workflowExecution.ts#L122-L131](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/workflowExecution.ts#L122-L131) into a shared helper function
+  - Helper signature: `computeBypassSeeds(nodes: BaseNode[], nodeResults: Map<string, string>, bypassedNodeIds: Set<string>): Record<string, string>`
+  - Used in both execute and resume branches
+- **Why**: Same logic appears in two places, risking drift if bypass behavior changes. A shared helper improves maintainability and ensures consistent semantics.
+- **Priority**: P2 (code quality; improves maintainability)
+
+### Reset Button - Accidental Reset UX Feedback
+
+- **Goal**: Provide user confirmation when results are cleared
+- **What**: Add a brief toast/snackbar notification when the Reset button is clicked to acknowledge the action
+  - Could display message like "Results cleared" for 2–3 seconds
+  - Would appear in the RightSidebar or as a dismissible notification
+- **Why**: Silent reset may go unnoticed if the user clicks quickly and navigates away. Visual feedback confirms the action completed successfully.
+- **Priority**: P2 (UX; nice-to-have improvement based on user feedback)
+
+### Reset Button - Data Shape Safety During Reset
+
+- **Goal**: Improve robustness when custom nodes extend BaseNodeData
+- **What**: Add defensive checks in the reset handler to validate optional fields before clearing:
+  - Check if `content` and `tokenCount` fields exist before setting them to empty/zero
+  - Consider iterating over node data schema instead of assuming field presence
+- **Why**: If custom nodes add required fields or diverge from BaseNodeData shape, the reset logic could inadvertently break node state. Defensive checks prevent failures when custom nodes extend the base contract.
+- **Priority**: P2 (robustness; prevents edge cases with extended node data)
+
+### Text Node Modal - Escape Key Accessibility Enhancement
+
+- **Goal**: Provide alternative keyboard navigation for modal dismissal in edge cases where Escape propagation is blocked
+- **What**: While Escape key propagation has been enabled for standard dismissal, consider adding additional keyboard affordances (e.g., Ctrl+Enter to confirm, Tab+Enter navigation) for users who may experience keyboard event handling issues in rare environments
+  - Related: [TextEditorModal.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/TextEditorModal.tsx#L39-L66)
+  - Related: [dialog.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/ui/shadcn/ui/dialog.tsx#L62-L66)
+- **Why**: While Escape works in standard environments, providing fallback keyboard shortcuts improves accessibility for users with non-standard input setups or browser configurations
+- **Priority**: P2 (accessibility; nice-to-have improvement)
+
+### Text Node Modal - ARIA Dialog Patterns for Focus Management
+
+- **Goal**: Enhance accessibility of the Text Editor modal dialog with ARIA patterns for focus trapping and return focus
+- **What**: Add ARIA dialog patterns to the portal-rendered modal, including:
+  - `role="dialog"` on the content wrapper (already present at [dialog.tsx L67](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/ui/shadcn/ui/dialog.tsx#L67))
+  - `aria-modal="true"` attribute (already present at [dialog.tsx L68](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/ui/shadcn/ui/dialog.tsx#L68))
+  - Focus trapping within modal to prevent keyboard navigation outside dialog bounds
+  - Return focus to triggering element when modal closes
+  - `aria-labelledby` linking dialog title to heading for screen readers
+- **Why**: Standard ARIA dialog patterns improve screen reader support and keyboard navigation accessibility, particularly for users relying on assistive technology
+- **Priority**: P2 (accessibility; improves A11y compliance)
+
+### Text Node Modal - SSR Hydration Risk in Portal Rendering
+
+- **Goal**: Evaluate and document SSR hydration considerations for portal-rendered dialogs
+- **What**: While the portal includes an SSR guard (`typeof document !== 'undefined'`), document the implications:
+  - If SSR is introduced in the future, portal markup rendered on server will differ from client (SSR renders null, client renders portal)
+  - Consider mounting portals only after a client-only flag is set via useEffect to prevent hydration mismatches
+  - Review hydration behavior with any future static generation or server-side rendering features
+  - Related: [dialog.tsx L73](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/ui/shadcn/ui/dialog.tsx#L73)
+- **Why**: Current guard is appropriate for client-side-only webview context (VS Code). Document as a known limitation for future SSR contexts to prevent subtle hydration bugs.
+- **Priority**: P1 (documentation; prevents future SSR-related issues)
+
+### Text Node Modal - Textarea Resize UX Consideration
+
+- **Goal**: Re-evaluate whether textarea resizing should be allowed based on user feedback
+- **What**: Currently textarea uses `tw-resize-none` to disable manual resizing. If user feedback indicates desire for resize control, consider enabling vertical-only resize (`tw-resize-y`) to allow users to adjust modal height to their preference
+  - Affects: [TextEditorModal.tsx L54](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/TextEditorModal.tsx#L54)
+- **Why**: The 90vh container is large, but some users may prefer the ability to make the textarea smaller or larger based on their content. Vertical-only resize allows fine-tuning without breaking horizontal layout.
+- **Priority**: P2 (UX; nice-to-have based on user feedback)
+
 ### Workflow Execution - Single-Node Error Event Handling
 
 - **Goal**: Clarify and validate protocol expectations for single-node error/abort handling
@@ -386,6 +496,13 @@ Recommended improvements and optimizations for future implementation.
 - **Why**: Improves semantic HTML and screen reader support; reduces log verbosity during workflow execution.
 - **Priority**: P2 (optimization and polish; good-to-have for production quality)
 
+### Preview Node - Edge Ordering Integration in Message Handling
+
+- **Goal**: Ensure preview merge order respects ordered edges throughout the message pipeline
+- **What**: Verify that `orderedEdges` parameter is properly threaded through all message handler calls in [messageHandling.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/messageHandling.ts) that invoke `computePreviewContent()`, and confirm edge order maps consistently use ordered edge indices
+- **Why**: After fixing the preview merge order to use `orderedEdges`, ensure the pattern is applied consistently across all code paths where preview content is computed to prevent future regressions
+- **Priority**: P2 (code consistency; validates fix robustness)
+
 ### Preview Node - Remove Unused Parameter
 - **Goal**: Clean up dead code in preview content computation
 - **What**: Remove unused `previewNode` parameter from `computePreviewContent()` function in [messageHandling.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/messageHandling.ts#L34-L39)
@@ -564,3 +681,49 @@ Recommended improvements and optimizations for future implementation.
 - **What**: Add `aria-describedby` attribute linking the dialog description text to the heading in [ConfirmDeleteWorkflowModal.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/ConfirmDeleteWorkflowModal.tsx#L26-L35)
 - **Why**: Screen reader users benefit from explicit semantic links that clarify the purpose and content of the dialog. The current structure has description text but lacks the accessibility contract.
 - **Priority**: P2 (accessibility; improves screen reader experience)
+
+### Dynamic Input (Fan-In) Connections - Drag-Time Validation Tolerance
+
+- **Goal**: Improve UX feedback when connecting to fan-in node bodies during drag operations
+- **What**: Relax drag-time validation for body hover on fan-in nodes; if `targetHandle` is undefined during hover (mid-drag), return true so the UI can snap to the fan-in body; strict enforcement still happens in onConnect with the patched handle assigned
+  - Affects [edgeValidation.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/utils/edgeValidation.ts#L15-L19) `isValidEdgeConnection` call in [Flow.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/Flow.tsx#L204-L207)
+- **Why**: Currently connections are invalid during drag if `targetHandle` is absent, blocking snap/highlight when aiming at the fan-in body. Tolerating undefined handles during drag provides visual feedback; strict validation defers to onConnect where the handle is assigned. This improves UX without compromising correctness.
+- **Priority**: P2 (UX improvement; enhances drag feedback for fan-in connections)
+
+### Dynamic Input (Fan-In) Connections - Extract parseFanInIndex Helper
+
+- **Goal**: Eliminate duplication of fan-in handle parsing logic across modules
+- **What**: Unify fan-in index extraction from handle names into a single `parseFanInIndex(handleId: string): number` helper; use it consistently in [edgeOperations.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/edgeOperations.ts#L78-L93), [edgeValidation.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/utils/edgeValidation.ts#L19-L33), and [nodeStateTransforming.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/nodeStateTransforming.ts#L11-L20)
+- **Why**: The same parsing pattern (extract numeric index from `in-N` handle names) appears in three places. A shared helper reduces duplication, improves maintainability, and prevents inconsistencies if parsing logic evolves.
+- **Priority**: P1 (code quality; eliminates duplication and improves maintainability)
+
+### Dynamic Input (Fan-In) Connections - Race Condition Mitigation
+
+- **Goal**: Prevent edge count mismatches when multiple edges are added to the same fan-in node in one tick
+- **What**: Re-check the "used" set inside the functional state update in [edgeOperations.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/edgeOperations.ts) to detect concurrent edge additions and assign the next truly-free slot instead of relying on a stale snapshot
+- **Why**: Rare race condition: if two edges are added to the same fan-in node in one React tick, both might compute the same "next free" index based on the same snapshot, resulting in duplicate handle assignments. Re-checking inside the functional update prevents this.
+- **Priority**: P1 (robustness; prevents edge case with concurrent connections)
+
+### Dynamic Input (Fan-In) Connections - Fan-In Target Handle Hit-Testing
+
+- **Goal**: Improve hit-testing and click responsiveness on dynamically generated fan-in handles
+- **What**: Consider setting `pointerEvents: 'all'` on generated fan-in handles in [FanInTargetHandles.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/nodes/FanInTargetHandles.tsx#L11-L22) if hit-testing edge cases are observed during drag operations
+- **Why**: In some React Flow configurations, dynamically generated handles may not receive pointer events correctly if parent container has `pointerEvents: none` or other CSS constraints. An explicit `pointerEvents: 'all'` ensures reliable hit detection.
+- **Priority**: P2 (optional enhancement; investigate if drag snapping issues persist)
+
+### Dynamic Input (Fan-In) Connections - Default Fan-In UX Confirmation
+
+- **Goal**: Clarify UX expectations for fan-in adoption on Text nodes
+- **What**: Confirm user intent for enabling fan-in by default on Text (INPUT) nodes at [Nodes.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/nodes/Nodes.tsx#L95-L121)
+- **Why**: Text nodes now support fan-in connections, but the feature is opt-in per node. Confirm whether fan-in should be enabled by default on all new Text nodes or only when explicitly configured. This decision affects default workflow composition.
+- **Priority**: P3 (UX clarity; low impact, informational)
+
+### Preview Node - Custom Event Payload Type Safety
+
+- **Goal**: Improve type safety of edit event communication for Preview nodes
+- **What**: Create a typed `NebulaEditNodeEvent` interface and apply it to the `nebula-edit-node` custom event dispatch in [Preview_Node.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/nodes/Preview_Node.tsx#L30-L43) and listener in [Flow.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/Flow.tsx#L285-L314)
+  - Define event shape: `{ id: string; action: 'commit'; content: string }`
+  - Apply generic type parameter to `CustomEvent<T>` where `T` is the typed payload
+  - Update event dispatch to cast payload to the typed interface
+- **Why**: Currently using `any` type for custom event payload reduces IDE support and makes refactoring riskier. Typed events provide compile-time safety and clearer contract documentation. This follows the same pattern as the Text node edit events.
+- **Priority**: P1 (code quality; improves type safety, mirrors Text node enhancement)

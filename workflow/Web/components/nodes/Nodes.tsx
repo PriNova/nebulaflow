@@ -23,6 +23,26 @@ export enum NodeType {
     IF_ELSE = 'if-else',
 }
 
+// Human-friendly labels for each node type used in UI-only titles
+export const nodeTypeDisplayLabel: Record<NodeType, string> = {
+    [NodeType.LLM]: 'Agent Node',
+    [NodeType.CLI]: 'Shell Node',
+    [NodeType.PREVIEW]: 'Preview Node',
+    [NodeType.INPUT]: 'Text Node',
+    [NodeType.LOOP_START]: 'Loop Start Node',
+    [NodeType.LOOP_END]: 'Loop End Node',
+    [NodeType.ACCUMULATOR]: 'Accumulator Node',
+    [NodeType.VARIABLE]: 'Variable Node',
+    [NodeType.IF_ELSE]: 'If/Else Node',
+}
+
+// Compose the display title without mutating or persisting the underlying data.title
+export const formatNodeTitle = (type: NodeType, title?: string | null): string => {
+    const prefix = nodeTypeDisplayLabel[type] ?? String(type)
+    const safeTitle = (title ?? '').trim()
+    return safeTitle.length > 0 ? `${prefix} - ${safeTitle}` : prefix
+}
+
 export const DEFAULT_LLM_REASONING_EFFORT = 'medium' as const
 export const DEFAULT_LLM_MODEL_ID = 'anthropic/claude-sonnet-4-5-20250929' as const
 export const DEFAULT_LLM_MODEL_TITLE = 'Sonnet 4.5' as const
@@ -40,6 +60,11 @@ export interface BaseNodeProps {
         tokenCount?: number
         iterations?: number
         interrupted?: boolean
+        // Fan-in rendering flags available on nodes that opt-in
+        fanInEnabled?: boolean
+        inputPortCount?: number
+        // Map of input handle id -> connected edge id (for hover tooltips)
+        inputEdgeIdByHandle?: Record<string, string>
     }
     selected: boolean
 }
@@ -50,6 +75,7 @@ export type BaseNodeData = {
     output?: string
     content: string
     active: boolean
+    bypass?: boolean
     needsUserApproval?: boolean
     tokenCount?: number
     local_remote?: boolean
@@ -61,6 +87,11 @@ export type BaseNodeData = {
     shouldAbort?: boolean
     isEditing?: boolean
     onUpdate?: (partial: Partial<BaseNodeData>) => void
+    // Fan-in rendering flags
+    fanInEnabled?: boolean
+    inputPortCount?: number
+    // Map of input handle id -> connected edge id (for hover tooltips)
+    inputEdgeIdByHandle?: Record<string, string>
 }
 
 export type WorkflowNode = Omit<ReactFlowNode, 'data' | 'position' | 'type' | 'id' | 'selected'> & {
@@ -87,7 +118,11 @@ export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
     const id = uuidv4()
     switch (node.type) {
         case NodeType.CLI:
-            return { ...node, id, data: { ...node.data, needsUserApproval: false } } as CLINode
+            return {
+                ...node,
+                id,
+                data: { ...node.data, needsUserApproval: false, fanInEnabled: true },
+            } as CLINode
         case NodeType.LLM: {
             const llmNode = node as Omit<LLMNode, 'id'>
             return {
@@ -96,13 +131,20 @@ export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
                 data: {
                     ...llmNode.data,
                     reasoningEffort: llmNode.data.reasoningEffort ?? DEFAULT_LLM_REASONING_EFFORT,
+                    fanInEnabled: true,
                 },
             } as LLMNode
         }
         case NodeType.PREVIEW:
-            return { ...node, id } as PreviewNode
+            return { ...node, id, data: { ...node.data, fanInEnabled: true } } as PreviewNode
+        case NodeType.ACCUMULATOR:
+            return { ...node, id, data: { ...node.data, fanInEnabled: true } } as AccumulatorNode
         case NodeType.INPUT:
-            return { ...node, id, data: { ...node.data, isEditing: false } } as TextNode
+            return {
+                ...node,
+                id,
+                data: { ...node.data, isEditing: false, fanInEnabled: true },
+            } as TextNode
         case NodeType.IF_ELSE:
             return {
                 ...node,

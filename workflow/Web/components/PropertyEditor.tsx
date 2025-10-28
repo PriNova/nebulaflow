@@ -148,6 +148,14 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                 />
                 <Label htmlFor="node-active">Node Active</Label>
             </div>
+            <div className="tw-flex tw-items-center tw-space-x-1">
+                <Checkbox
+                    id={`node-bypass-${node.id}`}
+                    checked={!!node.data.bypass}
+                    onCheckedChange={checked => onUpdate(node.id, { bypass: checked === true })}
+                />
+                <Label htmlFor={`node-bypass-${node.id}`}>Bypass (use previous result)</Label>
+            </div>
             <div>
                 <Label htmlFor="node-title">Title</Label>
                 <Input

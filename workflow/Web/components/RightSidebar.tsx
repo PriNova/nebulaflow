@@ -8,7 +8,7 @@ import { Button } from '../ui/shadcn/ui/button'
 import { Textarea } from '../ui/shadcn/ui/textarea'
 import RunFromHereButton from './RunFromHereButton'
 import type { SelectionSummary } from './hooks/selectionHandling'
-import { NodeType, type WorkflowNodes } from './nodes/Nodes'
+import { NodeType, type WorkflowNodes, formatNodeTitle } from './nodes/Nodes'
 
 interface RightSidebarProps {
     sortedNodes: WorkflowNodes[]
@@ -529,7 +529,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                     />
                                 )}
                             </div>
-                            {node.data.title}
+                            {formatNodeTitle(node.type as NodeType, node.data.title)}
                             {onRunFromHere && (
                                 <RunFromHereButton
                                     nodeId={node.id}

@@ -12,6 +12,153 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+## [NebulaFlow 0.2.6]
+
+### Bypass Checkbox for Node Results
+
+#### Added
+- **Bypass Mode Toggle for All Nodes**: New checkbox in PropertyEditor to skip re-execution and use cached node results
+  - Added `bypass?: boolean` field to `BaseNodeData` in both [Nodes.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/nodes/Nodes.tsx#L72-L79) and [models.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Core/models.ts#L32-L39)
+  - Checkbox rendered in [PropertyEditor.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/PropertyEditor.tsx#L143-L158) directly under "Node Active" control
+  - **Why**: Users can bypass specific nodes during workflow execution to reuse previous results without re-running, accelerating iteration and testing workflows
+
+#### Changed
+- **Execution Short-Circuit for Bypassed Nodes**: Updated scheduler to skip node execution when bypass is enabled
+  - Modified [parallel-scheduler.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Core/engine/parallel-scheduler.ts#L152-L163) to preload seeds for bypass nodes before execution starts
+  - Added short-circuit logic in `startNode` at [parallel-scheduler.ts#L512-L523](file:///home/prinova/CodeProjects/amp-editor/workflow/Core/engine/parallel-scheduler.ts#L512-L523) to return cached result without re-executing node
+  - Seeds cascade to child nodes, allowing bypassed outputs to propagate correctly through the workflow
+  - **Why**: Prevents unnecessary node re-execution while preserving data flow through the graph
+
+- **Bypass Result Propagation in Web Hook**: Extended [workflowExecution.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/workflowExecution.ts) to collect and seed bypass results
+  - In `onExecute`: Collects current results for bypassed nodes at [L73-L80](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/workflowExecution.ts#L73-L80), computes bypass seeds before clearing results
+  - In `onResume`: Merges bypass seeds with explicit seeds at [L122-L131](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/workflowExecution.ts#L122-L131) to preserve cached results across resume operations
+  - **Why**: Ensures bypass results flow correctly through both full executions and resume operations
+
+- **Resume Filter Preserves Bypass Seeds**: Updated [register.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Application/register.ts#L232-L259) to maintain bypass node seeds even when pruning forward subgraph during resume
+  - When filtering nodes for resume, bypass node seeds are preserved and passed to scheduler to ensure cached results are available to re-executed nodes
+  - **Why**: Bypass results remain accessible to child nodes even during partial workflow resume operations
+
+#### Behavior
+- When bypass is checked on a node, execution uses the node's last-known result (or empty string if no prior result exists)
+- Bypassed nodes do not execute; their cached output is immediately available to downstream nodes
+- Empty results are treated like any other cached result and propagated unchanged
+- Results persist through save/load cycles, enabling bypass reuse across editor sessions
+
+#### Code Quality Recommendations (Not Implemented)
+- Remove unnecessary `any` casts around `data.bypass` field accesses in [parallel-scheduler.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Core/engine/parallel-scheduler.ts) at lines 123, 162, and 523 for improved type safety
+- Update comment at [parallel-scheduler.ts L119](file:///home/prinova/CodeProjects/amp-editor/workflow/Core/engine/parallel-scheduler.ts#L119-L126) to clarify bypass exception: "Treat seeded parents as satisfied unless the parent is included and bypassed"
+
+### Reset Button for Workflow Results
+
+#### Added
+- **Reset Button on SidebarActionsBar**: New button to clear all node results and preview content without modifying workflow structure
+  - Added `RotateCcw` icon import from lucide-react in [SidebarActionsBar.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/SidebarActionsBar.tsx)
+  - Added `onReset: () => void` prop to `SidebarActionsBarProps` interface for reset handler callback
+  - Rendered Reset button between Execute/Stop and Clear buttons with tooltip "Reset Results"
+  - Button disabled during workflow execution to prevent race conditions with active handlers
+  - **Why**: Users can now clear execution results and start fresh without losing workflow structure. Disabled state during execution prevents state inconsistency.
+
+#### Changed
+- **Flow Component Reset Handler**: Implemented `onResetResults` callback in [Flow.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/Flow.tsx#L331-L343) that:
+  - Clears `nodeResults` Map to remove all result text from nodes
+  - Clears `nodeAssistantContent` Map to remove LLM assistant outputs
+  - Clears `nodeErrors` Map to remove execution error messages
+  - Blanks all Preview node content and resets their tokenCount to 0
+  - Leaves workflow structure, topology, and If/Else decisions untouched
+  - Enables repopulation of results as new execution messages arrive
+  - **Why**: Reset operation preserves workflow integrity while providing clean slate for re-execution or testing
+
+### Preview Node Read-Only Modal
+
+#### Added
+- **Read-Only Modal for Preview Node**: Added a modal interface to Preview nodes matching Text node UX for viewing content
+  - Extended [TextEditorModal.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/TextEditorModal.tsx) to support read-only mode via optional `readOnly` prop (defaults to `false`)
+  - Made `onChange` handler optional with guard: `onChange?.(e.target.value)` to support read-only viewers
+  - Added double-click handler to [Preview_Node.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/nodes/Preview_Node.tsx) to open modal when user double-clicks textarea
+  - Fixed component signature to use `BaseNodeProps & { data: BaseNodeData }` pattern for proper `isEditing` property access
+  - Rendered modal in read-only mode with content persistence (no editing allowed)
+  - **Why**: Users can now inspect full Preview node content in a modal interface, improving readability and content discovery for long outputs
+
+#### Changed
+- **Modal Button Labeling for Read-Only Mode**: Updated button labels in [TextEditorModal.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/TextEditorModal.tsx) for clarity when modal is read-only
+  - When `readOnly={true}`, button text changes from "OK" to "Close" and "Cancel" button is hidden
+  - Maintains full button set for editable mode to preserve Text node workflow
+  - **Why**: Read-only button labels clarify that the modal is for viewing only, not editing, reducing user confusion about the intended interaction
+
+### Fixed
+
+### Added
+
+### Changed
+
+### Removed
+
+## [NebulaFlow 0.2.5]
+
+### Text Node Modal Portal Rendering with Viewport-Relative Sizing
+
+#### Changed
+- **Dialog Portal Rendering**: Moved dialog overlay and content rendering into a React Portal anchored to `document.body`, escaping parent stacking contexts and preventing z-index constraint issues
+  - Added `createPortal` import from `react-dom` in [dialog.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/ui/shadcn/ui/dialog.tsx#L2)
+  - Dialog overlay now renders via `createPortal(overlay, document.body)` to bypass parent z-index layering; includes SSR guard (`typeof document !== 'undefined'`) for safety in non-DOM environments
+  - **Why**: Portal rendering isolates the modal from parent layout contexts, ensuring the blurred overlay and modal container appear as self-contained UI elements without being constrained by parent CSS or stacking order
+
+- **Viewport-Relative Modal Sizing**: Updated TextEditorModal to fill approximately 90% of viewport height with flexbox layout for responsive textarea sizing
+  - DialogContent now uses `tw-h-[90vh] tw-flex tw-flex-col` to establish viewport-relative container and flex column layout in [TextEditorModal.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/TextEditorModal.tsx#L45)
+  - Textarea element changed from `tw-min-h-[50vh]` to `tw-flex-1 tw-resize-none`, allowing it to fill remaining flex space without manual resize capability
+  - **Why**: Viewport-relative sizing makes the modal approximately 2x larger than the previous 50vh minimum height, improving readability and interaction surface for text editing while keeping it responsive to viewport size changes
+
+- **Fixed Dialog State Management**: Restored boolean parameter check in onOpenChange handler to prevent unintended cancel calls
+  - Changed from `onOpenChange={() => onCancel()}` to `onOpenChange={next => { if (!next) onCancel() }}` in [TextEditorModal.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/TextEditorModal.tsx#L39-L42)
+  - Ensures `onCancel()` only fires when the modal closes (`next === false`), not on every state change including open transition
+  - **Why**: The previous handler called cancel on every state change, which immediately closed the modal after opening. The fix restores proper dialog lifecycle by only invoking cancel during close transitions
+
+- **Escape Key Propagation Fix**: Updated keydown handler to allow Escape key to propagate to the overlay for proper modal dismissal
+  - Modified [dialog.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/ui/shadcn/ui/dialog.tsx#L62-L66) content keydown handler to explicitly check `if (e.key !== 'Escape') e.stopPropagation()`, allowing Escape to bubble up
+  - Maintains stopPropagation for all other keys to prevent textarea's keydown from interfering with dialog behavior
+  - **Why**: Allows users to dismiss the modal with the Escape key, matching standard modal interaction patterns and the Delete confirmation modal's behavior
+
+### Preview Merge Order Respects Ordered Edges
+
+#### Fixed
+- **Preview Node Output Ordering in Multi-Parent Scenarios**: Fixed issue where preview content merge order failed to respect edge ordering when multiple parents fed into a preview node
+  - Root cause: Message handler built its parent edge order map from base `edges` array which lacked the computed `orderNumber` field (set during edge sorting)
+  - Solution: Pass `orderedEdges` (containing the computed `orderNumber` from edge index position) into message handling instead of base `edges` array for edge sorting in `computePreviewContent`
+  - Updated [messageHandling.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/messageHandling.ts) to accept and use `orderedEdges` for edge order map construction
+  - **Why**: Preview nodes now correctly concatenate parent outputs in their proper execution order, ensuring content is merged predictably when multiple parents produce output in a defined sequence
+  - Verified: Edge ordering flows through [Flow.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/Flow.tsx) and integrates with existing `orderedEdges` computation
+
+### Parallel Step Group Styling Update
+
+#### Changed
+- **Parallel Step Group Border Color**: Updated parallel step group borders from blue to grey for better visual distinction from execution state indicators
+  - Updated [RightSidebar.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/RightSidebar.tsx) to apply grey border color to parallel step group headers
+  - **Why**: Grey borders provide clearer visual hierarchy, reducing confusion with blue execution state indicators while maintaining grouping clarity
+
+### Sequential Task Width Responsive Adjustment
+
+#### Fixed
+- **RightSidebar Resize Responsiveness for Sequential Tasks**: Fixed issue where sequential task node items did not expand to fill available width when RightSidebar was resized
+  - Updated [RightSidebar.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/RightSidebar.tsx) layout styling to use flex layout with appropriate `flex-grow` property on node items
+  - Node items now scale horizontally to match the parallel group border width, maintaining alignment with parallel step group boundaries
+  - **Why**: Users can now resize the sidebar and see all node items expand uniformly, improving layout consistency and making better use of available sidebar space
+
+### Dynamic Input (Fan-In) Connections - Explicit Handle Assignment on Connect
+
+#### Fixed
+- **Fan-In Edge Anchor Misalignment**: Resolved issue where connections dropped onto fan-in node bodies created edges without concrete `targetHandle`, causing visual anchor drift and incorrect handle count derivation
+  - Root cause: Edges anchored without specific handle (targetHandle = undefined) rendered off-axis and caused fan-in count to jump by "+1 free" after drop because handle count derived via `toNode.length + 1` instead of `maxIdx + 2`
+  - Solution: On connect, if target node has `fanInEnabled` and `targetHandle` is missing, assign the next free slot (`in-0`, `in-1`, etc.) before creating the edge
+  - Updated [edgeOperations.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/edgeOperations.ts#L64-L101) to compute patchedParams with assigned handle before edge creation
+  - **Why**: Every connection into a fan-in node now gets a specific handle ID, keeping handle count stable ("connected + 1 free" via `maxIdx + 2`) and edge geometry aligned to the exact handle's x-position
+  - Verified: Fan-in spacing ([FanInTargetHandles.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/nodes/FanInTargetHandles.tsx#L4-L21)) uses `layoutSlots = Math.max(2, count)` and centers via `translateX(-50%)`; fan-in count derivation ([nodeStateTransforming.ts](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/hooks/nodeStateTransforming.ts#L7-L21)) already stable; all nodes properly call `useUpdateNodeInternals` on handle count changes
+
+### Added
+
+### Changed
+
+### Removed
+
 ## [NebulaFlow 0.2.4]
 
 ### Workflow Execution Stop Indicator - Orange Border for Completed Runs

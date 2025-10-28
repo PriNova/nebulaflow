@@ -35,6 +35,7 @@ export interface BaseNodeData {
     output?: string
     content: string
     active: boolean
+    bypass?: boolean
     needsUserApproval?: boolean
     tokenCount?: number
     local_remote?: boolean

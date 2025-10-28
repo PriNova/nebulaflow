@@ -1,4 +1,4 @@
-import { CircleHelp, CircleStop, File, Play, Save, Trash2 } from 'lucide-react'
+import { CircleHelp, CircleStop, File, Play, RotateCcw, Save, Trash2 } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
 import { Button } from '../ui/shadcn/ui/button'
@@ -12,6 +12,7 @@ interface SidebarActionsBarProps {
     onExecute: () => void
     onAbort: () => void
     onClear: () => void
+    onReset: () => void
     isExecuting: boolean
 }
 
@@ -21,6 +22,7 @@ export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
     onExecute,
     onAbort,
     onClear,
+    onReset,
     isExecuting,
 }) => {
     const [isHelpOpen, setIsHelpOpen] = useState(false)
@@ -75,6 +77,21 @@ export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
                         <TooltipContent>
                             {isExecuting ? 'Stop Execution' : 'Start Execution'}
                         </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="tw-w-full"
+                                onClick={onReset}
+                                disabled={isExecuting}
+                                aria-label="Reset Results"
+                            >
+                                <RotateCcw size={18} />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Reset Results</TooltipContent>
                     </Tooltip>
                     <Tooltip>
                         <TooltipTrigger asChild>

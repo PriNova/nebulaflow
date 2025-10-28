@@ -64,11 +64,11 @@ export const useEdgeOperations = (
     const onConnect = useCallback(
         (params: Connection) => {
             setEdges(eds => {
-                if (!isValidEdgeConnection(params, eds)) return eds
+                if (!isValidEdgeConnection(params, eds, nodes)) return eds
                 return [...addEdge({ ...params, data: { edgeStyle: 'bezier' } } as Edge, eds)]
             })
         },
-        [setEdges]
+        [setEdges, nodes]
     )
 
     return { onEdgesChange, onConnect, onEdgesDelete, orderedEdges: edgesWithOrder }

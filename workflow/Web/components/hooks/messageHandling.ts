@@ -57,6 +57,54 @@ const computePreviewContent = (
     return contents.join('\n')
 }
 
+// Migration: normalize old workflows to dynamic fan-in inputs.
+function migrateToFanIn(
+    nodes: WorkflowNodes[],
+    edges: Edge[]
+): { nodes: WorkflowNodes[]; edges: Edge[] } {
+    const fanInTypes = new Set<NodeType>([
+        NodeType.CLI,
+        NodeType.LLM,
+        NodeType.PREVIEW,
+        NodeType.ACCUMULATOR,
+        NodeType.INPUT,
+    ])
+
+    // Enable fan-in on supported node types (idempotent)
+    const nodeById = new Map(nodes.map(n => [n.id, n]))
+    const migratedNodes = nodes.map(n => {
+        if (fanInTypes.has(n.type)) {
+            const data: any = { ...n.data, fanInEnabled: true }
+            return { ...n, data }
+        }
+        return n
+    })
+
+    // Group edges by target
+    const byTarget = new Map<string, number[]>() // store indices into edges
+    edges.forEach((e, idx) => {
+        const arr = byTarget.get(e.target) || []
+        arr.push(idx)
+        byTarget.set(e.target, arr)
+    })
+
+    const migratedEdges = edges.map(e => ({ ...e }))
+
+    for (const [targetId, idxs] of byTarget) {
+        const targetNode = nodeById.get(targetId)
+        if (!targetNode || !fanInTypes.has(targetNode.type)) continue
+
+        // Assign sequential handles (in-0, in-1, ...) in the order they appear
+        // This fixes: missing handles, duplicates, or legacy single-port graphs.
+        idxs.forEach((edgeIdx, i) => {
+            const edge = migratedEdges[edgeIdx] as any
+            edge.targetHandle = `in-${i}`
+        })
+    }
+
+    return { nodes: migratedNodes, edges: migratedEdges }
+}
+
 export const useMessageHandler = (
     nodes: WorkflowNodes[],
     setNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>,
@@ -77,6 +125,7 @@ export const useMessageHandler = (
     setIfElseDecisions: React.Dispatch<React.SetStateAction<Map<string, 'true' | 'false'>>>,
     notify: (p: { type: 'success' | 'error'; text: string }) => void,
     edges: Edge[],
+    orderedEdges: Edge[],
     nodeResults: Map<string, string>,
     requestFitOnNextRender: () => void = () => {}
 ) => {
@@ -98,9 +147,10 @@ export const useMessageHandler = (
                 case 'workflow_loaded': {
                     const { nodes, edges, state } = event.data.data as any
                     if (nodes && edges) {
-                        calculatePreviewNodeTokens(nodes as any)
-                        setNodes(nodes as any)
-                        setEdges(edges as any)
+                        const migrated = migrateToFanIn(nodes as any, edges as any)
+                        calculatePreviewNodeTokens(migrated.nodes as any)
+                        setNodes(migrated.nodes as any)
+                        setEdges(migrated.edges as any)
                         setNodeErrors(new Map())
 
                         // Hydrate saved state if present
@@ -191,7 +241,7 @@ export const useMessageHandler = (
                                 )
                                 // Build edge order map once to avoid O(E²) lookups
                                 const edgeOrderMap = new Map(
-                                    edges.map(e => [e.id, e.data?.orderNumber ?? 0])
+                                    orderedEdges.map(e => [e.id, e.data?.orderNumber ?? 0])
                                 )
                                 for (const preview of downstreamPreviews) {
                                     // Create a map with the just-completed node's result
@@ -281,6 +331,7 @@ export const useMessageHandler = (
         vscodeAPI,
         notify,
         edges,
+        orderedEdges,
         nodeResults,
         requestFitOnNextRender,
     ])

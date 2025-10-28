@@ -9,7 +9,8 @@ export const useWorkflowExecution = (
     nodes: WorkflowNodes[],
     edges: Edge[],
     setNodes: (nodes: WorkflowNodes[]) => void,
-    setEdges: (edges: Edge[]) => void
+    setEdges: (edges: Edge[]) => void,
+    currentNodeResults?: Map<string, string>
 ) => {
     const [isExecuting, setIsExecuting] = useState(false)
     const [abortController, setAbortController] = useState<AbortController | null>(null)
@@ -60,7 +61,6 @@ export const useWorkflowExecution = (
                 : node
         )
         setNodes(updatedNodes)
-        setNodeResults(new Map())
         setNodeErrors(new Map())
         setNodeAssistantContent(new Map())
         setExecutionRunId(prev => prev + 1)
@@ -69,8 +69,32 @@ export const useWorkflowExecution = (
         setIsExecuting(true)
         setInterruptedNodeId(null)
         setStoppedAtNodeId(null)
-        vscodeAPI.postMessage({ type: 'execute_workflow', data: { nodes: updatedNodes, edges } } as any)
-    }, [nodes, edges, setNodes, vscodeAPI])
+
+        // Compute bypass seeds from current nodeResults before clearing
+        const bypassSeedOutputs: Record<string, string> = {}
+        if (currentNodeResults) {
+            for (const n of nodes) {
+                if ((n.data as any).bypass === true) {
+                    bypassSeedOutputs[n.id] = currentNodeResults.get(n.id) ?? ''
+                }
+            }
+        }
+
+        // Clear results only after collecting bypass seeds
+        setNodeResults(new Map())
+
+        vscodeAPI.postMessage({
+            type: 'execute_workflow',
+            data: {
+                nodes: updatedNodes,
+                edges,
+                resume:
+                    Object.keys(bypassSeedOutputs).length > 0
+                        ? { seeds: { outputs: bypassSeedOutputs } }
+                        : undefined,
+            },
+        } as any)
+    }, [nodes, edges, setNodes, vscodeAPI, currentNodeResults])
 
     const onResume = useCallback(
         (fromNodeId: string, seedsOutputs: Record<string, string>) => {
@@ -94,6 +118,18 @@ export const useWorkflowExecution = (
                     }
                 }
             }
+
+            // Merge bypass seeds with existing seeds
+            const bypassSeedOutputs: Record<string, string> = {}
+            if (currentNodeResults) {
+                for (const n of nodes) {
+                    if ((n.data as any).bypass === true) {
+                        bypassSeedOutputs[n.id] = currentNodeResults.get(n.id) ?? ''
+                    }
+                }
+            }
+            const mergedOutputs = { ...seedsOutputs, ...bypassSeedOutputs }
+
             vscodeAPI.postMessage({
                 type: 'execute_workflow',
                 data: {
@@ -102,7 +138,7 @@ export const useWorkflowExecution = (
                     resume: {
                         fromNodeId,
                         seeds: {
-                            outputs: seedsOutputs,
+                            outputs: mergedOutputs,
                             decisions: seedsDecisions,
                             variables: seedsVariables,
                         },
@@ -110,7 +146,7 @@ export const useWorkflowExecution = (
                 },
             } as any)
         },
-        [nodes, edges, ifElseDecisions, vscodeAPI]
+        [nodes, edges, ifElseDecisions, vscodeAPI, currentNodeResults]
     )
 
     const onAbort = useCallback(() => {

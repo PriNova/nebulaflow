@@ -1,6 +1,9 @@
-import { Handle, Position } from '@xyflow/react'
+import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react'
 import type React from 'react'
+import { useCallback, useEffect } from 'react'
 import { Textarea } from '../../ui/shadcn/ui/textarea'
+import { TextEditorModal } from '../TextEditorModal'
+import { FanInTargetHandles } from './FanInTargetHandles'
 import {
     type BaseNodeData,
     type BaseNodeProps,
@@ -12,7 +15,45 @@ import {
 
 export type PreviewNode = Omit<WorkflowNode, 'data'> & { type: NodeType.PREVIEW; data: BaseNodeData }
 
-export const PreviewNode: React.FC<BaseNodeProps & { tokenCount?: number }> = ({ data, selected }) => {
+export const PreviewNode: React.FC<BaseNodeProps & { data: BaseNodeData }> = ({
+    id,
+    data,
+    selected,
+}) => {
+    const updateNodeInternals = useUpdateNodeInternals()
+
+    // biome-ignore lint/correctness/useExhaustiveDependencies: we must refresh handles when the count changes
+    useEffect(() => {
+        if (data?.fanInEnabled) updateNodeInternals(id)
+    }, [id, data?.fanInEnabled, data?.inputPortCount, updateNodeInternals])
+
+    const dispatchEditEvent = useCallback(
+        (action: 'start' | 'commit' | 'cancel', payload?: any) => {
+            const detail: any = { id, action }
+            if (payload?.content !== undefined) {
+                detail.content = payload.content
+            }
+            window.dispatchEvent(
+                new CustomEvent('nebula-edit-node', {
+                    detail,
+                })
+            )
+        },
+        [id]
+    )
+
+    const handleBodyDoubleClick = () => {
+        dispatchEditEvent('start')
+    }
+
+    const handleConfirm = () => {
+        dispatchEditEvent('commit')
+    }
+
+    const handleCancel = () => {
+        dispatchEditEvent('cancel')
+    }
+
     return (
         <div
             style={getNodeStyle(
@@ -25,7 +66,14 @@ export const PreviewNode: React.FC<BaseNodeProps & { tokenCount?: number }> = ({
                 data.interrupted
             )}
         >
-            <Handle type="target" position={Position.Top} />
+            {data?.fanInEnabled ? (
+                <FanInTargetHandles
+                    count={data?.inputPortCount ?? 1}
+                    edgeByHandle={data?.inputEdgeIdByHandle}
+                />
+            ) : (
+                <Handle type="target" position={Position.Top} />
+            )}
             <div className="tw-flex tw-flex-col">
                 <div className="tw-flex tw-flex-col">
                     <div
@@ -64,7 +112,16 @@ export const PreviewNode: React.FC<BaseNodeProps & { tokenCount?: number }> = ({
                     }}
                     value={data.content || ''}
                     readOnly
+                    onDoubleClick={handleBodyDoubleClick}
                     placeholder="Preview content will appear here..."
+                />
+                <TextEditorModal
+                    isOpen={data.isEditing === true}
+                    value={data.content || ''}
+                    readOnly
+                    onConfirm={handleConfirm}
+                    onCancel={handleCancel}
+                    title={data.title ?? 'Preview'}
                 />
             </div>
             <Handle type="source" position={Position.Bottom} />

@@ -117,9 +117,12 @@ export async function executeWorkflowParallel(
         // Skip conditional edges; they will be materialized when IF/ELSE completes
         if (conditionalOutEdges.has(e.source)) continue
         // Treat seeded parents as satisfied; also treat disabled parents as satisfied (pass-through)
+        // BUT: do not skip if the parent is included AND marked with bypass, because it will still emit completion
         const parent = nodeIndex.get(e.source)
         const parentDisabled = parent ? parent.data?.active === false : false
-        if (!seedIds.has(e.source) && !parentDisabled) {
+        const parentIsBypassIncluded =
+            parent && includedIds.has(e.source) && (parent as any)?.data?.bypass === true
+        if ((!seedIds.has(e.source) || parentIsBypassIncluded) && !parentDisabled) {
             inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1)
         }
     }
@@ -149,10 +152,16 @@ export async function executeWorkflowParallel(
         ctx.variableValues?.set(name, value)
     }
 
-    // Preload seed outputs for upstream parents that will not be re-executed
+    // Preload seed outputs for upstream parents that will not be re-executed,
+    // and for included nodes marked with bypass=true
     for (const [sid, val] of Object.entries(seedOutputs)) {
         if (!includedIds.has(sid)) {
             ctx.nodeOutputs.set(sid, val)
+        } else {
+            const n = nodeIndex.get(sid)
+            if ((n as any)?.data?.bypass === true) {
+                ctx.nodeOutputs.set(sid, val)
+            }
         }
     }
 
@@ -510,6 +519,14 @@ async function startNode(
     signal: AbortSignal
 ): Promise<TaskResult> {
     try {
+        // Short-circuit if bypass is enabled and result is seeded
+        if ((node as any)?.data?.bypass === true) {
+            const seeded = ctx.nodeOutputs.get(node.id)
+            const result = seeded ?? ''
+            ctx.nodeOutputs.set(node.id, result)
+            return { nodeId: node.id, status: 'ok', result }
+        }
+
         const result = await runNode(node, ctx, signal)
         // Store result in context for downstream consumers
         ctx.nodeOutputs.set(node.id, result)

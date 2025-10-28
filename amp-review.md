@@ -1,98 +1,41 @@
-## High-level summary  
-The patch is almost entirely concentrated in `workflow/Web/components/RightSidebar.tsx`.  
-It refactors the sidebar’s “Playbox” section so that it can show
+## High-level summary
+One line was added and one was modified in `parallel-scheduler.ts`.  
+The change refines how in-degrees are calculated during the DAG walk: **seeded parents are no longer treated as “already satisfied” when the parent node itself is *both* included in the execution set and flagged as `bypass === true`.**
 
-1. “parallel groups” ( ≥ 2 nodes that execute in the same parallel step),  
-2. sequential single-node steps, and  
-3. an ordered mixture of the two
+## Tour of changes
+Start with the body of `executeWorkflowParallel`, specifically the loop that builds `inDegree` (around the added comment).  
+This is the only place that changed and is the key to understanding the behavioural difference: whether or not an incoming edge from a “seed” node should increase a child’s unsatisfied-dependency count.
 
-while eliminating the massive JSX duplication that previously existed.
+## File level review
 
-A supporting documentation file (`amp-review.md`) is overwritten but has no functional impact.
+### `workflow/Core/engine/parallel-scheduler.ts`
+Changes
+1. Added explanatory comment.
+2. Introduced `parentIsBypassIncluded` boolean:
+      parent && includedIds.has(e.source) && (parent as any)?.data?.bypass === true
+3. Re-wrote the `if` that decides whether to bump `inDegree`:
+      old: if (!seedIds.has(e.source) && !parentDisabled)
+      new: if ((!seedIds.has(e.source) || parentIsBypassIncluded) && !parentDisabled)
 
----
+Correctness & behaviour
+• Objective: when a node is *seeded* (already run) we usually skip its outgoing edges, but if that seeded node is also “included” and has `bypass: true`, it will still emit a “completion” event later; therefore the child must wait for it → the edge must count.  
+The new logic achieves this:  
+– seeded & NOT bypass: edge skipped (unchanged behaviour)  
+– seeded & bypass: edge counted (new behaviour)  
+– not seeded: edge counted (unchanged)  
+– disabled: still skipped (unchanged).
 
-## Tour of changes  
-Start with `workflow/Web/components/RightSidebar.tsx`.
+Edge cases / potential issues
+1. Type safety: `(parent as any)?.data?.bypass` breaks compile-time checking.  
+   • Prefer a type-guard or extend the `NodeData` interface with an optional `bypass?: boolean`.
+2. Performance: negligible—just one boolean eval per edge.
+3. Logical coupling: `includedIds.has(e.source)` is required to avoid counting bypass nodes that are excluded. Good.
+4. Comment consistency: update the earlier comment that still says “Treat seeded parents as satisfied” because that statement is now qualified; consider rewriting to avoid future confusion.
 
-That file introduces  
-• the new grouping / ordering algorithm (`parallelGroups`, `sequentialItems`, `allItemsInOrder`)  
-• the helper `renderNodeItem` that replaces the 300-line JSX blob previously duplicated three times  
-• the new rendering branch that consumes `allItemsInOrder`.
+Security
+No security impact.
 
-Once you understand that refactor the rest of the diff is trivial.
-
----
-
-## File level review  
-
-### `amp-review.md`  
-Purely replaces a previous review note with a new one. No runtime effect – skip.
-
----
-
-### `workflow/Web/components/RightSidebar.tsx`
-
-1.  Data preparation  
-    • `hasParallelAnalysis` simply tests the presence of both `parallelSteps` and `parallelStepByNodeId`.  
-    • The `useMemo` now produces three structures:
-      – `parallelGroups` – only steps with more than one visible node  
-      – `sequentialItems` – steps with exactly one visible node  
-      – `allItemsInOrder` – merge of the two, sorted by `stepIndex`.  
-      Logic looks correct; the two-pointer merge guarantees ordering even if steps are sparse.
-
-    ❗ Bug: `render` gate  
-    ```tsx
-    {hasParallelAnalysis && parallelGroups.length > 0
-        ? allItemsInOrder.map(…)
-        : filteredByActiveNodes.map(…)}
-    ```
-    If the workflow *has* parallel metadata but **all** parallel steps contain a single visible node,  
-    `parallelGroups.length === 0` and the code falls into the `else` branch.  
-    Result: every node is rendered twice (from `allItemsInOrder` and again from `filteredByActiveNodes`).  
-    Fix: gate on `allItemsInOrder.length`, not `parallelGroups.length`.
-
-2.  `getStepLabel`  
-    Adds node-count information for parallel groups – nice.
-
-3.  `renderNodeItem` helper  
-    Consolidates previously duplicated JSX. Good for maintainability, but:
-
-    • Keys  
-      – `item.nodes.map(node => renderNodeItem(node, true))` supplies no `key`, so React will warn.  
-      – Either forward a `key` prop to the helper (`renderNodeItem(node, true, key)`) or wrap it as you did for sequential items.
-
-    • `isInParallelGroup` parameter is accepted but unused – remove or use.
-
-4.  Performance / React  
-    – `useMemo` dependencies are correct.  
-    – Large static JSX inside `renderNodeItem` is fine; it is a pure function.
-
-5.  Type safety  
-    – The algorithm silently ignores steps where *all* node IDs were filtered out (`stepNodes.length === 0`). That is intentional but worth a comment.
-
-6.  Minor clean-ups  
-    • `parallel` and `sequential` could be `const parallelGroups` / `sequentialItems` to avoid the extra rename in the return object.  
-    • The manual merge loop can be replaced by concat & sort, but current version is O(n) and clearer.
-
-7.  Testing  
-    Add a unit / component test that feeds in:
-      – only sequential steps,  
-      – mixed steps,  
-      – parallel metadata but no multi-node steps  
-    to make sure the double-render bug never comes back.
-
-8.  Accessibility  
-    No regressions; semantics unchanged.
-
----
-
-## Overall assessment  
-A solid refactor that removes 250-plus lines of duplicated markup and enables richer step labelling.  
-Before shipping:
-
-1. Fix the render gate (`parallelGroups.length` ➜ `allItemsInOrder.length`).  
-2. Add `key` props to the nodes rendered inside parallel groups.  
-3. Drop the unused `isInParallelGroup` parameter or use it.
-
-With those small tweaks the patch is good to merge.
+Suggested improvements
+• Replace `(parent as any)` with a safe accessor or proper typing.  
+• Rewrite comments to match new truth table:  
+  “Treat seeded parents as satisfied *unless* the seeded parent is both included and bypassed.”

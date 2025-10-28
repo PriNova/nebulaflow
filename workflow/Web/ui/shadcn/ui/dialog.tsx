@@ -1,5 +1,6 @@
 import type React from 'react'
 import { createContext, useContext, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 const DialogContext = createContext<{ open: boolean; setOpen: (open: boolean) => void } | null>(null)
 
@@ -41,7 +42,7 @@ export const DialogContent: React.FC<DialogContentProps> = ({ children, classNam
     const context = useContext(DialogContext)
     if (!context || !context.open) return null
 
-    return (
+    const overlay = (
         <div
             role="button"
             tabIndex={0}
@@ -60,7 +61,11 @@ export const DialogContent: React.FC<DialogContentProps> = ({ children, classNam
                     className || '',
                 ].join(' ')}
                 onClick={e => e.stopPropagation()}
-                onKeyDown={e => e.stopPropagation()}
+                onKeyDown={e => {
+                    if (e.key !== 'Escape') {
+                        e.stopPropagation()
+                    }
+                }}
                 role="dialog"
                 aria-modal="true"
             >
@@ -68,6 +73,8 @@ export const DialogContent: React.FC<DialogContentProps> = ({ children, classNam
             </div>
         </div>
     )
+
+    return typeof document !== 'undefined' ? createPortal(overlay, document.body) : overlay
 }
 
 export const DialogHeader: React.FC<DialogHeaderProps> = ({ children, className }) => {
@@ -76,4 +83,17 @@ export const DialogHeader: React.FC<DialogHeaderProps> = ({ children, className 
 
 export const DialogTitle: React.FC<DialogTitleProps> = ({ children, className }) => {
     return <h2 className={['tw-text-lg tw-font-semibold', className || ''].join(' ')}>{children}</h2>
+}
+
+interface DialogFooterProps {
+    children: React.ReactNode
+    className?: string
+}
+
+export const DialogFooter: React.FC<DialogFooterProps> = ({ children, className }) => {
+    return (
+        <div className={['tw-mt-6 tw-flex tw-gap-3 tw-justify-end', className || ''].join(' ')}>
+            {children}
+        </div>
+    )
 }

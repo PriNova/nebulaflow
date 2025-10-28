@@ -4,6 +4,43 @@ import type { Edge as ProtocolEdge } from '../../../Core/models'
 import type { Edge as FlowEdge } from '../CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
 
+function computeFanInPortCount(nodeId: string, edges: FlowEdge[]): number {
+    const toNode = edges.filter(e => e.target === nodeId)
+    if (toNode.length === 0) return 1
+
+    let maxIdx = -1
+    for (const e of toNode) {
+        const m = (e as any).targetHandle?.match(/^in-(\d+)$/)
+        if (m) {
+            const idx = Number.parseInt(m[1], 10)
+            if (!Number.isNaN(idx)) maxIdx = Math.max(maxIdx, idx)
+        }
+    }
+    if (maxIdx >= 0) return maxIdx + 2
+    return toNode.length + 1
+}
+
+function computeHandleEdgeMap(
+    nodeId: string,
+    edges: FlowEdge[],
+    nodes: WorkflowNodes[]
+): Record<string, string> {
+    const nodeById = new Map(nodes.map(n => [n.id, n]))
+    const map: Record<string, string> = {}
+    for (const e of edges) {
+        if (e.target !== nodeId) continue
+        const h = (e as any).targetHandle as string | undefined
+        if (!h) continue
+        const order = (e as any).data?.orderNumber
+        const src = nodeById.get(e.source)
+        const title = (src as any)?.data?.title || (src as any)?.data?.content || ''
+        const label =
+            typeof order === 'number' ? `${order} - ${title || e.source}` : title || (e as any).id
+        map[h] = label
+    }
+    return map
+}
+
 export const useNodeStateTransformation = (
     nodes: WorkflowNodes[],
     selectedNodes: WorkflowNodes[],
@@ -48,6 +85,12 @@ export const useNodeStateTransformation = (
                     ? Number.parseInt(nodeResults.get(`${nodeId}_tokens`) || '0', 10)
                     : undefined
 
+            const fanInEnabled = (node.data as any).fanInEnabled === true
+            const inputPortCount = fanInEnabled ? computeFanInPortCount(nodeId, edges) : undefined
+            const inputEdgeIdByHandle = fanInEnabled
+                ? computeHandleEdgeMap(nodeId, edges, nodes)
+                : undefined
+
             return {
                 ...node,
                 selected: nodeIsSelected,
@@ -60,6 +103,7 @@ export const useNodeStateTransformation = (
                     result: nodeResult,
                     active: nodeIsActive,
                     tokenCount,
+                    ...(fanInEnabled ? { inputPortCount, inputEdgeIdByHandle } : {}),
                 },
             }
         })
@@ -73,6 +117,7 @@ export const useNodeStateTransformation = (
         interruptedNodeId,
         stoppedAtNodeId,
         allInactiveNodes,
+        edges,
     ])
 }
 
