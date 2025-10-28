@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Agent Node Token Percentage Indicator in RightSidebar
+
+#### Added
+- **Token Percentage Display on Agent Node Header**: Added real-time token usage percentage indicator to the Agent Node header in the RightSidebar
+  - New utility `getLatestTokensPercent()` [RightSidebar.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/RightSidebar.tsx#L13-L31) extracts the most recent token percentage from tool_result events in assistant content
+  - New utility `formatPercentLabel()` [RightSidebar.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/RightSidebar.tsx#L33-L39) formats percentage as "x %" with minimal decimals
+  - Updated header rendering [RightSidebar.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/RightSidebar.tsx#L561-L586) to display percentage indicator aligned right before Play button
+  - Indicator updates automatically as tool_result events arrive; preserves last known value when subsequent events lack token data
+  - **Why**: Users can now monitor token usage in real-time while Agent Nodes execute, improving visibility into token budget consumption during long-running operations
+
 ### Fixed
 
 ### Added

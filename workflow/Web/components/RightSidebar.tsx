@@ -10,6 +10,34 @@ import RunFromHereButton from './RunFromHereButton'
 import type { SelectionSummary } from './hooks/selectionHandling'
 import { NodeType, type WorkflowNodes, formatNodeTitle } from './nodes/Nodes'
 
+function getLatestTokensPercent(items: AssistantContentItem[]): number | null {
+    for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i]
+        if (it.type === 'tool_result' && it.resultJSON) {
+            try {
+                const obj = JSON.parse(it.resultJSON)
+                const p = obj?.tokens?.percent
+                if (typeof p === 'number' && !Number.isNaN(p)) return p
+                if (typeof p === 'string') {
+                    const n = Number(p)
+                    if (!Number.isNaN(n)) return n
+                }
+            } catch {
+                // ignore parse errors (e.g., truncated JSON)
+            }
+        }
+    }
+    return null
+}
+
+function formatPercentLabel(p: number): string {
+    const s = p
+        .toFixed(2)
+        .replace(/\.00$/, '')
+        .replace(/(\.\d)0$/, '$1')
+    return `${s} %`
+}
+
 interface RightSidebarProps {
     sortedNodes: WorkflowNodes[]
     nodeResults: Map<string, string>
@@ -530,14 +558,30 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                 )}
                             </div>
                             {formatNodeTitle(node.type as NodeType, node.data.title)}
-                            {onRunFromHere && (
-                                <RunFromHereButton
-                                    nodeId={node.id}
-                                    className="tw-ml-auto tw-w-[1.75rem] tw-h-[1.75rem]"
-                                    disabled={executingNodeIds.size > 0}
-                                    onClick={() => onRunFromHere(node.id)}
-                                />
-                            )}
+                            {(() => {
+                                const assistantItems = nodeAssistantContent.get(node.id) || []
+                                const latestPercent =
+                                    node.type === NodeType.LLM
+                                        ? getLatestTokensPercent(assistantItems)
+                                        : null
+                                return (
+                                    <div className="tw-ml-auto tw-flex tw-items-center tw-gap-2">
+                                        {node.type === NodeType.LLM && latestPercent != null && (
+                                            <span className="tw-text-xs tw-tabular-nums tw-opacity-70">
+                                                {formatPercentLabel(latestPercent)}
+                                            </span>
+                                        )}
+                                        {onRunFromHere && (
+                                            <RunFromHereButton
+                                                nodeId={node.id}
+                                                className="tw-w-[1.75rem] tw-h-[1.75rem]"
+                                                disabled={executingNodeIds.size > 0}
+                                                onClick={() => onRunFromHere(node.id)}
+                                            />
+                                        )}
+                                    </div>
+                                )
+                            })()}
                         </div>
                     </AccordionTrigger>
                     <AccordionContent>

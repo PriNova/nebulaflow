@@ -727,3 +727,29 @@ Recommended improvements and optimizations for future implementation.
   - Update event dispatch to cast payload to the typed interface
 - **Why**: Currently using `any` type for custom event payload reduces IDE support and makes refactoring riskier. Typed events provide compile-time safety and clearer contract documentation. This follows the same pattern as the Text node edit events.
 - **Priority**: P1 (code quality; improves type safety, mirrors Text node enhancement)
+
+### Token Percentage Indicator - Negative Value Guard
+
+- **Goal**: Prevent bogus percentage displays from malformed tool output
+- **What**: Add clamping or non-negative guard on percent value after parsing in [RightSidebar.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/RightSidebar.tsx#L19-L24)
+  - Current: `const percent = parseFloat(item.content?.tokens?.percent)`
+  - Recommended: `const percent = Math.max(0, parseFloat(item.content?.tokens?.percent))`
+- **Why**: Defensive parsing prevents negative or invalid percentages from appearing in the UI when tool output is truncated or malformed
+- **Priority**: P2 (code quality; improves robustness)
+
+### Token Percentage Indicator - Header IIFE Refactor
+
+- **Goal**: Eliminate per-render function allocation in Agent Node header
+- **What**: Replace IIFE pattern in header section rendering [RightSidebar.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/RightSidebar.tsx#L561-L585) with a plain block or extract to a sub-component
+  - Current: `{(() => { ... })()} ` inside JSX
+  - Recommended: Move rendering logic to a separate helper function or component defined outside render
+- **Why**: Per-render IIFEs create new function objects on each render, adding allocation overhead. Plain blocks or extracted components provide cleaner semantics and better performance
+- **Priority**: P2 (optimization; minor performance improvement)
+
+### Token Percentage Indicator - Accessibility Enhancement
+
+- **Goal**: Improve screen reader support for token percentage indicator
+- **What**: Add `aria-label` and optional `title` attribute to the percentage display span in [RightSidebar.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/RightSidebar.tsx#L569-L573)
+  - Suggested label: "Token budget used: x %"
+- **Why**: Screen reader users benefit from explicit semantic labels that describe the purpose of the indicator. The label clarifies what the percentage represents without reading raw numbers.
+- **Priority**: P2 (accessibility; improves experience for screen reader users)
