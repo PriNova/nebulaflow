@@ -1,4 +1,4 @@
-import { CircleHelp, CircleStop, File, Play, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { CircleHelp, CircleStop, File, Pause, Play, RotateCcw, Save, Trash2 } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
 import { Button } from '../ui/shadcn/ui/button'
@@ -14,6 +14,8 @@ interface SidebarActionsBarProps {
     onClear: () => void
     onReset: () => void
     isExecuting: boolean
+    isPaused: boolean
+    onPauseToggle: () => void
 }
 
 export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
@@ -24,6 +26,8 @@ export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
     onClear,
     onReset,
     isExecuting,
+    isPaused,
+    onPauseToggle,
 }) => {
     const [isHelpOpen, setIsHelpOpen] = useState(false)
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
@@ -78,6 +82,24 @@ export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
                             {isExecuting ? 'Stop Execution' : 'Start Execution'}
                         </TooltipContent>
                     </Tooltip>
+                    {isExecuting && (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="tw-flex-1"
+                                    onClick={onPauseToggle}
+                                    aria-label={isPaused ? 'Resume Execution' : 'Pause Execution'}
+                                >
+                                    {isPaused ? <Play size={18} /> : <Pause size={18} />}
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                {isPaused ? 'Resume Execution' : 'Pause Execution'}
+                            </TooltipContent>
+                        </Tooltip>
+                    )}
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Button

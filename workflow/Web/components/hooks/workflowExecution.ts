@@ -13,6 +13,7 @@ export const useWorkflowExecution = (
     currentNodeResults?: Map<string, string>
 ) => {
     const [isExecuting, setIsExecuting] = useState(false)
+    const [isPaused, setIsPaused] = useState(false)
     const [abortController, setAbortController] = useState<AbortController | null>(null)
     const [nodeErrors, setNodeErrors] = useState<Map<string, string>>(new Map())
     const [executingNodeIds, setExecutingNodeIds] = useState<Set<string>>(new Set())
@@ -22,11 +23,13 @@ export const useWorkflowExecution = (
     const [nodeAssistantContent, setNodeAssistantContent] = useState<Map<string, any[]>>(new Map())
     const [ifElseDecisions, setIfElseDecisions] = useState<Map<string, 'true' | 'false'>>(new Map())
     const [executionRunId, setExecutionRunId] = useState(0)
+    const [completedThisRun, setCompletedThisRun] = useState<Set<string>>(new Set())
 
     const resetExecutionState = useCallback(() => {
         setNodes([])
         setEdges([])
         setIsExecuting(false)
+        setIsPaused(false)
         setNodeErrors(new Map())
         setExecutingNodeIds(new Set())
         setInterruptedNodeId(null)
@@ -35,6 +38,7 @@ export const useWorkflowExecution = (
         setNodeResults(new Map())
         setNodeAssistantContent(new Map())
         setIfElseDecisions(new Map())
+        setCompletedThisRun(new Set())
     }, [setEdges, setNodes])
 
     const onExecute = useCallback(() => {
@@ -67,6 +71,7 @@ export const useWorkflowExecution = (
         const controller = new AbortController()
         setAbortController(controller)
         setIsExecuting(true)
+        setIsPaused(false)
         setInterruptedNodeId(null)
         setStoppedAtNodeId(null)
 
@@ -101,6 +106,7 @@ export const useWorkflowExecution = (
             const controller = new AbortController()
             setAbortController(controller)
             setIsExecuting(true)
+            setIsPaused(false)
             setInterruptedNodeId(null)
             setStoppedAtNodeId(null)
             // Do not clear existing node results or nodes; we want to reuse them
@@ -155,11 +161,65 @@ export const useWorkflowExecution = (
             setAbortController(null)
         }
         setIsExecuting(false)
+        setIsPaused(false)
         vscodeAPI.postMessage({ type: 'abort_workflow' } as any)
     }, [abortController, vscodeAPI])
 
+    const onPauseToggle = useCallback(() => {
+        if (!isPaused) {
+            // Request pause
+            vscodeAPI.postMessage({ type: 'pause_workflow' } as any)
+            setIsPaused(true)
+        } else {
+            // Resume from pause: seed only nodes that completed in THIS run + bypass seeds
+            const outputs: Record<string, string> = {}
+            if (currentNodeResults) {
+                for (const nodeId of completedThisRun) {
+                    const v = currentNodeResults.get(nodeId)
+                    if (typeof v === 'string') outputs[nodeId] = v
+                }
+            }
+            // Merge bypass seeds so bypass frontiers have cached outputs immediately
+            const bypassSeedOutputs: Record<string, string> = {}
+            if (currentNodeResults) {
+                for (const n of nodes) {
+                    if ((n as any).data?.bypass === true) {
+                        bypassSeedOutputs[n.id] = currentNodeResults.get(n.id) ?? ''
+                    }
+                }
+            }
+            const mergedOutputs = { ...outputs, ...bypassSeedOutputs }
+
+            const decisions = Object.fromEntries(ifElseDecisions)
+            const variables: Record<string, string> = {}
+            for (const n of nodes) {
+                if (n.type === NodeType.VARIABLE) {
+                    const varName = (n as any).data?.variableName as string | undefined
+                    if (varName && currentNodeResults) {
+                        const v = currentNodeResults.get(n.id)
+                        if (typeof v === 'string') variables[varName] = v
+                    }
+                }
+            }
+            setIsPaused(false)
+            setIsExecuting(true)
+            // Create a new AbortController for the resumed execution
+            const newController = new AbortController()
+            setAbortController(newController)
+            vscodeAPI.postMessage({
+                type: 'execute_workflow',
+                data: {
+                    nodes,
+                    edges,
+                    resume: { seeds: { outputs: mergedOutputs, decisions, variables } },
+                },
+            } as any)
+        }
+    }, [isPaused, currentNodeResults, ifElseDecisions, nodes, edges, vscodeAPI, completedThisRun])
+
     return {
         isExecuting,
+        isPaused,
         executingNodeIds,
         nodeErrors,
         nodeResults,
@@ -171,14 +231,17 @@ export const useWorkflowExecution = (
         onExecute,
         onResume,
         onAbort,
+        onPauseToggle,
         resetExecutionState,
         setExecutingNodeIds,
         setIsExecuting,
+        setIsPaused,
         setInterruptedNodeId,
         setStoppedAtNodeId,
         setNodeResults,
         setNodeErrors,
         setNodeAssistantContent,
         setIfElseDecisions,
+        setCompletedThisRun,
     }
 }

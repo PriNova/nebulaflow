@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import { type ParallelCallbacks, executeWorkflowParallel } from '../../Core/engine/parallel-scheduler'
-import { AbortedError } from '../../Core/models'
+import { AbortedError, PausedError } from '../../Core/models'
 import type { ApprovalResult, AssistantContentItem, ExtensionToWorkflow } from '../../Core/models'
 import {
     type Edge,
@@ -57,7 +57,8 @@ export async function executeWorkflow(
     webview: vscode.Webview,
     abortSignal: AbortSignal,
     approvalHandler: (nodeId: string) => Promise<ApprovalResult>,
-    resume?: { fromNodeId: string; seeds?: { outputs?: Record<string, string> } }
+    resume?: { fromNodeId: string; seeds?: { outputs?: Record<string, string> } },
+    pauseRef?: { isPaused: () => boolean }
 ): Promise<void> {
     // Early guard: invalid resume target
     if (resume?.fromNodeId && !nodes.some(n => n.id === resume.fromNodeId)) {
@@ -69,6 +70,7 @@ export async function executeWorkflow(
     // Parallel scheduler path (default for all runs)
     let lastExecutedNodeId: string | null = null
     let interruptedNodeId: string | null = null
+    let paused = false
     await safePost(webview, { type: 'execution_started' } as ExtensionToWorkflow)
     try {
         const callbacks: ParallelCallbacks = {
@@ -128,19 +130,34 @@ export async function executeWorkflow(
             onError: 'fail-fast',
             perType: { [NodeType.LLM]: 2, [NodeType.CLI]: 2 },
             seeds: resume?.seeds,
+            pause: pauseRef,
         } as const
         await executeWorkflowParallel(nodes, edges, callbacks, options, abortSignal)
     } catch (err) {
+        // Check if this is a pause signal (not an error)
+        if (err instanceof PausedError) {
+            const stoppedAt = interruptedNodeId || lastExecutedNodeId
+            const event: ExtensionToWorkflow = {
+                type: 'execution_paused',
+                ...(stoppedAt ? { stoppedAtNodeId: stoppedAt } : {}),
+            }
+            await safePost(webview, event)
+            paused = true
+            return
+        }
         // Surface error and finish
         const msg = err instanceof Error ? err.message : String(err)
         void vscode.window.showErrorMessage(`Workflow Error: ${msg}`)
     } finally {
-        const stoppedAt = interruptedNodeId || lastExecutedNodeId
-        const event: ExtensionToWorkflow = {
-            type: 'execution_completed',
-            ...(stoppedAt ? { stoppedAtNodeId: stoppedAt } : {}),
+        // Do not post completion if paused
+        if (!paused) {
+            const stoppedAt = interruptedNodeId || lastExecutedNodeId
+            const event: ExtensionToWorkflow = {
+                type: 'execution_completed',
+                ...(stoppedAt ? { stoppedAtNodeId: stoppedAt } : {}),
+            }
+            await safePost(webview, event)
         }
-        await safePost(webview, event)
     }
     return
 

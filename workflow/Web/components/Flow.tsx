@@ -88,6 +88,11 @@ export const Flow: React.FC<{
     const [edges, setEdges] = useState(defaultWorkflow.edges)
     const [isHelpOpen, setIsHelpOpen] = useState(false)
     const [fitRequested, setFitRequested] = useState(false)
+    const [storageScope, setStorageScope] = useState<{
+        scope: 'workspace' | 'user'
+        basePath?: string
+    } | null>(null)
+    const [isTogglingScope, setIsTogglingScope] = useState(false)
 
     const requestFitOnNextRender = useCallback(() => {
         setFitRequested(true)
@@ -129,6 +134,7 @@ export const Flow: React.FC<{
 
     const {
         isExecuting,
+        isPaused,
         executingNodeIds,
         nodeErrors,
         interruptedNodeId,
@@ -139,14 +145,17 @@ export const Flow: React.FC<{
         onExecute,
         onResume,
         onAbort,
+        onPauseToggle,
         resetExecutionState,
         setExecutingNodeIds,
         setIsExecuting,
+        setIsPaused,
         setInterruptedNodeId,
         setStoppedAtNodeId,
         setNodeErrors,
         setNodeAssistantContent,
         setIfElseDecisions,
+        setCompletedThisRun,
     } = useWorkflowExecution(vscodeAPI, nodes, edges, setNodes, setEdges, nodeResults)
 
     const { onSave, onLoad, calculatePreviewNodeTokens, handleNodeApproval } = useWorkflowActions(
@@ -182,8 +191,16 @@ export const Flow: React.FC<{
         edges,
         orderedEdges,
         nodeResults,
-        requestFitOnNextRender
+        setIsPaused,
+        requestFitOnNextRender,
+        setCompletedThisRun,
+        setStorageScope
     )
+
+    useEffect(() => {
+        // Re-enable scope toggle once a storage_scope update arrives
+        setIsTogglingScope(false)
+    })
 
     const { sidebarWidth, handleMouseDown } = useSidebarResize(256, 200, 600, {
         minCenterGap: MIN_HANDLE_GAP,
@@ -346,6 +363,7 @@ export const Flow: React.FC<{
         const handler = (e: any) => {
             const nodeId = e?.detail?.nodeId
             if (!nodeId) return
+            if (isPaused) return
             const outputs: Record<string, string> = {}
             const nodeIdSet = new Set(nodes.map(n => n.id))
             for (const [k, v] of nodeResults) {
@@ -355,12 +373,13 @@ export const Flow: React.FC<{
         }
         window.addEventListener('nebula-run-from-here' as any, handler as any)
         return () => window.removeEventListener('nebula-run-from-here' as any, handler as any)
-    }, [nodeResults, nodes, onResume])
+    }, [nodeResults, nodes, onResume, isPaused])
 
     useEffect(() => {
         const handler = (e: any) => {
             const nodeId: string | undefined = e?.detail?.nodeId
             if (!nodeId) return
+            if (isPaused) return
             // Build ordered inputs from immediate parents using edge order
             const incoming = edges.filter(e => e.target === nodeId)
             const sorted = [...incoming].sort(
@@ -392,7 +411,7 @@ export const Flow: React.FC<{
         }
         window.addEventListener('nebula-run-only-this' as any, handler as any)
         return () => window.removeEventListener('nebula-run-only-this' as any, handler as any)
-    }, [edges, nodeResults, nodes, vscodeAPI])
+    }, [edges, nodeResults, nodes, vscodeAPI, isPaused])
 
     return (
         <div className="tw-flex tw-h-screen tw-w-full tw-border-2 tw-border-solid tw-border-[var(--vscode-panel-border)] tw-text-[14px] tw-overflow-hidden">
@@ -407,7 +426,9 @@ export const Flow: React.FC<{
                     onClear={resetExecutionState}
                     onReset={onResetResults}
                     isExecuting={isExecuting}
+                    isPaused={isPaused}
                     onAbort={onAbort}
+                    onPauseToggle={onPauseToggle}
                 />
                 <div className="tw-flex-1 tw-overflow-y-auto tw-min-h-0">
                     <WorkflowSidebar
@@ -420,6 +441,12 @@ export const Flow: React.FC<{
                         onRenameCustomNode={onRenameCustomNode}
                         customNodes={customNodes}
                         nodeErrors={nodeErrors}
+                        storageScope={storageScope?.scope || 'user'}
+                        isTogglingScope={isTogglingScope}
+                        onToggleStorageScope={() => {
+                            setIsTogglingScope(true)
+                            vscodeAPI.postMessage({ type: 'toggle_storage_scope' } as any)
+                        }}
                     />
                 </div>
             </div>
@@ -526,6 +553,7 @@ export const Flow: React.FC<{
                             stoppedAtNodeId={stoppedAtNodeId}
                             nodeAssistantContent={nodeAssistantContent}
                             executionRunId={executionRunId}
+                            isPaused={isPaused}
                             onRunFromHere={(nodeId: string) => {
                                 const outputs: Record<string, string> = {}
                                 const nodeIdSet = new Set(nodes.map(n => n.id))

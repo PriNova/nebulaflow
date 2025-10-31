@@ -48,6 +48,7 @@ interface RightSidebarProps {
     stoppedAtNodeId: string | null
     nodeAssistantContent: Map<string, AssistantContentItem[]>
     executionRunId: number
+    isPaused?: boolean
     onRunFromHere?: (nodeId: string) => void
     selection?: SelectionSummary
     parallelSteps?: string[][]
@@ -65,6 +66,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     stoppedAtNodeId,
     nodeAssistantContent,
     executionRunId,
+    isPaused,
     onRunFromHere,
     selection,
     parallelSteps,
@@ -575,7 +577,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                             <RunFromHereButton
                                                 nodeId={node.id}
                                                 className="tw-w-[1.75rem] tw-h-[1.75rem]"
-                                                disabled={executingNodeIds.size > 0}
+                                                disabled={isPaused || executingNodeIds.size > 0}
                                                 onClick={() => onRunFromHere(node.id)}
                                             />
                                         )}
@@ -751,9 +753,16 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             style={{ paddingBottom: '20px' }}
         >
             <div className="tw-flex tw-flex-col tw-gap-2 tw-mb-4">
-                <h3 className="tw-text-[var(--vscode-sideBarTitle-foreground)] tw-font-medium tw-mb-4 tw-text-center">
-                    Playbox
-                </h3>
+                <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+                    <h3 className="tw-text-[var(--vscode-sideBarTitle-foreground)] tw-font-medium tw-text-center">
+                        Playbox
+                    </h3>
+                    {isPaused && (
+                        <span className="tw-text-xs tw-bg-[var(--vscode-statusBarItem-warningBackground)] tw-text-[var(--vscode-statusBarItem-warningForeground)] tw-px-2 tw-py-1 tw-rounded">
+                            Paused
+                        </span>
+                    )}
+                </div>
                 <div className="tw-space-y-2">
                     {hasParallelAnalysis && parallelGroups.length > 0
                         ? allItemsInOrder.map(item => {

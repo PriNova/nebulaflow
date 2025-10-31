@@ -58,11 +58,22 @@ export interface WorkflowStateDTO {
     ifElseDecisions?: Record<string, 'true' | 'false'>
 }
 
+// Resume metadata for paused/interrupted workflows
+export interface ResumeDTO {
+    fromNodeId?: string
+    seeds?: {
+        outputs?: Record<string, string>
+        decisions?: Record<string, 'true' | 'false'>
+        variables?: Record<string, string>
+    }
+}
+
 // Common workflow payload for commands/events
 export interface WorkflowPayloadDTO {
     nodes?: WorkflowNodeDTO[]
     edges?: EdgeDTO[]
     state?: WorkflowStateDTO
+    resume?: ResumeDTO
 }
 
 // To Extension (from webview)
@@ -89,6 +100,10 @@ interface AbortWorkflowCommand extends BaseWorkflowMessage {
     type: 'abort_workflow'
 }
 
+interface PauseWorkflowCommand extends BaseWorkflowMessage {
+    type: 'pause_workflow'
+}
+
 interface GetModelsCommand extends BaseWorkflowMessage {
     type: 'get_models'
 }
@@ -110,6 +125,14 @@ interface RenameCustomNodeCommand extends BaseWorkflowMessage {
 
 interface GetCustomNodesCommand extends BaseWorkflowMessage {
     type: 'get_custom_nodes'
+}
+
+interface GetStorageScopeCommand extends BaseWorkflowMessage {
+    type: 'get_storage_scope'
+}
+
+interface ToggleStorageScopeCommand extends BaseWorkflowMessage {
+    type: 'toggle_storage_scope'
 }
 
 // From Extension (to webview)
@@ -134,6 +157,11 @@ interface ExecutionStartedEvent extends BaseWorkflowMessage {
 
 interface ExecutionCompletedEvent extends BaseWorkflowMessage {
     type: 'execution_completed'
+    stoppedAtNodeId?: string
+}
+
+interface ExecutionPausedEvent extends BaseWorkflowMessage {
+    type: 'execution_paused'
     stoppedAtNodeId?: string
 }
 
@@ -177,6 +205,11 @@ interface ProvideCustomModelsEvent extends BaseWorkflowMessage {
     data: WorkflowNodeDTO[]
 }
 
+interface StorageScopeEvent extends BaseWorkflowMessage {
+    type: 'storage_scope'
+    data: { scope: 'workspace' | 'user'; basePath?: string }
+}
+
 interface ExecuteNodeCommand extends BaseWorkflowMessage {
     type: 'execute_node'
     data: {
@@ -195,6 +228,7 @@ export type WorkflowToExtension =
     | ExecuteWorkflowCommand
     | ExecuteNodeCommand
     | AbortWorkflowCommand
+    | PauseWorkflowCommand
     | CalculateTokensCommand
     | NodeApprovalCommand
     | NodeRejectionCommand
@@ -202,6 +236,8 @@ export type WorkflowToExtension =
     | DeleteCustomNodeCommand
     | RenameCustomNodeCommand
     | GetCustomNodesCommand
+    | GetStorageScopeCommand
+    | ToggleStorageScopeCommand
 
 export type ExtensionToWorkflow =
     | ModelsLoadedEvent
@@ -210,7 +246,9 @@ export type ExtensionToWorkflow =
     | WorkflowSaveFailedEvent
     | ExecutionStartedEvent
     | ExecutionCompletedEvent
+    | ExecutionPausedEvent
     | NodeExecutionStatusEvent
     | TokenCountEvent
     | NodeAssistantContentEvent
     | ProvideCustomModelsEvent
+    | StorageScopeEvent

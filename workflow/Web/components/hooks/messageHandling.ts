@@ -127,7 +127,12 @@ export const useMessageHandler = (
     edges: Edge[],
     orderedEdges: Edge[],
     nodeResults: Map<string, string>,
-    requestFitOnNextRender: () => void = () => {}
+    setIsPaused?: React.Dispatch<React.SetStateAction<boolean>>,
+    requestFitOnNextRender: () => void = () => {},
+    setCompletedThisRun?: React.Dispatch<React.SetStateAction<Set<string>>>,
+    setStorageScope?: React.Dispatch<
+        React.SetStateAction<{ scope: 'workspace' | 'user'; basePath?: string } | null>
+    >
 ) => {
     const lastExecutedNodeIdRef = useRef<string | null>(null)
     const batchUpdateNodeResults = useCallback(
@@ -223,6 +228,12 @@ export const useMessageHandler = (
                                 next.delete(nodeId)
                                 return next
                             })
+                            // Mark node as completed in this run for precise resume seeding
+                            setCompletedThisRun?.(prev => {
+                                const next = new Set(prev)
+                                next.add(nodeId)
+                                return next
+                            })
                             const node = nodes.find(n => n.id === nodeId)
                             // Capture If/Else decisions for resume
                             if (node?.type === NodeType.IF_ELSE) {
@@ -270,11 +281,24 @@ export const useMessageHandler = (
                 }
                 case 'execution_started':
                     setIsExecuting(true)
+                    setIsPaused?.(false)
+                    setCompletedThisRun?.(new Set())
                     lastExecutedNodeIdRef.current = null
                     break
                 case 'execution_completed': {
                     const eventData = event.data as any
                     setIsExecuting(false)
+                    setIsPaused?.(false)
+                    setExecutingNodeIds(new Set())
+                    const stoppedAtFromEvent = eventData.stoppedAtNodeId
+                    const stoppedAt = stoppedAtFromEvent || lastExecutedNodeIdRef.current
+                    setStoppedAtNodeId(stoppedAt)
+                    break
+                }
+                case 'execution_paused': {
+                    const eventData = event.data as any
+                    setIsExecuting(true)
+                    setIsPaused?.(true)
                     setExecutingNodeIds(new Set())
                     const stoppedAtFromEvent = eventData.stoppedAtNodeId
                     const stoppedAt = stoppedAtFromEvent || lastExecutedNodeIdRef.current
@@ -306,9 +330,19 @@ export const useMessageHandler = (
                     }
                     break
                 }
+                case 'storage_scope': {
+                    const info = (event.data as any)?.data as {
+                        scope: 'workspace' | 'user'
+                        basePath?: string
+                    }
+                    setStorageScope?.(info || null)
+                    break
+                }
             }
         }
         const off = vscodeAPI.onMessage(messageHandler as any)
+        // Request storage scope after listener is active to avoid race conditions
+        vscodeAPI.postMessage({ type: 'get_storage_scope' } as any)
         return () => off()
     }, [
         nodes,
@@ -318,6 +352,7 @@ export const useMessageHandler = (
         setInterruptedNodeId,
         setStoppedAtNodeId,
         setIsExecuting,
+        setIsPaused,
         setNodeErrors,
         setNodeResults,
         setNodes,
@@ -328,11 +363,13 @@ export const useMessageHandler = (
         setCustomNodes,
         setNodeAssistantContent,
         setIfElseDecisions,
+        setCompletedThisRun,
         vscodeAPI,
         notify,
         edges,
         orderedEdges,
         nodeResults,
         requestFitOnNextRender,
+        setStorageScope,
     ])
 }

@@ -4,3 +4,4 @@ dist/
 .sourcegraph/
 .nebulaflow/
 docs/
+tasks/

@@ -1,4 +1,4 @@
-import { type Edge, NodeType, type WorkflowNodes } from '../models'
+import { type Edge, NodeType, PausedError, type WorkflowNodes } from '../models'
 
 // Exclude LOOP nodes from supported scheduling (IF_ELSE now supported)
 const UNSUPPORTED_TYPES_V1 = new Set<NodeType>([NodeType.LOOP_START, NodeType.LOOP_END])
@@ -16,6 +16,8 @@ export type ParallelOptions = {
         decisions?: Record<string, 'true' | 'false'>
         variables?: Record<string, string>
     }
+    // Optional pause gate: when isPaused() returns true, prevents new node starts
+    pause?: { isPaused: () => boolean }
 }
 
 export type ParallelCallbacks = {
@@ -153,14 +155,19 @@ export async function executeWorkflowParallel(
     }
 
     // Preload seed outputs for upstream parents that will not be re-executed,
-    // and for included nodes marked with bypass=true
+    // for included nodes marked with bypass=true, and for all included seeded nodes
+    // (so they are not re-executed on resume)
     for (const [sid, val] of Object.entries(seedOutputs)) {
         if (!includedIds.has(sid)) {
+            // Seed is for a node outside the execution set
             ctx.nodeOutputs.set(sid, val)
         } else {
+            // Seed is for an included node
             const n = nodeIndex.get(sid)
-            if ((n as any)?.data?.bypass === true) {
-                ctx.nodeOutputs.set(sid, val)
+            ctx.nodeOutputs.set(sid, val)
+            // Mark included seeded nodes as disabled so they never start
+            if ((n as any)?.data?.bypass !== true) {
+                ctx.disabledNodes?.add(sid)
             }
         }
     }
@@ -208,6 +215,70 @@ export async function executeWorkflowParallel(
     }
     sortReadyQueue(ready, orderIndex, activeEdges)
 
+    // Declare remaining earlier so helper can update it
+    let remaining = activeNodes.filter(n => !ctx.disabledNodes?.has(n.id)).length
+
+    // Helper: pre-complete bypass nodes that are already ready without starting async tasks
+    const precompleteBypassFrontier = async (): Promise<boolean> => {
+        let progressed = false
+        while (ready.length > 0) {
+            const node = ready[0]
+            if ((node as any)?.data?.bypass === true) {
+                // Consume from ready
+                ready.shift()
+                // Mark as started/completed for status consumers
+                try {
+                    await onStatus({ nodeId: node.id, status: 'running' })
+                } catch {}
+                // Use seeded or empty string
+                const seeded = ctx.nodeOutputs.get(node.id)
+                const asText = toResultString(seeded)
+                // Store for downstream
+                ctx.nodeOutputs.set(node.id, asText)
+                try {
+                    await onStatus({ nodeId: node.id, status: 'completed', result: asText })
+                } catch {}
+
+                if (node.type === NodeType.IF_ELSE) {
+                    const decision = asText.trim().toLowerCase() === 'true'
+                    ctx.ifElseDecisions?.set(node.id, decision)
+                    processIfElseCompletion(
+                        node.id,
+                        decision,
+                        ctx.conditionalOutEdges || new Map(),
+                        inDegree,
+                        ctx.disabledNodes || new Set(),
+                        activeEdges,
+                        nodeIndex,
+                        ready
+                    )
+                } else {
+                    const outEdges = edgeIndex.bySource.get(node.id) || []
+                    for (const e of outEdges) {
+                        if (conditionalOutEdges.has(e.source)) continue
+                        const tgt = e.target
+                        const d = (inDegree.get(tgt) || 0) - 1
+                        inDegree.set(tgt, d)
+                        if (d === 0 && !ctx.disabledNodes?.has(tgt)) {
+                            const child = nodeIndex.get(tgt)
+                            if (child) ready.push(child)
+                        }
+                    }
+                }
+                sortReadyQueue(ready, orderIndex, activeEdges)
+                remaining -= 1
+                progressed = true
+                // Continue while-loop to fold cascaded bypass chains
+                continue
+            }
+            break
+        }
+        return progressed
+    }
+
+    // Pre-materialize initial bypass frontier if any
+    await precompleteBypassFrontier()
+
     const ac = new AbortController()
     const combinedSignal = ac.signal
     if (outerAbortSignal) {
@@ -218,8 +289,10 @@ export async function executeWorkflowParallel(
     const runningByType = new Map<NodeType, number>()
     const inflight: Array<{ nodeId: string; type: NodeType; promise: Promise<TaskResult> }> = []
 
-    let remaining = activeNodes.length
     let failed = false
+
+    // Helper to check pause state
+    const isPaused = (): boolean => options?.pause?.isPaused?.() === true
 
     // Helper to check capacity
     const canStart = (type: NodeType): boolean => {
@@ -240,7 +313,7 @@ export async function executeWorkflowParallel(
 
     // Start as many as we can
     const tryStart = (): void => {
-        while (ready.length > 0 && canStart(ready[0].type) && !combinedSignal.aborted) {
+        while (ready.length > 0 && canStart(ready[0].type) && !combinedSignal.aborted && !isPaused()) {
             const node = ready.shift()!
             markStart(node.type)
             void onStatus({ nodeId: node.id, status: 'running' })
@@ -313,16 +386,45 @@ export async function executeWorkflowParallel(
 
     while (remaining > 0 && !combinedSignal.aborted) {
         if (inflight.length === 0) {
+            // Check if paused: if so and nothing is inflight, throw PausedError to signal pause completion
+            if (isPaused()) {
+                throw new PausedError()
+            }
+            // If there are ready nodes, attempt to start them before declaring a blocked state
+            if (ready.length > 0) {
+                tryStart()
+                if (inflight.length > 0) continue
+            }
+            // Attempt to precomplete any bypass frontiers that became ready due to prior completions
+            const progressed = await precompleteBypassFrontier()
+            if (progressed) {
+                // After materializing bypass chains, attempt to start runnable nodes
+                tryStart()
+                if (inflight.length > 0) continue
+            }
             // No tasks running and some nodes remain -> most likely unsatisfied inputs on resume
             const blocked: string[] = []
+            const blockedWithParents: string[] = []
             for (const [nid, deg] of inDegree) {
                 // Skip disabled nodes and nodes that have never started
                 if (ctx.disabledNodes?.has(nid)) continue
                 // Remaining nodes that still have unmet dependencies
-                if (deg > 0) blocked.push(nid)
+                if (deg > 0) {
+                    blocked.push(nid)
+                    const parents = (edgeIndex.byTarget.get(nid) || [])
+                        .map(e => e.source)
+                        .filter(pid => !ctx.disabledNodes?.has(pid))
+                    if (parents.length > 0) {
+                        blockedWithParents.push(`${nid}<=${parents.join('+')}`)
+                    }
+                }
             }
             const detail =
-                blocked.length > 0 ? `; unsatisfied inputs for nodes: ${blocked.join(', ')}` : ''
+                blockedWithParents.length > 0
+                    ? `; unsatisfied inputs for nodes: ${blockedWithParents.join(', ')}`
+                    : blocked.length > 0
+                      ? `; unsatisfied inputs for nodes: ${blocked.join(', ')}`
+                      : ''
             throw new Error(`Parallel scheduler cannot proceed${detail}`)
         }
 

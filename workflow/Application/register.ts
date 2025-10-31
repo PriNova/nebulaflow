@@ -18,6 +18,7 @@ import { setActiveWorkflowUri } from './workspace'
 
 interface ExecutionContext {
     abortController: AbortController | null
+    pauseRequested: boolean
     pendingApproval: {
         resolve: (value: ApprovalResult) => void
         reject: (error: unknown) => void
@@ -39,7 +40,7 @@ function formatPanelTitle(uri?: vscode.Uri): string {
 function getOrCreatePanelContext(webview: vscode.Webview): ExecutionContext {
     let context = panelExecutionRegistry.get(webview)
     if (!context) {
-        context = { abortController: null, pendingApproval: null }
+        context = { abortController: null, pauseRequested: false, pendingApproval: null }
         panelExecutionRegistry.set(webview, context)
     }
     return context
@@ -74,6 +75,13 @@ function createWaitForApproval(webview: vscode.Webview): (nodeId: string) => Pro
             context.pendingApproval = current
         })
     }
+}
+
+function readStorageScope(): { scope: 'workspace' | 'user'; basePath?: string } {
+    const cfg = vscode.workspace.getConfiguration('nebulaFlow')
+    const scope = cfg.get<string>('storageScope', 'user') === 'workspace' ? 'workspace' : 'user'
+    const basePath = cfg.get<string>('globalStoragePath', '')
+    return { scope, basePath }
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -127,6 +135,29 @@ export function activate(context: vscode.ExtensionContext): void {
                         }
                         break
                     }
+                    case 'get_storage_scope': {
+                        const info = readStorageScope()
+                        await safePost(
+                            webview,
+                            { type: 'storage_scope', data: info } as ExtensionToWorkflow,
+                            { strict: isDev }
+                        )
+                        break
+                    }
+                    case 'toggle_storage_scope': {
+                        const cfg = vscode.workspace.getConfiguration('nebulaFlow')
+                        const current =
+                            cfg.get<string>('storageScope', 'user') === 'workspace'
+                                ? 'workspace'
+                                : 'user'
+                        const next = current === 'workspace' ? 'user' : 'workspace'
+                        const target = vscode.workspace.workspaceFolders?.length
+                            ? vscode.ConfigurationTarget.Workspace
+                            : vscode.ConfigurationTarget.Global
+                        await cfg.update('storageScope', next, target)
+                        // onDidChangeConfiguration handler will refresh content and badge
+                        break
+                    }
                     case 'save_workflow': {
                         const result = await saveWorkflow(message.data)
                         if (result && 'uri' in result) {
@@ -176,6 +207,12 @@ export function activate(context: vscode.ExtensionContext): void {
                         }
                         break
                     }
+                    case 'pause_workflow': {
+                        const panelContext = getOrCreatePanelContext(webview)
+                        panelContext.pauseRequested = true
+                        break
+                    }
+
                     case 'execute_workflow': {
                         const panelContext = getOrCreatePanelContext(webview)
                         if (panelContext.abortController) {
@@ -196,6 +233,9 @@ export function activate(context: vscode.ExtensionContext): void {
                                 const { nodes, edges } = fromProtocolPayload(message.data)
                                 const resume = (message as any)?.data?.resume
                                 const approvalHandler = createWaitForApproval(webview)
+
+                                // Reset pause state when starting a new execution
+                                panelContext.pauseRequested = false
 
                                 let filteredResume = resume
 
@@ -256,7 +296,32 @@ export function activate(context: vscode.ExtensionContext): void {
                                             variables: (resume?.seeds as any)?.variables,
                                         },
                                     }
+                                } else if (
+                                    resume?.seeds?.outputs &&
+                                    process.env.NEBULAFLOW_FILTER_PAUSE_SEEDS
+                                ) {
+                                    // Optional guard: when resuming from pause, keep only bypass seeds (env-flagged)
+                                    const bypassIds = new Set(
+                                        nodes
+                                            .filter(n => (n as any)?.data?.bypass === true)
+                                            .map(n => n.id)
+                                    )
+                                    const outputsEntries = Object.entries(
+                                        (resume?.seeds?.outputs as Record<string, string> | undefined) ||
+                                            {}
+                                    ).filter(([id]) => bypassIds.has(id))
+                                    filteredResume = {
+                                        ...resume,
+                                        seeds: {
+                                            outputs: Object.fromEntries(outputsEntries),
+                                            decisions: (resume?.seeds as any)?.decisions,
+                                            variables: (resume?.seeds as any)?.variables,
+                                        },
+                                    }
                                 }
+
+                                // Build pauseRef for pause gate
+                                const pauseRef = { isPaused: () => panelContext.pauseRequested === true }
 
                                 await executeWorkflow(
                                     execNodes,
@@ -264,17 +329,27 @@ export function activate(context: vscode.ExtensionContext): void {
                                     webview,
                                     panelContext.abortController.signal,
                                     approvalHandler,
-                                    filteredResume
+                                    filteredResume,
+                                    pauseRef
                                 )
                             } finally {
-                                activeAbortControllers.delete(panelContext.abortController)
+                                const controller = panelContext.abortController
                                 panelContext.abortController = null
+                                if (controller) {
+                                    activeAbortControllers.delete(controller)
+                                }
                             }
                         }
                         break
                     }
                     case 'execute_node': {
                         const panelContext = getOrCreatePanelContext(webview)
+                        if (panelContext.pauseRequested) {
+                            void vscode.window.showInformationMessage(
+                                'NebulaFlow Workflow Editor: cannot run a single node while paused'
+                            )
+                            break
+                        }
                         if (panelContext.abortController) {
                             void vscode.window.showInformationMessage(
                                 'NebulaFlow Workflow Editor: execution already in progress'
@@ -304,8 +379,11 @@ export function activate(context: vscode.ExtensionContext): void {
                                 { type: 'execution_completed' } as ExtensionToWorkflow,
                                 { strict: isDev }
                             )
-                            activeAbortControllers.delete(panelContext.abortController)
+                            const controller = panelContext.abortController
                             panelContext.abortController = null
+                            if (controller) {
+                                activeAbortControllers.delete(controller)
+                            }
                         }
                         break
                     }
@@ -318,9 +396,19 @@ export function activate(context: vscode.ExtensionContext): void {
                             panelContext.pendingApproval = null
                         }
                         if (panelContext.abortController) {
-                            panelContext.abortController.abort()
+                            const controller = panelContext.abortController
                             panelContext.abortController = null
+                            controller.abort()
+                            activeAbortControllers.delete(controller)
+                        } else if (panelContext.pauseRequested) {
+                            // If paused but no abort controller, still send completion
+                            await safePost(
+                                webview,
+                                { type: 'execution_completed' } as ExtensionToWorkflow,
+                                { strict: isDev }
+                            )
                         }
+                        panelContext.pauseRequested = false
                         break
                     }
                     case 'calculate_tokens': {
@@ -382,6 +470,13 @@ export function activate(context: vscode.ExtensionContext): void {
                             data: toProtocolPayload({ nodes, edges: [] }).nodes!,
                         } as ExtensionToWorkflow
                         await safePost(webview, msg, { strict: isDev })
+                        // Also provide current storage scope so UI can display badge
+                        const info = readStorageScope()
+                        await safePost(
+                            webview,
+                            { type: 'storage_scope', data: info } as ExtensionToWorkflow,
+                            { strict: isDev }
+                        )
                         break
                     }
                     case 'delete_customNode': {
@@ -452,6 +547,32 @@ export function activate(context: vscode.ExtensionContext): void {
 
         await render()
 
+        // React to configuration changes and refresh scope + library
+        const cfgWatcher = vscode.workspace.onDidChangeConfiguration(async e => {
+            if (
+                e.affectsConfiguration('nebulaFlow.storageScope') ||
+                e.affectsConfiguration('nebulaFlow.globalStoragePath')
+            ) {
+                try {
+                    const nodes = await getCustomNodes()
+                    await safePost(
+                        webview,
+                        {
+                            type: 'provide_custom_nodes',
+                            data: toProtocolPayload({ nodes, edges: [] }).nodes!,
+                        } as ExtensionToWorkflow,
+                        { strict: isDev }
+                    )
+                    const info = readStorageScope()
+                    await safePost(
+                        webview,
+                        { type: 'storage_scope', data: info } as ExtensionToWorkflow,
+                        { strict: isDev }
+                    )
+                } catch {}
+            }
+        })
+
         if (context.extensionMode === vscode.ExtensionMode.Development) {
             const watcher = vscode.workspace.createFileSystemWatcher(
                 new vscode.RelativePattern(webviewPath, '**/*')
@@ -470,7 +591,12 @@ export function activate(context: vscode.ExtensionContext): void {
             watcher.onDidDelete(debounced)
             panel.onDidDispose(() => {
                 watcher.dispose()
+                cfgWatcher.dispose()
                 if (reloadTimer) clearTimeout(reloadTimer)
+            })
+        } else {
+            panel.onDidDispose(() => {
+                cfgWatcher.dispose()
             })
         }
     })

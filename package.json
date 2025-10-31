@@ -1,7 +1,7 @@
 {
-    "name": "nebula-flow",
+    "name": "nebulaflow",
     "displayName": "NebulaFlow Workflow Editor",
-    "version": "0.2.6",
+    "version": "0.2.8",
     "publisher": "prinova",
     "engines": {
         "vscode": ">=1.90.0"
@@ -14,7 +14,31 @@
                 "command": "nebulaFlow.openWorkflow",
                 "title": "NebulaFlow: Open Workflow Editor"
             }
-        ]
+        ],
+        "configuration": {
+            "title": "NebulaFlow",
+            "properties": {
+                "nebulaFlow.storageScope": {
+                    "type": "string",
+                    "enum": [
+                        "workspace",
+                        "user"
+                    ],
+                    "enumDescriptions": [
+                        "Store workflows and nodes in the current workspace (.nebulaflow)",
+                        "Store workflows and nodes in your user folder (global)"
+                    ],
+                    "default": "user",
+                    "description": "Where NebulaFlow stores workflows and custom nodes."
+                },
+                "nebulaFlow.globalStoragePath": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "Absolute path for global storage. If empty, uses your home directory. Content is stored under .nebulaflow/",
+                    "scope": "application"
+                }
+            }
+        }
     },
     "scripts": {
         "sync:sdk": "pnpm -C /home/prinova/CodeProjects/upstreamAmp/sdk build && npm i /home/prinova/CodeProjects/upstreamAmp/sdk",

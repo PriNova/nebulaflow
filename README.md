@@ -12,7 +12,7 @@ A VS Code extension for visually designing and running developer workflows. Buil
 The LLM node now runs via the Amp SDK. The workflow editor is a visual wrapper around the SDK: it builds prompts from upstream node outputs and executes them with the SDK. Builds auto-sync the SDK via a prebuild step; set `AMP_API_KEY` to use the LLM node. To force-link manually: `npm i /home/prinova/CodeProjects/upstreamAmp/sdk`.
 
 
-- **Category Label Display**: User-facing category names now map to improved labels in the sidebar node palette (lines 49–55 in [WorkflowSidebar.tsx](file:///home/prinova/CodeProjects/amp-editor/workflow/Web/components/WorkflowSidebar.tsx)):
+- **Category Label Display**: User-facing category names now map to improved labels in the sidebar node palette (lines 49–55 in [WorkflowSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/WorkflowSidebar.tsx)):
   - `llm` → `Agents` (reflects LLM node category)
   - `text-format` → `Text` (simplified category name)
   - Unmapped categories pass through unchanged

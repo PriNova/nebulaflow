@@ -155,6 +155,8 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
             return isWorkflowPayloadDTO(msg.data)
         case 'abort_workflow':
             return true
+        case 'pause_workflow':
+            return true
         case 'get_models':
             return true
         case 'save_customNode':
@@ -166,6 +168,10 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
                 isObject(msg.data) && isString(msg.data.oldNodeTitle) && isString(msg.data.newNodeTitle)
             )
         case 'get_custom_nodes':
+            return true
+        case 'get_storage_scope':
+            return true
+        case 'toggle_storage_scope':
             return true
         case 'calculate_tokens':
             return isObject(msg.data) && isString(msg.data.text) && isString(msg.data.nodeId)
@@ -269,6 +275,8 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
             return true
         case 'execution_completed':
             return true
+        case 'execution_paused':
+            return true
         case 'node_execution_status':
             return isNodeExecutionPayload(msg.data)
         case 'token_count':
@@ -289,6 +297,20 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
             return Array.isArray(msg.data)
         case 'provide_custom_nodes':
             return Array.isArray(msg.data) && (msg.data as any[]).every(isWorkflowNodeDTO)
+        case 'storage_scope': {
+            if (msg.data === undefined) return false
+            if (!isObject(msg.data)) return false
+            const scope = (msg.data as any).scope
+            if (scope !== 'workspace' && scope !== 'user') return false
+            if (
+                'basePath' in (msg.data as any) &&
+                (msg.data as any).basePath !== undefined &&
+                !isString((msg.data as any).basePath)
+            ) {
+                return false
+            }
+            return true
+        }
         default:
             return false
     }

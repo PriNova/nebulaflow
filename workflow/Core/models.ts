@@ -27,6 +27,13 @@ export class AbortedError extends Error {
     }
 }
 
+export class PausedError extends Error {
+    constructor(message = 'paused') {
+        super(message)
+        this.name = 'PausedError'
+    }
+}
+
 export type ApprovalResult = { type: 'approved'; command?: string } | { type: 'aborted' }
 
 export interface BaseNodeData {

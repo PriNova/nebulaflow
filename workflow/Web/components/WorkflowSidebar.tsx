@@ -18,6 +18,9 @@ interface WorkflowSidebarProps {
     onRenameCustomNode: (oldNodeTitle: string, newNodeTitle: string) => void
     customNodes: WorkflowNodes[]
     nodeErrors?: Map<string, string>
+    storageScope?: 'workspace' | 'user'
+    onToggleStorageScope?: () => void
+    isTogglingScope?: boolean
 }
 
 type CustomNodesByType = { [key in NodeType]?: WorkflowNodes[] }
@@ -56,6 +59,9 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
     onDeleteCustomNode,
     onRenameCustomNode,
     nodeErrors,
+    storageScope = 'user',
+    onToggleStorageScope,
+    isTogglingScope = false,
 }) => {
     const [renamingNode, setRenamingNode] = useState<string | null>(null)
     const [newNodeTitle, setNewNodeTitle] = useState<string>('')
@@ -90,6 +96,18 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
 
     return (
         <div className="tw-w-full tw-border-r tw-border-border tw-h-full tw-bg-sidebar-background tw-p-4">
+            <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
+                <div className="tw-text-xs tw-text-muted-foreground">Library</div>
+                <button
+                    type="button"
+                    className="tw-text-[11px] tw-px-2 tw-py-[2px] tw-rounded-full tw-border tw-border-[var(--vscode-panel-border)] hover:tw-bg-[var(--vscode-button-secondaryHoverBackground)]"
+                    title="Click to switch between User and Workspace"
+                    onClick={onToggleStorageScope}
+                    disabled={isTogglingScope}
+                >
+                    {storageScope === 'user' ? 'User' : 'Workspace'}
+                </button>
+            </div>
             <Accordion type="single" collapsible>
                 <AccordionItem value="cli">
                     <AccordionTrigger className="tw-text-sm">Shell Nodes</AccordionTrigger>
