@@ -1,115 +1,84 @@
-## High-level summary
-This change introduces a “storage scope” feature that allows NebulaFlow users to decide where workflows and custom nodes are stored:
+## High-level summary  
+This patch drops the implicit link to a locally-checked-out `@sourcegraph/amp-sdk` and instead ships a vendored tarball under `vendor/amp-sdk/`.  
+All `require('@sourcegraph/amp-sdk')` calls are rewritten to `require('@prinova/amp-sdk')`; the dependency is added in `package.json`; build‐time “sync” hooks are deleted; a helper script called `updateAmpSDK` is referenced (but not committed).  
+Repository and packaging ignore lists are updated accordingly. No functional code outside the import path changes.
 
-* New VS Code settings  
-  • `nebulaFlow.storageScope` – `"workspace"` or `"user"` (default)  
-  • `nebulaFlow.globalStoragePath` – overriding the user-level base folder  
-* Extension side  
-  • Command handling for `get_storage_scope` and `toggle_storage_scope`  
-  • Pushes the current scope to the webview and refreshes it on settings change  
-* Persistence layer  
-  • All file IO is routed through a new `getRootForScope()` helper that resolves the folder according to the chosen scope, with migration from legacy folders when `workspace` scope is used.  
-* Webview  
-  • UI shows a tiny “User / Workspace” badge next to *Library* and lets the user toggle the scope.  
-* Protocol / guards updated accordingly.  
-* `.gitignore` and `tasks/` housekeeping.
+---
 
-Overall, the patch is cohesive and implements the feature end-to-end, but a few correctness and UX issues need attention.
+## Tour of changes  
+Start with **`package.json`**: it contains the version bump, dependency swap, removed build hooks and the new `updateAmpSDK` script. Once that context is clear, the remaining edits (ignore files, import rewrites, lock-file churn and the binary tarball) are straight-forward.
 
-## Tour of changes
-Start with `workflow/DataAccess/fs.ts`; it contains the core path-resolution logic (`getConfig`, `getRootForScope`) that all other pieces rely on.  
-Once comfortable with that, move to `workflow/Application/register.ts` for command wiring, then `Protocol.ts`/`guards.ts`, and finally the React-side files (`Flow.tsx`, `WorkflowSidebar.tsx`, `hooks/messageHandling.ts`) to understand UI flow.
+---
 
-## File level review
-
+## File level review  
+  
 ### `.gitignore`
-+ Adds `tasks/`.  
-  • OK.
++ Adds `scripts/update-amp-sdk.mjs` to the ignore list.  
+  • Problem: the script is referenced in `npm run updateAmpSDK` but is not present in the repo (and now can’t be committed). Either (a) ship the script, or (b) remove it from `.gitignore` and commit it, or (c) drop the npm script and document a manual process.
+
+### `.vscodeignore`
++ Adds `vendor/amp-sdk/**`.  
+  • If the intention is to bundle the SDK inside the VSIX, this line prevents it.  
+  • Packaging with `vsce package --no-dependencies` (still in `package:vsix`) will also exclude the installed node-modules copy. Result: at runtime `require('@prinova/amp-sdk')` will throw unless the user happens to have the package globally installed. Decide between  
+    – keep it optional (then delete the tarball and mark the dep as optional), or  
+    – bundle it (remove ignore pattern and perhaps stop passing `--no-dependencies`).  
+
+### `CHANGELOG.md`, `amp-review.md`, `future-enhancements.md`  
+Documentation only; accurate.
 
 ### `package.json`
-+ Adds `contributes.configuration` section with the two new settings.
++ Version 0.2.8 → 0.2.9  
++ Removes `sync:sdk`, `prebuild*` hooks – build is simpler.  
++ Adds `updateAmpSDK` script (missing file, see earlier).  
++ Dependency swap to `"@prinova/amp-sdk": "file:vendor/amp-sdk/amp-sdk.tgz"`.  
+  – Remember to add a checksum in package-lock if supply-chain security is desired.  
+  – Consider adding `os: { node: ">=20" }` override to satisfy the SDK’s `"engines"` field.  
++ Scripts still package with `--no-dependencies`; revisit after deciding on bundling strategy.
 
-Suggestions / issues  
-1. The `globalStoragePath` setting has `"scope": "application"` which is good, but you should also add `"pattern"` or `"markdownDeprecationMessage"` to warn if it is non-absolute because the code silently ignores non-absolute values.  
-2. The enum for `storageScope` is strings; consider `"default": "user"` directly inside the schema (VS Code will pick it up).
+### `package-lock.json`
+Massive churn caused by vendored tarball.  
+Spot-checks:  
+  • `"@prinova/amp-sdk"` appears twice – once from the tarball, once as an extraneous record for the old relative path. Run `npm install && npm prune --production` to clean.  
+  • Hundreds of new transitive deps from the tarball are now pinned; make sure CI size limits are acceptable.  
+  • No obvious malicious packages detected.
 
-### `workflow/Application/register.ts`
-+ Helper `readStorageScope()` – returns `{ scope, basePath }`. Good extraction.
-+ Handles two new message types:
-  • `get_storage_scope` – replies with `storage_scope` event  
-  • `toggle_storage_scope` – flips setting in the correct configuration target.
-+ Sends initial scope info after first render and also when configuration changes (`cfgWatcher`).
-+ Disposes `cfgWatcher` together with the panel – good.
+### `vendor/amp-sdk/amp-sdk.tgz`
+Binary payload.  
+  • Confirm licence compatibility.  
+  • Prefer committing the original `package.json`, patch file and reproducible build instructions rather than a binary blob if possible.
 
-Issues / recommendations  
-1. Possible race: if `toggle_storage_scope` is fired quickly twice, the second update runs before the first `onDidChangeConfiguration` refresh completes. You might debounce or lock.  
-2. `readStorageScope` returns `basePath` even when scope === "workspace". That’s harmless but unused data.  
-3. `readStorageScope` is implemented twice (here and in `fs.ts` as `getConfig`). Consider sharing.
+### `workflow/Application/handlers/ExecuteSingleNode.ts`  
+### `workflow/Application/handlers/ExecuteWorkflow.ts`  
+### `workflow/Application/register.ts`  
+### `workflow/DataAccess/fs.ts`  
+All four change `require('@sourcegraph/amp-sdk')` → `require('@prinova/amp-sdk')`.  
+Logic otherwise unchanged; still wrapped in `try/catch` – good.  
+Minor: on import failure the thrown error text is still “Amp SDK not available”; you may want to mention `@prinova/amp-sdk` in the message for clarity.
 
-### `workflow/Core/Contracts/Protocol.ts`
-+ Adds the three new message/command interfaces and updates union types.
+### `.gitignore` / `.vscodeignore` interaction  
+Currently the repo contains the tarball but the VSIX will not. That means the repository is larger but users still need to install the SDK manually – defeating the purpose of vendoring. Clarify desired behaviour.
 
-No issues.
+### Removed build hooks (`scripts` block)  
+Good simplification, but CI jobs that previously relied on `sync:sdk` will now need the vendored tarball present. Verify pipeline.
 
-### `workflow/Core/Contracts/guards.ts`
-+ Guards for new message types added.
+### Missing `scripts/update-amp-sdk.mjs`
+Blocking issue: running `npm run updateAmpSDK` throws `ENOENT`. Either commit the file or delete the script.
 
-Issue  
-1. In `storage_scope` guard, you don’t check that `basePath` is present **only** when `scope === "user"`. If UI relies on that invariant, add the check.
+### Security / supply-chain  
+Shipping a pre-built tarball bypasses npm’s integrity checks. Recommended:  
+  • Store SHA-256 of the tarball and verify in `updateAmpSDK`.  
+  • Consider publishing `@prinova/amp-sdk` to a private registry instead.  
 
-### `workflow/DataAccess/fs.ts`
-This is the heart of the change.
+### Performance / size  
+Tarball + added dependencies add ~7 MB to the repo and ~30 MB to the lock-file. Fine for Git, but VSIX size must be monitored if you later decide to bundle.
 
-Key points  
-* `getConfig()` – reads settings and resolves absolute user base folder via `os.homedir()` when needed.  
-* `getRootForScope()` – returns `{ scope, root }`. For workspace scope it returns the first workspace folder; for user scope it returns `Uri.file(baseGlobal)`.  
-* All fs helpers (`saveWorkflow`, `loadWorkflow`, `getCustomNodes`, `saveCustomNode`, `deleteCustomNode`, `renameCustomNode`) now call `getRootForScope()` instead of directly reading `workspaceFolders`.
+---
 
-Correctness / corner cases  
-1. When `storageScope === "user"` and the user supplies an **empty** `globalStoragePath`, the code picks `os.homedir()`. That is fine, but:
-   • You no longer add `.nebulaflow/…` under VS Code’s *globalStorageUri*. That means every NebulaFlow user will suddenly pollute their home directory. Consider piggybacking on `context.globalStorageUri` or default to `~/.nebulaflow` explicitly for clarity.
+## Additional recommendations  
+1. Decide “bundle vs optional” for the SDK and make packaging and ignore rules consistent.  
+2. Fix the missing `update-amp-sdk.mjs` script (and remove it from `.gitignore` if you plan to keep it).  
+3. Run `npm prune --production` and regenerate `package-lock.json` to drop the orphaned `../upstreamAmp/sdk` entry.  
+4. Update any user-facing error messages and documentation to mention `@prinova/amp-sdk`.  
+5. Consider CI test: install VSIX into a clean VS Code container and run a simple workflow to ensure the SDK resolves.
 
-2. You never create the “root” directory in `saveWorkflow` before presenting the save dialog. On first run the dialog’s default path may not exist. You could pre-create with `fs.createDirectory`.
-
-3. `dirUri` is unused – remove or apply.
-
-4. `saveWorkflow()` still computes `defaultFilePath` but the **scope** variable is unused; remove to silence the eslint rule.
-
-5. Migration routines are executed only for `workspace` scope (good), but you probably also want to migrate user-level data once (from the previous location inside `home/.nebulaflow`) if you later change defaults again.
-
-Security  
-* The node/file names still go through `sanitizeFilename`, so no additional path traversal risk introduced.
-
-### `workflow/Web/components/Flow.tsx`
-+ Local state `storageScope` added; requests info on mount (`get_storage_scope`).
-+ Passes scope and toggle handler down to sidebar.
-
-Minor  
-* There are now two requests for scope: once in `Flow`’s `useEffect` and again in `useMessageHandler` after listener is installed (inside the hook). The first one can race with the listener not being ready. You already added the safe one in the hook; remove the extra call in `Flow` (the earlier one) to avoid double messages.
-
-### `workflow/Web/components/WorkflowSidebar.tsx`
-+ Renders badge with `User` / `Workspace` and click handler.
-
-UX suggestions  
-1. Badge looks like a button but has no hover aria; you added title – good. Consider `aria-label`.  
-2. Style uses VS Code variables, fine.
-
-### `workflow/Web/components/hooks/messageHandling.ts`
-+ Extends the hook’s API with `setStorageScope`.
-+ Adds new case ‘storage_scope’.
-
-Observation  
-* You post another `get_storage_scope` in the cleanup return; that’s good but combined with the earlier note, deduplicate.
-
-### `.vscode/tasks` addition is ignored in diff – only gitignore updated.
-
-## Overall recommendation
-The feature is well threaded through extension, persistence, and UI. Main concerns:
-
-1. Default “user” path now writes to `$HOME/.nebulaflow`. Decide if that’s acceptable and document it, or place it under `context.globalStorageUri` instead.
-2. Remove duplicate scope request to avoid message races.
-3. Tighten type guards and unused code (`dirUri`, unused variables).
-4. Handle potential directory-does-not-exist when showing save dialog in user scope.
-5. Optionally debounce consecutive `toggle_storage_scope` invocations.
-
-Once those small issues are addressed, the change looks solid.
+With those adjustments the change set cleanly decouples NebulaFlow from a local checkout of the upstream SDK and moves toward a more reproducible build.

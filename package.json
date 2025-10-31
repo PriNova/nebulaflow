@@ -1,7 +1,7 @@
 {
     "name": "nebulaflow",
     "displayName": "NebulaFlow Workflow Editor",
-    "version": "0.2.8",
+    "version": "0.2.9",
     "publisher": "prinova",
     "engines": {
         "vscode": ">=1.90.0"
@@ -20,10 +20,7 @@
             "properties": {
                 "nebulaFlow.storageScope": {
                     "type": "string",
-                    "enum": [
-                        "workspace",
-                        "user"
-                    ],
+                    "enum": ["workspace", "user"],
                     "enumDescriptions": [
                         "Store workflows and nodes in the current workspace (.nebulaflow)",
                         "Store workflows and nodes in your user folder (global)"
@@ -41,11 +38,8 @@
         }
     },
     "scripts": {
-        "sync:sdk": "pnpm -C /home/prinova/CodeProjects/upstreamAmp/sdk build && npm i /home/prinova/CodeProjects/upstreamAmp/sdk",
-        "prebuild": "npm run -s sync:sdk",
         "build:webview": "vite build --config workflow/Web/vite.config.mts",
         "watch:webview": "vite build --watch --config workflow/Web/vite.config.mts --mode development",
-        "prebuild:ext": "npm run -s sync:sdk",
         "build:ext": "node scripts/bundle-ext.mjs",
         "watch:ext": "node scripts/bundle-ext.mjs --watch",
         "watch": "node scripts/dev-watch.mjs",
@@ -54,8 +48,9 @@
         "format": "npm run biome",
         "check": "npm run -s typecheck && npm run -s biome",
         "lint": "npm run biome",
+        "updateAmpSDK": "node scripts/update-amp-sdk.mjs",
         "build": "npm run -s typecheck && npm run -s build:webview && npm run -s build:ext",
-        "package:vsix": "npm run -s build && rm -f dist/${npm_package_name}-${npm_package_version}.vsix && vsce package --no-dependencies --out dist/${npm_package_name}-${npm_package_version}.vsix"
+        "package:vsix": "npm run -s build && rm -f dist/${npm_package_name}-${npm_package_version}.vsix && vsce package --out dist/${npm_package_name}-${npm_package_version}.vsix"
     },
     "dependencies": {
         "@radix-ui/react-accordion": "^1.1.2",
@@ -65,7 +60,7 @@
         "@radix-ui/react-slot": "^1.0.2",
         "@radix-ui/react-switch": "^1.0.3",
         "@radix-ui/react-tooltip": "^1.0.7",
-        "@sourcegraph/amp-sdk": "file:../upstreamAmp/sdk",
+        "@prinova/amp-sdk": "file:vendor/amp-sdk/amp-sdk.tgz",
         "@vscode/codicons": "^0.0.36",
         "@xyflow/react": "^12.1.4",
         "class-variance-authority": "^0.7.0",

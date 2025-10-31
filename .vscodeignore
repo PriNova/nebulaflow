@@ -26,6 +26,8 @@ README.md
 package.json
 LICENSE
 CHANGELOG.md
+future-enhancements.md
 
 .sourcegraph/
 .nebulaflow/
+tasks/

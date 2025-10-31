@@ -12,6 +12,27 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+## [NebulaFlow 0.2.9]
+
+### Vendored Amp SDK and Package Rename
+
+- Goal: Decouple from local upstream SDK path and ship a stable, self-contained SDK with the extension
+- Changed dependency from `@sourcegraph/amp-sdk` to `@prinova/amp-sdk` sourced from a vendored tarball
+  - Package reference updated in [package.json](file:///home/prinova/CodeProjects/nebulaflow/package.json#L1-L90): `"@prinova/amp-sdk": "file:vendor/amp-sdk/amp-sdk.tgz"`
+  - Dynamic `require()` paths updated in LLM integration points to use `@prinova/amp-sdk`:
+    - [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteSingleNode.ts#L109-L136)
+    - [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteWorkflow.ts#L512-L539)
+    - [register.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/register.ts#L113-L121)
+    - [fs.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/fs.ts#L68-L75)
+- Added `npm run updateAmpSDK` script to update the vendored SDK tarball on demand
+  - Script entry added in [package.json](file:///home/prinova/CodeProjects/nebulaflow/package.json#L41-L80)
+- Removed automatic local SDK sync hooks from build pipeline to avoid external path coupling
+  - Removed `sync:sdk`, `prebuild`, and `prebuild:ext` entries in [package.json](file:///home/prinova/CodeProjects/nebulaflow/package.json#L41-L80)
+- Packaging/ignore updates to keep the VSIX lean and repo clean:
+  - Added `vendor/amp-sdk/**` to [.vscodeignore](file:///home/prinova/CodeProjects/nebulaflow/.vscodeignore#L28-L35) so the vendored SDK isn’t bundled unnecessarily
+  - Added `scripts/update-amp-sdk.mjs` to [.gitignore](file:///home/prinova/CodeProjects/nebulaflow/.gitignore#L1-L6)
+- Version bumped to 0.2.9 in [package.json](file:///home/prinova/CodeProjects/nebulaflow/package.json#L1-L10)
+
 ## [NebulaFlow 0.2.8]
 
 ### Global Storage Scope (User vs Workspace) with Live Refresh

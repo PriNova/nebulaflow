@@ -5,3 +5,4 @@ dist/
 .nebulaflow/
 docs/
 tasks/
+scripts/update-amp-sdk.mjs

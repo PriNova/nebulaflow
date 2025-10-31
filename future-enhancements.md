@@ -4,6 +4,16 @@ Recommended improvements and optimizations for future implementation.
 
 ## Pending Enhancements
 
+### Vendored Amp SDK Flow – Optional Automation and Resilience
+
+- Goal: Streamline updates and add resilience for the new vendored SDK approach
+- What:
+  - Add integrity/hash check and size sanity check for `vendor/amp-sdk/amp-sdk.tgz` during `npm run updateAmpSDK` to catch corrupt artifacts early
+  - Optional fallback: when `@prinova/amp-sdk` fails to resolve at runtime, log a clear message suggesting `npm run updateAmpSDK` (keep dynamic require as-is to avoid hard failures)
+  - Consider a small script to bump the vendored SDK from a known upstream path or registry tag with a single command (kept manual to avoid CI side effects)
+  - Document expected require path for contributors to avoid reintroducing `@sourcegraph/amp-sdk`
+- Why: Ensures the vendored SDK remains easy to refresh and reduces friction when resolving local environment mismatches without re-coupling the build to external paths
+
 ### Storage Scope Toggle and Configuration Polish
 
 - Goal: Improve robustness and UX around storage scope switching and configuration

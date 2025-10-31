@@ -68,7 +68,7 @@ function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): WorkflowPayloadDTO
     try {
         // Dynamically require the SDK so the extension still works if it's not linked
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const sdk = require('@sourcegraph/amp-sdk') as any
+        const sdk = require('@prinova/amp-sdk') as any
         const resolveModel:
             | ((args: { key: string } | { displayName: string; provider?: unknown }) => { key: string })
             | undefined = sdk?.resolveModel

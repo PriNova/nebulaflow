@@ -109,7 +109,7 @@ async function executeSingleLLMNode(
 
     let createAmp: any
     try {
-        ;({ createAmp } = require('@sourcegraph/amp-sdk'))
+        ;({ createAmp } = require('@prinova/amp-sdk'))
     } catch {
         throw new Error('Amp SDK not available')
     }
@@ -128,7 +128,7 @@ async function executeSingleLLMNode(
     let selectedKey: string | undefined
     if (modelId) {
         try {
-            const sdk = require('@sourcegraph/amp-sdk') as any
+            const sdk = require('@prinova/amp-sdk') as any
             const resolveModel:
                 | ((args: { key: string } | { displayName: string; provider?: any }) => { key: string })
                 | undefined = sdk?.resolveModel

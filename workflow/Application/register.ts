@@ -113,7 +113,7 @@ export function activate(context: vscode.ExtensionContext): void {
                     case 'get_models': {
                         try {
                             // Dynamically require to avoid hard failure when SDK is not linked
-                            const sdk = require('@sourcegraph/amp-sdk') as any
+                            const sdk = require('@prinova/amp-sdk') as any
                             const listModels:
                                 | (() => Array<{ key: string; displayName: string }>)
                                 | undefined = sdk?.listModels
