@@ -29,7 +29,7 @@ export function FanInTargetHandles({
                         data-edge-id={edgeId}
                         style={{
                             left: `${((i + 1) / (layoutSlots + 1)) * 100}%`,
-                            transform: 'translateX(-50%)',
+                            transform: 'translate(-50%, -50%)',
                             marginLeft: 0,
                         }}
                     />
