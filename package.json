@@ -48,7 +48,6 @@
         "format": "npm run biome",
         "check": "npm run -s typecheck && npm run -s biome",
         "lint": "npm run biome",
-        "updateAmpSDK": "node scripts/update-amp-sdk.mjs",
         "build": "npm run -s typecheck && npm run -s build:webview && npm run -s build:ext",
         "package:vsix": "npm run -s build && rm -f dist/${npm_package_name}-${npm_package_version}.vsix && vsce package --out dist/${npm_package_name}-${npm_package_version}.vsix"
     },

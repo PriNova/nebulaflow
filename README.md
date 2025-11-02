@@ -9,15 +9,15 @@ A VS Code extension for visually designing and running developer workflows. Buil
 
 ## Project Focus: LLM Node
 
-The LLM node now runs via the Amp SDK. The workflow editor is a visual wrapper around the SDK: it builds prompts from upstream node outputs and executes them with the SDK. Builds auto-sync the SDK via a prebuild step; set `AMP_API_KEY` to use the LLM node. To force-link manually: `npm i /home/prinova/CodeProjects/upstreamAmp/sdk`.
+The LLM node runs via the Amp SDK. The editor acts as a visual wrapper around the SDK: it builds prompts from upstream node outputs and executes them with the SDK.
 
+- SDK distribution: NebulaFlow vendors the SDK as `@prinova/amp-sdk` from a local tarball under `vendor/amp-sdk/`. No local path linking is required.
+- Auth: Set `AMP_API_KEY` in your environment so the LLM node can execute via the SDK.
 
-- **Category Label Display**: User-facing category names now map to improved labels in the sidebar node palette (lines 49–55 in [WorkflowSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/WorkflowSidebar.tsx)):
-  - `llm` → `Agents` (reflects LLM node category)
-  - `text-format` → `Text` (simplified category name)
+- **Category Label Display**: User-facing category names map to improved labels in the sidebar node palette ([WorkflowSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/WorkflowSidebar.tsx#L44-L50)):
+  - `llm` → `Agents`
+  - `text-format` → `Text`
   - Unmapped categories pass through unchanged
-  - Mapping is isolated to the render layer; no protocol, storage, or enum changes
-  - Extensible design: future labels can be added without modifying rendering logic
 
 ## Previous Changes (v0.1.5)
 
@@ -58,27 +58,19 @@ The LLM node now runs via the Amp SDK. The workflow editor is a visual wrapper a
 npm install
 ```
 
-2) SDK sync (automatic)
-
-Builds auto-sync the upstream SDK via a prebuild step; no manual linking required. To force-link manually:
-
-```bash
-npm i /home/prinova/CodeProjects/upstreamAmp/sdk
-```
-
-3) Build once (webview + extension)
+2) Build once (webview + extension)
 
 ```bash
 npm run build
 ```
 
-4) Launch the extension in VS Code
+3) Launch the extension in VS Code
 
 - Open this folder in VS Code
 - Run and Debug: "Launch Extension (Desktop)"
   - This uses the `dev: start-webview-watch` task to watch webview assets
 
-5) Open the editor UI
+4) Open the editor UI
 
 - In the Extension Development Host window, run the command: "NebulaFlow: Open Workflow Editor"
 
@@ -102,18 +94,18 @@ If you see a message about missing webview assets, run `npm run build` or start 
 
 ```jsonc
 {
-  "sync:sdk": "pnpm -C /home/prinova/CodeProjects/upstreamAmp/sdk build && npm i /home/prinova/CodeProjects/upstreamAmp/sdk",
-  "prebuild": "npm run -s sync:sdk",
   "build:webview": "vite build --config workflow/Web/vite.config.mts",
   "watch:webview": "vite build --watch --config workflow/Web/vite.config.mts --mode development",
-  "prebuild:ext": "npm run -s sync:sdk",
   "build:ext": "node scripts/bundle-ext.mjs",
+  "watch:ext": "node scripts/bundle-ext.mjs --watch",
+  "watch": "node scripts/dev-watch.mjs",
   "typecheck": "tsc -p . && tsc -p workflow/Web/tsconfig.json",
   "biome": "biome check --apply --error-on-warnings .",
   "format": "npm run biome",
   "check": "npm run -s typecheck && npm run -s biome",
   "lint": "npm run biome",
-  "build": "npm run -s typecheck && npm run -s build:webview && npm run -s build:ext"
+  "build": "npm run -s typecheck && npm run -s build:webview && npm run -s build:ext",
+  "package:vsix": "npm run -s build && rm -f dist/${npm_package_name}-${npm_package_version}.vsix && vsce package --out dist/${npm_package_name}-${npm_package_version}.vsix"
 }
 ```
 
@@ -176,7 +168,7 @@ Execution flow:
 ## Troubleshooting
 
 - LLM node error "Amp SDK not available":
-  - Builds auto-sync the SDK; run `npm run build` to trigger the prebuild. If needed, force-link with `npm i /home/prinova/CodeProjects/upstreamAmp/sdk && npm run build`
+  - The SDK is vendored.
 - LLM node error "AMP_API_KEY is not set":
   - Set the environment variable before launching: `export AMP_API_KEY=<your-key>` or add to `.env`
 - Webview assets don't load:
