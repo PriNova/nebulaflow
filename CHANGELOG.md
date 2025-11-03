@@ -12,6 +12,40 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+## [NebulaFlow 0.2.11]
+
+### Goal: Inline Markdown rendering for node Result in RightSidebar
+
+### Fixed
+
+### Added
+
+### Changed
+- RightSidebar now renders node "Result" content as sanitized Markdown inline (non-pending states only); CLI pending approvals remain editable via textarea in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx)
+- Markdown output uses the shared renderer (marked + marked-highlight + highlight.js + DOMPurify) from [Markdown.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Markdown.tsx) and preserves safe link handling via extension wiring
+- Wrapped the rendered content in a bordered, padded, scrollable container for clearer visual separation and improved readability (no modal behavior added)
+
+### Removed
+
+## [NebulaFlow 0.2.10]
+
+### Goal: Render Preview content in a read-only Markdown modal with safe rendering and correct link handling
+
+### Added
+- Modular Markdown renderer using marked + marked-highlight + highlight.js + DOMPurify in [Markdown.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Markdown.tsx)
+- Read-only Markdown modal embedding the renderer in [MarkdownPreviewModal.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/MarkdownPreviewModal.tsx)
+- Compact GitHub-like Markdown styles in [markdown.css](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/markdown.css) and imported via [index.css](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/index.css#L1-L7)
+- Dependencies declared: dompurify, highlight.js, marked, marked-highlight in [package.json](file:///home/prinova/CodeProjects/nebulaflow/package.json#L67-L75)
+
+### Changed
+- Preview node double-click opens the Markdown modal instead of textarea-only view in [Preview_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Preview_Node.tsx#L114-L126)
+- Markdown sanitizer whitelist expanded to include VS Code URI schemes (`vscode`, `vscode-*`) in [Markdown.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Markdown.tsx#L33-L36)
+
+### Fixed
+- Link handling: `open_external_link` now opens http(s)/mailto/tel via OS and opens file-like URIs (file://, vscode-remote://, vscode-file://, vscode://) inside VS Code with optional `#Lxx` or `#Lxx-Lyy` support in [register.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/register.ts#L446-L497)
+
+### Removed
+
 ## [NebulaFlow 0.2.9]
 
 ### Vendored Amp SDK and Package Rename

@@ -1,84 +1,84 @@
-## High-level summary  
-This patch drops the implicit link to a locally-checked-out `@sourcegraph/amp-sdk` and instead ships a vendored tarball under `vendor/amp-sdk/`.  
-All `require('@sourcegraph/amp-sdk')` calls are rewritten to `require('@prinova/amp-sdk')`; the dependency is added in `package.json`; build‐time “sync” hooks are deleted; a helper script called `updateAmpSDK` is referenced (but not committed).  
-Repository and packaging ignore lists are updated accordingly. No functional code outside the import path changes.
+## High-level summary
+This patch introduces an inline “preview” action for each node’s *Result* area in `RightSidebar.tsx`.  
+Key points:
+* Adds an Eye icon button next to the “Result” heading.
+* Clicking the button opens a `MarkdownPreviewModal` showing the full node output.
+* Introduces a new piece of state (`previewNodeId`) to control which node is being previewed.
+* Wires the modal at the bottom of the sidebar component.
 
----
+No other files are affected by the diff that was supplied, so the review focuses exclusively on `RightSidebar.tsx`.
 
-## Tour of changes  
-Start with **`package.json`**: it contains the version bump, dependency swap, removed build hooks and the new `updateAmpSDK` script. Once that context is clear, the remaining edits (ignore files, import rewrites, lock-file churn and the binary tarball) are straight-forward.
+## Tour of changes (recommended review order)
+1. Look at the **state additions** (`previewNodeId` around line 195) to understand how the preview logic is driven.
+2. Examine the **UI changes** inside the node rendering loop (~lines 658-676) where the Preview button is inserted.
+3. Review the **modal instantiation** near the bottom of the component (~lines 806-815) to verify the open/close behaviour and data plumbing.
+4. Finally, scan the **new imports** at the top for package/API correctness.
 
----
+This order lets you see the state mechanic first, then how it is triggered, then how it is consumed.
 
-## File level review  
-  
-### `.gitignore`
-+ Adds `scripts/update-amp-sdk.mjs` to the ignore list.  
-  • Problem: the script is referenced in `npm run updateAmpSDK` but is not present in the repo (and now can’t be committed). Either (a) ship the script, or (b) remove it from `.gitignore` and commit it, or (c) drop the npm script and document a manual process.
+## File level review
 
-### `.vscodeignore`
-+ Adds `vendor/amp-sdk/**`.  
-  • If the intention is to bundle the SDK inside the VSIX, this line prevents it.  
-  • Packaging with `vsce package --no-dependencies` (still in `package:vsix`) will also exclude the installed node-modules copy. Result: at runtime `require('@prinova/amp-sdk')` will throw unless the user happens to have the package globally installed. Decide between  
-    – keep it optional (then delete the tarball and mark the dep as optional), or  
-    – bundle it (remove ignore pattern and perhaps stop passing `--no-dependencies`).  
+### `workflow/Web/components/RightSidebar.tsx`
 
-### `CHANGELOG.md`, `amp-review.md`, `future-enhancements.md`  
-Documentation only; accurate.
+Changes made
+------------
+1. Imports:
+   * Added `Eye` from `lucide-react`.
+   * Added `MarkdownPreviewModal` local component.
 
-### `package.json`
-+ Version 0.2.8 → 0.2.9  
-+ Removes `sync:sdk`, `prebuild*` hooks – build is simpler.  
-+ Adds `updateAmpSDK` script (missing file, see earlier).  
-+ Dependency swap to `"@prinova/amp-sdk": "file:vendor/amp-sdk/amp-sdk.tgz"`.  
-  – Remember to add a checksum in package-lock if supply-chain security is desired.  
-  – Consider adding `os: { node: ">=20" }` override to satisfy the SDK’s `"engines"` field.  
-+ Scripts still package with `--no-dependencies`; revisit after deciding on bundling strategy.
+2. State:
+   * `const [previewNodeId, setPreviewNodeId] = useState<string | null>(null)`
 
-### `package-lock.json`
-Massive churn caused by vendored tarball.  
-Spot-checks:  
-  • `"@prinova/amp-sdk"` appears twice – once from the tarball, once as an extraneous record for the old relative path. Run `npm install && npm prune --production` to clean.  
-  • Hundreds of new transitive deps from the tarball are now pinned; make sure CI size limits are acceptable.  
-  • No obvious malicious packages detected.
+3. UI:
+   * Wrapped the “Result” header in a flex container and appended a secondary button (`Eye` icon) that sets `previewNodeId` to the current node id.
+   * Button is hidden when the node is awaiting approval (`node.id === pendingApprovalNodeId`).
 
-### `vendor/amp-sdk/amp-sdk.tgz`
-Binary payload.  
-  • Confirm licence compatibility.  
-  • Prefer committing the original `package.json`, patch file and reproducible build instructions rather than a binary blob if possible.
+4. Modal mount:
+   * Added `<MarkdownPreviewModal>` after the sidebar main content, driven by `previewNodeId`.
 
-### `workflow/Application/handlers/ExecuteSingleNode.ts`  
-### `workflow/Application/handlers/ExecuteWorkflow.ts`  
-### `workflow/Application/register.ts`  
-### `workflow/DataAccess/fs.ts`  
-All four change `require('@sourcegraph/amp-sdk')` → `require('@prinova/amp-sdk')`.  
-Logic otherwise unchanged; still wrapped in `try/catch` – good.  
-Minor: on import failure the thrown error text is still “Amp SDK not available”; you may want to mention `@prinova/amp-sdk` in the message for clarity.
+Review for correctness & issues
+-------------------------------
 
-### `.gitignore` / `.vscodeignore` interaction  
-Currently the repo contains the tarball but the VSIX will not. That means the repository is larger but users still need to install the SDK manually – defeating the purpose of vendoring. Clarify desired behaviour.
+1. Import validity  
+   * `Eye` is indeed exported by `lucide-react`, so the import is correct.  
+   * `MarkdownPreviewModal` must be present in the project; assuming its props match here (`isOpen`, `value`, `title`, `onConfirm`, `onCancel`), the call site is type-correct.
 
-### Removed build hooks (`scripts` block)  
-Good simplification, but CI jobs that previously relied on `sync:sdk` will now need the vendored tarball present. Verify pipeline.
+2. State handling  
+   * `previewNodeId` initialises to `null`, which matches the boolean coercion used in `isOpen={!!previewNodeId}`.  
+   * Both `onConfirm` and `onCancel` simply reset the state to `null`, ensuring the modal closes irrespective of which button is clicked. No state leaks.
 
-### Missing `scripts/update-amp-sdk.mjs`
-Blocking issue: running `npm run updateAmpSDK` throws `ENOENT`. Either commit the file or delete the script.
+3. Derived `value` prop  
+   * `value={previewNodeId ? nodeResults.get(previewNodeId) || '' : ''}`  
+     – Safe fallback to empty string avoids `undefined` issues.  
+     – If the node is deleted between click and render, `nodeResults.get` will return `undefined` and gracefully fall back to `''`.
 
-### Security / supply-chain  
-Shipping a pre-built tarball bypasses npm’s integrity checks. Recommended:  
-  • Store SHA-256 of the tarball and verify in `updateAmpSDK`.  
-  • Consider publishing `@prinova/amp-sdk` to a private registry instead.  
+4. Re-render behaviour  
+   * Clicking Preview sets state → triggers re-render → modal opens. Closing resets state → triggers re-render → modal unmounts. The component tree is lightweight; no performance problem.
 
-### Performance / size  
-Tarball + added dependencies add ~7 MB to the repo and ~30 MB to the lock-file. Fine for Git, but VSIX size must be monitored if you later decide to bundle.
+5. Conditional rendering guard  
+   * Button is suppressed for `pendingApprovalNodeId`, preventing edits/preview on yet-to-be-accepted nodes. Logic seems intentional.
 
----
+6. Accessibility & UX  
+   * Button has `title="Open Preview"` which gives a tooltip for mouse users.  
+   * Consider adding `aria-label="Open preview"` as well for screen-reader support.  
+   * Small (6px tall) button may be hard to click; confirm design spec.
 
-## Additional recommendations  
-1. Decide “bundle vs optional” for the SDK and make packaging and ignore rules consistent.  
-2. Fix the missing `update-amp-sdk.mjs` script (and remove it from `.gitignore` if you plan to keep it).  
-3. Run `npm prune --production` and regenerate `package-lock.json` to drop the orphaned `../upstreamAmp/sdk` entry.  
-4. Update any user-facing error messages and documentation to mention `@prinova/amp-sdk`.  
-5. Consider CI test: install VSIX into a clean VS Code container and run a simple workflow to ensure the SDK resolves.
+7. Styling  
+   * `tw-h-6 tw-px-2 tw-py-0 tw-gap-1` matches Tailwind conventions already used in the file, so styling remains consistent.
 
-With those adjustments the change set cleanly decouples NebulaFlow from a local checkout of the upstream SDK and moves toward a more reproducible build.
+8. Security  
+   * No new data flows outside the component. Markdown rendering is delegated to `MarkdownPreviewModal`; ensure that component sanitises HTML to avoid XSS, but that is outside this diff.
+
+9. Potential edge cases / future work  
+   * If node result is very large, handing it to modal as a plain string may be OK, but watch for memory spikes. Could consider lazy loading or streaming in the modal.  
+   * If node result is not Markdown but plain JSON, maybe show a JSON viewer; current implementation will render it as Markdown code-block if wrapped appropriately.
+
+10. Tests  
+   * No test updates included. If there are Jest/React-Testing-Library suites, consider adding:
+     - “renders preview button for completed node”
+     - “opens modal with correct content on click”
+     - “modal closes on confirm/cancel”
+
+Overall assessment
+------------------
+Solid, low-risk change. Implementation is straightforward, aligns with existing patterns, and introduces no obvious bugs or security issues. Only minor improvement is to enhance accessibility (`aria-label`).

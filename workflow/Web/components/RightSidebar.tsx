@@ -1,11 +1,13 @@
 import clsx from 'clsx'
-import { Loader2Icon } from 'lucide-react'
+import { Eye, Loader2Icon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AssistantContentItem } from '../../Core/models'
 import { resolveToolName } from '../services/toolNames'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/shadcn/ui/accordion'
 import { Button } from '../ui/shadcn/ui/button'
 import { Textarea } from '../ui/shadcn/ui/textarea'
+import { Markdown } from './Markdown'
+import { MarkdownPreviewModal } from './MarkdownPreviewModal'
 import RunFromHereButton from './RunFromHereButton'
 import type { SelectionSummary } from './hooks/selectionHandling'
 import { NodeType, type WorkflowNodes, formatNodeTitle } from './nodes/Nodes'
@@ -193,6 +195,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     const [openItemId, setOpenItemId] = useState<string | undefined>(undefined)
     const [modifiedCommands, setModifiedCommands] = useState<Map<string, string>>(new Map())
     const [expandedJsonItems, setExpandedJsonItems] = useState<Set<string>>(new Set())
+    const [previewNodeId, setPreviewNodeId] = useState<string | null>(null)
 
     // Auto-scroll management for LLM assistant output per node
     const assistantScrollRefs = useRef<Map<string, HTMLDivElement>>(new Map())
@@ -657,9 +660,22 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                 )}
 
                                 <div>
-                                    <h4 className="tw-text-xs tw-font-semibold tw-text-[var(--vscode-foreground)] tw-mb-1">
-                                        Result
-                                    </h4>
+                                    <div className="tw-flex tw-items-center tw-justify-between tw-mb-1">
+                                        <h4 className="tw-text-xs tw-font-semibold tw-text-[var(--vscode-foreground)]">
+                                            Result
+                                        </h4>
+                                        {node.id !== pendingApprovalNodeId && (
+                                            <Button
+                                                size="sm"
+                                                variant="secondary"
+                                                onClick={() => setPreviewNodeId(node.id)}
+                                                className="tw-h-6 tw-px-2 tw-py-0 tw-gap-1"
+                                                title="Open Preview"
+                                            >
+                                                <Eye className="tw-h-4 tw-w-4" />
+                                            </Button>
+                                        )}
+                                    </div>
                                     {node.id === pendingApprovalNodeId ? (
                                         <Textarea
                                             value={
@@ -676,13 +692,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                             onChange={e => handleCommandChange(node.id, e.target.value)}
                                         />
                                     ) : (
-                                        <Textarea
-                                            value={nodeResults.get(node.id) || ''}
-                                            readOnly={true}
-                                            style={{
-                                                backgroundColor: 'var(--vscode-sideBar-background)',
-                                            }}
-                                        />
+                                        <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] tw-max-h-64 tw-overflow-auto">
+                                            <Markdown
+                                                content={nodeResults.get(node.id) || ''}
+                                                className="tw-text-xs"
+                                            />
+                                        </div>
                                     )}
                                 </div>
 
@@ -796,6 +811,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                           ))}
                 </div>
             </div>
+            <MarkdownPreviewModal
+                isOpen={!!previewNodeId}
+                value={previewNodeId ? nodeResults.get(previewNodeId) || '' : ''}
+                title="Preview"
+                onConfirm={() => setPreviewNodeId(null)}
+                onCancel={() => setPreviewNodeId(null)}
+            />
         </div>
     )
 }

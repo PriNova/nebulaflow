@@ -3,6 +3,7 @@
 @import url(./utils/highlight.css);
 @import url(./ui/shadcn/shadcn.css);
 @import url(./themes/index.css);
+@import url(./components/markdown.css);
 
 /* React Flow controls and handles */
 .react-flow__controls-button {

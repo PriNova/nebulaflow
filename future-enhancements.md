@@ -4,6 +4,31 @@ Recommended improvements and optimizations for future implementation.
 
 ## Pending Enhancements
 
+### RightSidebar Result Viewer – Accessibility and Controls
+
+- Goal: Improve accessibility and affordances of the inline Markdown Result viewer
+- What:
+  - Add `tabIndex`, `role="region"`, and an `aria-label` (e.g., "Node Result (Markdown)") to the container for keyboard and screen reader support
+  - Optional: add a small "Copy" button to copy rendered Markdown source or plain text for quick reuse
+- Why: Ensures the rendered results remain discoverable and navigable via keyboard/screen readers and improves usability for quick copy operations
+
+### RightSidebar Result Viewer – Large Output Handling
+
+- Goal: Keep the UI responsive for very large Markdown outputs without losing detail
+- What:
+  - Add a simple truncation with "Show more" expand control after a configurable threshold (e.g., first 2,000–5,000 characters)
+  - Optionally support a collapse/expand control for long code blocks to reduce scroll fatigue
+- Why: Extremely large outputs can impact render performance and overwhelm the sidebar. A progressive disclosure pattern keeps the UI fast and readable while still allowing full inspection when needed
+
+### Markdown Modal and Link Handling Polish
+
+- Goal: Align Markdown link behavior and sanitizer with extension handler and improve editor navigation UX
+- What:
+  - Make `#Lxx`/`#Lxx-Lyy` fragment parsing case-insensitive when extracting line anchors in [register.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/register.ts#L460-L468)
+  - When a line range is present, select the full range instead of a single cursor point after revealing in [register.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/register.ts#L477-L483)
+  - Expand DOMPurify allowed attributes for Markdown to include `id`, `aria-*`, and `data-*` to preserve anchors and accessibility/data hooks in [Markdown.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Markdown.tsx#L36-L49)
+- Why: Ensures robust navigation for line-anchored links, preserves useful attributes for accessibility and in-page anchors, and keeps sanitizer aligned with supported link schemes without over-restricting content.
+
 ### Vendored Amp SDK Flow – Optional Automation and Resilience
 
 - Goal: Streamline updates and add resilience for the new vendored SDK approach

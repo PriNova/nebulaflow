@@ -447,8 +447,72 @@ export function activate(context: vscode.ExtensionContext): void {
                         break
                     }
                     case 'open_external_link': {
-                        const url = vscode.Uri.parse(message.url)
-                        void vscode.env.openExternal(url)
+                        try {
+                            const uri = vscode.Uri.parse(message.url)
+                            const scheme = uri.scheme.toLowerCase()
+                            // Open HTTP(S)/mailto/tel externally via OS/browser
+                            if (
+                                scheme === 'http' ||
+                                scheme === 'https' ||
+                                scheme === 'mailto' ||
+                                scheme === 'tel'
+                            ) {
+                                await vscode.env.openExternal(uri)
+                                break
+                            }
+                            // Open file-like URIs inside VS Code (supports remote workspaces)
+                            if (
+                                scheme === 'file' ||
+                                scheme === 'vscode-remote' ||
+                                scheme === 'vscode-file' ||
+                                scheme === 'vscode'
+                            ) {
+                                // Extract optional line range from fragment: #L10 or #L10-L20
+                                let range: [number, number] | null = null
+                                const frag = uri.fragment
+                                const match = /^L(\d+)(?:-L(\d+))?$/.exec(frag)
+                                if (match) {
+                                    const start = Math.max(0, Number.parseInt(match[1], 10) - 1)
+                                    const end = Math.max(
+                                        0,
+                                        Number.parseInt(match[2] ?? match[1], 10) - 1
+                                    )
+                                    range = [start, end]
+                                }
+                                const openUri = uri.with({ fragment: '' })
+                                try {
+                                    const stat = await vscode.workspace.fs.stat(openUri)
+                                    if (stat.type === vscode.FileType.Directory) {
+                                        await vscode.commands.executeCommand('revealInExplorer', openUri)
+                                    } else {
+                                        const doc = await vscode.workspace.openTextDocument(openUri)
+                                        const editor = await vscode.window.showTextDocument(doc, {
+                                            preview: false,
+                                        })
+                                        if (range) {
+                                            const from = new vscode.Position(range[0], 0)
+                                            const to = new vscode.Position(range[1], 0)
+                                            const selRange = new vscode.Range(from, to)
+                                            editor.revealRange(
+                                                selRange,
+                                                vscode.TextEditorRevealType.InCenter
+                                            )
+                                            editor.selection = new vscode.Selection(from, from)
+                                        }
+                                    }
+                                } catch {
+                                    // Fallback to external for non-workspace URIs
+                                    await vscode.env.openExternal(uri)
+                                }
+                                break
+                            }
+                            // Fallback: open externally
+                            await vscode.env.openExternal(uri)
+                        } catch (e: any) {
+                            await vscode.window.showWarningMessage(
+                                `Could not open link: ${e?.message ?? String(e)}`
+                            )
+                        }
                         break
                     }
                     case 'save_customNode': {
