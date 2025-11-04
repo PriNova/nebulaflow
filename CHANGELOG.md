@@ -4,14 +4,62 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Fixed
+### Goal: Bypass Visual State and Unified Node Border Styling
 
 ### Added
+- Bypass-aware styling flag is forwarded to all node components to reflect dashed borders and dimmed opacity when `data.bypass` is set:
+  - [Accumulator_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Accumulator_Node.tsx)
+  - [CLI_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/CLI_Node.tsx)
+  - [IfElse_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/IfElse_Node.tsx)
+  - [LLM_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/LLM_Node.tsx)
+  - [Preview_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Preview_Node.tsx)
+  - [Text_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Text_Node.tsx)
+  - [Variable_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Variable_Node.tsx)
 
 ### Changed
+- Centralized node presentation via [Nodes.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Nodes.tsx) `getNodeStyle(...)`:
+  - Supports dashed borders and light dim for bypassed nodes while keeping interactive behavior
+  - Uses a single border shorthand (`width style color`) to avoid drift between style pieces
+  - Adds `defaultBorderStyle` parameter to declare per-type defaults cleanly
+- Loop nodes now pass default border style instead of overriding inline:
+  - [LoopStart_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/LoopStart_Node.tsx) and [LoopEnd_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/LoopEnd_Node.tsx) provide `'double'` to `getNodeStyle` for consistent styling
+
+### Why
+- Makes bypass state visually distinct without duplicating style code per node
+- Prevents style drift and simplifies special-case borders (loop nodes) by using an explicit `defaultBorderStyle`
+
+### Goal: Collapsible sidebars with pinned burger toggles (LeftSidebar and RightSidebar)
+
+### Added
+- Explicit local UI state for sidebar visibility in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx): `leftCollapsed`, `rightCollapsed` and a shared `COLLAPSED_WIDTH` constant to control collapsed width.
+- Burger toggle buttons using shadcn `Button` and `lucide-react` `Menu` icon in both sidebars:
+  - Left: header button to collapse; when collapsed, a top header with a centered burger expands the panel in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx).
+  - Right: header button inside the “Playbox” area via new `onToggleCollapse` prop in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx); when collapsed, a top header with centered burger expands the panel in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx).
+- Accessibility attributes on toggle buttons (`aria-label`, `title`, `aria-expanded`, `aria-controls`) for both panels in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx) and [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx).
+
+### Changed
+- Left and right sidebar containers compute width from collapsed state: when collapsed they render at `COLLAPSED_WIDTH`, otherwise at the current resizable width in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx).
+- Right sidebar header now includes a leading burger button wired via `onToggleCollapse` in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx).
+
+### Fixed
 
 ### Removed
 
+### Goal: Refactor left-side UI into dedicated component, add clipboard actions, and polish preview/results UX
+
+### Added
+- Dedicated [LeftSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/LeftSidebar.tsx) to house actions + library, mirroring right-side structure for clearer VSA boundaries and reuse. Integrated into [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx).
+- Reusable [CopyToClipboardButton.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/CopyToClipboardButton.tsx) that copies raw text (not rendered Markdown). Wired into result headers in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx) and into the preview modal in [MarkdownPreviewModal.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/MarkdownPreviewModal.tsx).
+
+### Changed
+- Left header layout: right-aligned label preceding the toggle for ergonomics in [LeftSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/LeftSidebar.tsx).
+- Right sidebar initial/min width increased for readability via `useRightSidebarResize(...)` in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx).
+- Preview modal now shows the node’s actual title (instead of generic "Preview") for context; passed through from [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx) to [MarkdownPreviewModal.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/MarkdownPreviewModal.tsx).
+- Modal content styling: added a fine border and subtle alignment tweaks for clarity in [MarkdownPreviewModal.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/MarkdownPreviewModal.tsx).
+- Right items typography and layout: slightly larger node header title; result label scaled and separator added for scannability in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx).
+
+### Why
+- Improves modularity and reuse (LeftSidebar mirrors right), enhances discoverability and ergonomics of sidebar controls, enables quick copying of raw outputs, and tightens preview/readability without adding complexity.
 ## [NebulaFlow 0.2.11]
 
 ### Goal: Inline Markdown rendering for node Result in RightSidebar

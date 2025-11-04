@@ -72,7 +72,8 @@ export const TextNode: React.FC<BaseNodeProps & { data: BaseNodeData }> = ({ id,
                 data.executing,
                 data.error,
                 data.active,
-                data.interrupted
+                data.interrupted,
+                data.bypass
             )}
         >
             {data?.fanInEnabled ? (

@@ -56,6 +56,7 @@ export interface BaseNodeProps {
         error?: boolean
         content?: string
         active: boolean
+        bypass?: boolean
         needsUserApproval?: boolean
         tokenCount?: number
         iterations?: number
@@ -238,19 +239,28 @@ export const getNodeStyle = (
     executing?: boolean,
     error?: boolean,
     active?: boolean,
-    interrupted?: boolean
-) => ({
-    padding: '0.5rem',
-    borderRadius: '0.25rem',
-    backgroundColor: error
-        ? 'var(--vscode-inputValidation-errorBackground)'
-        : 'var(--vscode-dropdown-background)',
-    color: 'var(--vscode-dropdown-foreground)',
-    border: `2px solid ${getBorderColor(type, { error, executing, moving, interrupted, selected })}`,
-    opacity: !active ? '0.4' : '1',
-    minWidth: '5rem',
-    boxShadow: '6px 6px 8px rgba(0, 0, 0, 0.6)',
-})
+    interrupted?: boolean,
+    bypass?: boolean,
+    defaultBorderStyle: 'solid' | 'double' = 'solid'
+) => {
+    const color = getBorderColor(type, { error, executing, moving, interrupted, selected })
+    const styleForThisNode =
+        active === false ? defaultBorderStyle : bypass ? 'dashed' : defaultBorderStyle
+    return {
+        padding: '0.5rem',
+        borderRadius: '0.25rem',
+        backgroundColor: error
+            ? 'var(--vscode-inputValidation-errorBackground)'
+            : 'var(--vscode-dropdown-background)',
+        color: 'var(--vscode-dropdown-foreground)',
+        // Use a single shorthand so style never gets out-of-sync
+        border: `2px ${styleForThisNode} ${color}`,
+        // Inactive nodes stay at 0.4 opacity. Bypass nodes get a light dim.
+        opacity: active === false ? '0.4' : bypass ? '0.7' : '1',
+        minWidth: '5rem',
+        boxShadow: '6px 6px 8px rgba(0, 0, 0, 0.6)',
+    } as const
+}
 
 export const nodeTypes = {
     [NodeType.CLI]: CLINode,

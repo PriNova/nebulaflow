@@ -4,6 +4,40 @@ Recommended improvements and optimizations for future implementation.
 
 ## Pending Enhancements
 
+### Bypass Mode – Interactivity and Typing Polish
+
+- Goal: Clarify bypass-node interactivity and widen style typing for future-proofing
+- What:
+  - Consider making bypassed nodes non-interactive by applying `pointerEvents: 'none'` in `getNodeStyle` when `bypass === true` (opt-in; verify UX trade-offs)
+  - Broaden `defaultBorderStyle` parameter typing in [Nodes.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Nodes.tsx) to `React.CSSProperties['borderStyle']` to support all valid CSS border styles
+  - Fix minor nit: remove leading space before color value in any `border` string interpolations to ensure consistent CSS parsing
+- Why: Provides a clear UX option for bypass behavior, strengthens typing for style extensibility, and tidies up minor styling nits
+
+### Clipboard Feedback Timer Cleanup
+
+- Goal: Prevent state updates after unmount and avoid timer leaks in the clipboard button
+- What: Store the `setTimeout` handle in [CopyToClipboardButton.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/CopyToClipboardButton.tsx) and clear it in a `useEffect` cleanup to prevent `setCopied(false)` from firing after unmount
+- Why: React may warn about state updates on unmounted components; cleaning up the timer removes a subtle footgun and improves component hygiene
+
+### Right Sidebar Min-Width Flexibility
+
+- Goal: Make the RightSidebar minimum width user-friendly and adaptable across displays
+- What: Revisit the `useRightSidebarResize` configuration in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx) to avoid locking the minimum at 380px; consider a smaller min, responsive breakpoint logic, and/or persisting user-chosen width
+- Why: A fixed larger minimum can constrain canvas space on smaller screens; flexibility improves ergonomics without sacrificing readability
+
+### Sidebar Collapse Controls – Accessibility and UX Polish
+
+- Goal: Refine sidebar toggle behavior and discoverability beyond the minimal collapse/expand implementation
+- What:
+  - Disable or ignore drag resizing while a sidebar is collapsed, or store/restore the last expanded width when re-expanding to avoid surprising size jumps
+  - Make the sidebar headers sticky (`tw-sticky tw-top-0`) so the burger remains pinned even when content scrolls, in both collapsed and expanded states
+  - Return keyboard focus to the toggle button after collapsing/expanding to improve keyboard navigation
+  - Normalize burger button dimensions between collapsed and expanded headers (consistent `tw-h-8 tw-w-8 tw-p-0`) for visual consistency
+  - Review the Help (`?`) control for labeling consistency; ensure clear `title`/`aria-label` and consider icon consistency with shadcn button sizing
+  - Optional: persist `leftCollapsed`/`rightCollapsed` in workspace settings or webview state so layout preference survives reloads
+  - Optional: add a keyboard shortcut to toggle each sidebar for power users (e.g., `[` and `]` with a modifier), ensuring shortcuts are discoverable and conflict-free
+- Why: Reduces accidental layout changes during collapse, improves accessibility and keyboard UX, and makes the UI more predictable and consistent across states without increasing complexity
+
 ### RightSidebar Result Viewer – Accessibility and Controls
 
 - Goal: Improve accessibility and affordances of the inline Markdown Result viewer

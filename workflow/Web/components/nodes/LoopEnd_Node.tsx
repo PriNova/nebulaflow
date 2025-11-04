@@ -14,18 +14,17 @@ export type LoopEndNode = Omit<WorkflowNode, 'data'> & { type: NodeType.LOOP_END
 
 export const LoopEndNode: React.FC<BaseNodeProps> = ({ id, data, selected }) => (
     <div
-        style={{
-            ...getNodeStyle(
-                NodeType.LOOP_END,
-                data.moving,
-                selected,
-                data.executing,
-                data.error,
-                data.active,
-                data.interrupted
-            ),
-            borderStyle: 'double',
-        }}
+        style={getNodeStyle(
+            NodeType.LOOP_END,
+            data.moving,
+            selected,
+            data.executing,
+            data.error,
+            data.active,
+            data.interrupted,
+            data.bypass,
+            'double'
+        )}
     >
         <Handle type="target" position={Position.Top} />
         <div className="tw-flex tw-flex-col">

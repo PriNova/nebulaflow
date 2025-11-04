@@ -24,7 +24,8 @@ export const IfElseNode: React.FC<BaseNodeProps> = ({ id, data, selected }) => (
             data.executing,
             data.error,
             data.active,
-            data.interrupted
+            data.interrupted,
+            data.bypass
         )}
     >
         <Handle type="target" position={Position.Top} />

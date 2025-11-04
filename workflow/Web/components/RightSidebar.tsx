@@ -1,11 +1,12 @@
 import clsx from 'clsx'
-import { Eye, Loader2Icon } from 'lucide-react'
+import { Eye, Loader2Icon, Menu } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AssistantContentItem } from '../../Core/models'
 import { resolveToolName } from '../services/toolNames'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/shadcn/ui/accordion'
 import { Button } from '../ui/shadcn/ui/button'
 import { Textarea } from '../ui/shadcn/ui/textarea'
+import { CopyToClipboardButton } from './CopyToClipboardButton'
 import { Markdown } from './Markdown'
 import { MarkdownPreviewModal } from './MarkdownPreviewModal'
 import RunFromHereButton from './RunFromHereButton'
@@ -56,6 +57,7 @@ interface RightSidebarProps {
     parallelSteps?: string[][]
     parallelStepByNodeId?: Map<string, number>
     branchByIfElseId?: Map<string, { true: Set<string>; false: Set<string> }>
+    onToggleCollapse?: () => void
 }
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
@@ -74,6 +76,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     parallelSteps,
     parallelStepByNodeId,
     branchByIfElseId,
+    onToggleCollapse,
 }) => {
     const filteredByActiveNodes = useMemo(
         () => sortedNodes.filter(node => node.type !== NodeType.PREVIEW && node.data.active !== false),
@@ -562,7 +565,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                     />
                                 )}
                             </div>
-                            {formatNodeTitle(node.type as NodeType, node.data.title)}
+                            <span className="tw-text-sm">
+                                {formatNodeTitle(node.type as NodeType, node.data.title)}
+                            </span>
                             {(() => {
                                 const assistantItems = nodeAssistantContent.get(node.id) || []
                                 const latestPercent =
@@ -659,21 +664,31 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                     </div>
                                 )}
 
+                                <div className="tw-mt-1 tw-mb-1 tw-border-t tw-border-[var(--vscode-panel-border)]" />
                                 <div>
                                     <div className="tw-flex tw-items-center tw-justify-between tw-mb-1">
-                                        <h4 className="tw-text-xs tw-font-semibold tw-text-[var(--vscode-foreground)]">
+                                        <h4 className="tw-text-sm tw-font-semibold tw-text-[var(--vscode-foreground)]">
                                             Result
                                         </h4>
                                         {node.id !== pendingApprovalNodeId && (
-                                            <Button
-                                                size="sm"
-                                                variant="secondary"
-                                                onClick={() => setPreviewNodeId(node.id)}
-                                                className="tw-h-6 tw-px-2 tw-py-0 tw-gap-1"
-                                                title="Open Preview"
-                                            >
-                                                <Eye className="tw-h-4 tw-w-4" />
-                                            </Button>
+                                            <div className="tw-flex tw-items-center tw-gap-1">
+                                                <CopyToClipboardButton
+                                                    text={nodeResults.get(node.id) || ''}
+                                                    className="tw-h-6 tw-px-2 tw-py-0"
+                                                    title="Copy Raw Result"
+                                                    size="sm"
+                                                    variant="secondary"
+                                                />
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    onClick={() => setPreviewNodeId(node.id)}
+                                                    className="tw-h-6 tw-px-2 tw-py-0 tw-gap-1"
+                                                    title="Open Preview"
+                                                >
+                                                    <Eye className="tw-h-4 tw-w-4" />
+                                                </Button>
+                                            </div>
                                         )}
                                     </div>
                                     {node.id === pendingApprovalNodeId ? (
@@ -768,10 +783,24 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             style={{ paddingBottom: '20px' }}
         >
             <div className="tw-flex tw-flex-col tw-gap-2 tw-mb-4">
-                <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
-                    <h3 className="tw-text-[var(--vscode-sideBarTitle-foreground)] tw-font-medium tw-text-center">
-                        Playbox
-                    </h3>
+                <div className="tw-flex tw-items-center tw-justify-between tw-gap-2">
+                    <div className="tw-flex tw-items-center tw-gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={onToggleCollapse}
+                            aria-label="Toggle Right Sidebar"
+                            title="Toggle Right Sidebar"
+                            aria-expanded={true}
+                            aria-controls="right-sidebar-panel"
+                            className="tw-h-7 tw-w-7 tw-p-0"
+                        >
+                            <Menu size={18} />
+                        </Button>
+                        <h3 className="tw-text-[var(--vscode-sideBarTitle-foreground)] tw-font-medium">
+                            Playbox
+                        </h3>
+                    </div>
                     {isPaused && (
                         <span className="tw-text-xs tw-bg-[var(--vscode-statusBarItem-warningBackground)] tw-text-[var(--vscode-statusBarItem-warningForeground)] tw-px-2 tw-py-1 tw-rounded">
                             Paused
@@ -814,7 +843,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             <MarkdownPreviewModal
                 isOpen={!!previewNodeId}
                 value={previewNodeId ? nodeResults.get(previewNodeId) || '' : ''}
-                title="Preview"
+                title={
+                    previewNodeId
+                        ? sortedNodes.find(n => n.id === previewNodeId)?.data.title || 'Preview'
+                        : 'Preview'
+                }
                 onConfirm={() => setPreviewNodeId(null)}
                 onCancel={() => setPreviewNodeId(null)}
             />

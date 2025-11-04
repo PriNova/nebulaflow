@@ -43,7 +43,8 @@ export const LLMNode: React.FC<BaseNodeProps> = ({ id, data, selected }) => {
                 data.executing,
                 data.error,
                 data.active,
-                data.interrupted
+                data.interrupted,
+                data.bypass
             )}
         >
             {data?.fanInEnabled ? (

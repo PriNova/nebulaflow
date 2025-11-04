@@ -63,7 +63,8 @@ export const PreviewNode: React.FC<BaseNodeProps & { data: BaseNodeData }> = ({
                 data.executing,
                 data.error,
                 data.active,
-                data.interrupted
+                data.interrupted,
+                data.bypass
             )}
         >
             {data?.fanInEnabled ? (

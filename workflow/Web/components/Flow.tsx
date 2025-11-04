@@ -6,19 +6,20 @@ import {
     SelectionMode,
     useReactFlow,
 } from '@xyflow/react'
+import { Menu } from 'lucide-react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../services/Protocol'
+import { Button } from '../ui/shadcn/ui/button'
 import { toWorkflowNodeDTO } from '../utils/nodeDto'
 import type { GenericVSCodeWrapper } from '../utils/vscode'
 import { CustomOrderedEdgeComponent } from './CustomOrderedEdge'
 import type { Edge } from './CustomOrderedEdge'
 // styles moved to global index.css
 import { HelpModal } from './HelpModal'
+import { LeftSidebar } from './LeftSidebar'
 import { NebulaSpinningLogo } from './NebulaSpinningLogo'
 import { RightSidebar } from './RightSidebar'
-import { SidebarActionsBar } from './SidebarActionsBar'
-import { WorkflowSidebar } from './WorkflowSidebar'
 import { useEdgeOperations } from './hooks/edgeOperations'
 import { useMessageHandler } from './hooks/messageHandling'
 import { useCustomNodes, useNodeOperations } from './hooks/nodeOperations'
@@ -72,6 +73,8 @@ const pruneEdgesForMissingNodes = (eds: Edge[], nodeList: WorkflowNodes[]): Edge
     return eds.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target))
 }
 
+const COLLAPSED_WIDTH = 36 // px
+
 export const Flow: React.FC<{
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>
 }> = ({ vscodeAPI }) => {
@@ -93,6 +96,9 @@ export const Flow: React.FC<{
         basePath?: string
     } | null>(null)
     const [isTogglingScope, setIsTogglingScope] = useState(false)
+
+    const [leftCollapsed, setLeftCollapsed] = useState(false)
+    const [rightCollapsed, setRightCollapsed] = useState(false)
 
     const requestFitOnNextRender = useCallback(() => {
         setFitRequested(true)
@@ -207,8 +213,8 @@ export const Flow: React.FC<{
         getCenterWidth: () => centerRef.current?.clientWidth ?? 0,
     })
     const { rightSidebarWidth, handleMouseDown: handleRightSidebarMouseDown } = useRightSidebarResize(
-        256,
-        200,
+        380,
+        380,
         undefined,
         { minCenterGap: MIN_HANDLE_GAP, getCenterWidth: () => centerRef.current?.clientWidth ?? 0 }
     )
@@ -416,22 +422,37 @@ export const Flow: React.FC<{
     return (
         <div className="tw-flex tw-h-screen tw-w-full tw-border-2 tw-border-solid tw-border-[var(--vscode-panel-border)] tw-text-[14px] tw-overflow-hidden">
             <div
-                style={{ width: sidebarWidth + 'px' }}
+                id="left-sidebar-panel"
+                style={{ width: (leftCollapsed ? COLLAPSED_WIDTH : sidebarWidth) + 'px' }}
                 className="tw-flex-shrink-0 tw-bg-[var(--vscode-sideBar-background)] tw-h-full tw-flex tw-flex-col"
             >
-                <SidebarActionsBar
-                    onSave={onSave}
-                    onLoad={onLoad}
-                    onExecute={onExecute}
-                    onClear={resetExecutionState}
-                    onReset={onResetResults}
-                    isExecuting={isExecuting}
-                    isPaused={isPaused}
-                    onAbort={onAbort}
-                    onPauseToggle={onPauseToggle}
-                />
-                <div className="tw-flex-1 tw-overflow-y-auto tw-min-h-0">
-                    <WorkflowSidebar
+                {leftCollapsed ? (
+                    <div className="tw-border-b tw-border-border tw-bg-sidebar-background tw-px-2 tw-py-2 tw-flex tw-justify-center">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setLeftCollapsed(false)}
+                            aria-label="Expand Left Sidebar"
+                            title="Expand Left Sidebar"
+                            aria-expanded={false}
+                            aria-controls="left-sidebar-panel"
+                            className="tw-h-8 tw-w-8 tw-p-0"
+                        >
+                            <Menu size={18} />
+                        </Button>
+                    </div>
+                ) : (
+                    <LeftSidebar
+                        onToggleCollapse={() => setLeftCollapsed(true)}
+                        onSave={onSave}
+                        onLoad={onLoad}
+                        onExecute={onExecute}
+                        onClear={resetExecutionState}
+                        onReset={onResetResults}
+                        isExecuting={isExecuting}
+                        isPaused={isPaused}
+                        onAbort={onAbort}
+                        onPauseToggle={onPauseToggle}
                         onNodeAdd={onNodeAdd}
                         selectedNode={activeNode}
                         onNodeUpdate={onNodeUpdate}
@@ -448,7 +469,7 @@ export const Flow: React.FC<{
                             vscodeAPI.postMessage({ type: 'toggle_storage_scope' } as any)
                         }}
                     />
-                </div>
+                )}
             </div>
             <div
                 style={{ width: HANDLE_THICKNESS }}
@@ -540,35 +561,54 @@ export const Flow: React.FC<{
                         onMouseDown={handleRightSidebarMouseDown}
                     />
                     <div
-                        style={{ width: rightSidebarWidth + 'px' }}
+                        id="right-sidebar-panel"
+                        style={{ width: (rightCollapsed ? COLLAPSED_WIDTH : rightSidebarWidth) + 'px' }}
                         className="tw-flex-shrink-0 tw-border-r tw-border-solid tw-border-[var(--vscode-panel-border)] tw-bg-[var(--vscode-sideBar-background)] tw-h-full tw-overflow-y-auto"
                     >
-                        <RightSidebar
-                            sortedNodes={sortedNodes}
-                            nodeResults={nodeResults}
-                            executingNodeIds={executingNodeIds}
-                            pendingApprovalNodeId={pendingApprovalNodeId}
-                            onApprove={handleNodeApproval}
-                            interruptedNodeId={interruptedNodeId}
-                            stoppedAtNodeId={stoppedAtNodeId}
-                            nodeAssistantContent={nodeAssistantContent}
-                            executionRunId={executionRunId}
-                            isPaused={isPaused}
-                            onRunFromHere={(nodeId: string) => {
-                                const outputs: Record<string, string> = {}
-                                const nodeIdSet = new Set(nodes.map(n => n.id))
-                                for (const [k, v] of nodeResults) {
-                                    if (nodeIdSet.has(k) && k !== nodeId) {
-                                        outputs[k] = v
+                        {rightCollapsed ? (
+                            <div className="tw-border-b tw-border-border tw-bg-sidebar-background tw-px-2 tw-py-2 tw-flex tw-justify-center">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setRightCollapsed(false)}
+                                    aria-label="Expand Right Sidebar"
+                                    title="Expand Right Sidebar"
+                                    aria-expanded={false}
+                                    aria-controls="right-sidebar-panel"
+                                    className="tw-h-8 tw-w-8 tw-p-0"
+                                >
+                                    <Menu size={18} />
+                                </Button>
+                            </div>
+                        ) : (
+                            <RightSidebar
+                                sortedNodes={sortedNodes}
+                                nodeResults={nodeResults}
+                                executingNodeIds={executingNodeIds}
+                                pendingApprovalNodeId={pendingApprovalNodeId}
+                                onApprove={handleNodeApproval}
+                                interruptedNodeId={interruptedNodeId}
+                                stoppedAtNodeId={stoppedAtNodeId}
+                                nodeAssistantContent={nodeAssistantContent}
+                                executionRunId={executionRunId}
+                                isPaused={isPaused}
+                                onRunFromHere={(nodeId: string) => {
+                                    const outputs: Record<string, string> = {}
+                                    const nodeIdSet = new Set(nodes.map(n => n.id))
+                                    for (const [k, v] of nodeResults) {
+                                        if (nodeIdSet.has(k) && k !== nodeId) {
+                                            outputs[k] = v
+                                        }
                                     }
-                                }
-                                onResume(nodeId, outputs)
-                            }}
-                            selection={selectionSummary}
-                            parallelSteps={parallelAnalysis.steps}
-                            parallelStepByNodeId={parallelAnalysis.stepByNodeId}
-                            branchByIfElseId={parallelAnalysis.branchByIfElseId}
-                        />
+                                    onResume(nodeId, outputs)
+                                }}
+                                selection={selectionSummary}
+                                parallelSteps={parallelAnalysis.steps}
+                                parallelStepByNodeId={parallelAnalysis.stepByNodeId}
+                                branchByIfElseId={parallelAnalysis.branchByIfElseId}
+                                onToggleCollapse={() => setRightCollapsed(true)}
+                            />
+                        )}
                     </div>
                 </div>
             </div>

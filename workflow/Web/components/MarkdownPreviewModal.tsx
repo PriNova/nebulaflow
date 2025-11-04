@@ -1,5 +1,6 @@
 import { Button } from '../ui/shadcn/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/shadcn/ui/dialog'
+import { CopyToClipboardButton } from './CopyToClipboardButton'
 import { Markdown } from './Markdown'
 
 interface MarkdownPreviewModalProps {
@@ -29,9 +30,19 @@ export function MarkdownPreviewModal({
                     <DialogTitle>{title}</DialogTitle>
                 </DialogHeader>
                 <div className="tw-flex-1 tw-min-h-0 tw-overflow-auto tw-pr-1">
-                    <Markdown content={value} />
+                    <div className="tw-bg-[var(--vscode-editor-background)] tw-p-3 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] tw-ml-[-1px]">
+                        <Markdown content={value} />
+                    </div>
                 </div>
-                <DialogFooter>
+                <DialogFooter className="tw-flex tw-justify-between">
+                    <div>
+                        <CopyToClipboardButton
+                            text={value}
+                            title="Copy Raw Text"
+                            size="sm"
+                            variant="secondary"
+                        />
+                    </div>
                     <Button onClick={onConfirm}>Close</Button>
                 </DialogFooter>
             </DialogContent>

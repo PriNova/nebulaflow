@@ -17,18 +17,17 @@ export type LoopStartNode = Omit<WorkflowNode, 'data'> & {
 
 export const LoopStartNode: React.FC<BaseNodeProps> = ({ id, data, selected }) => (
     <div
-        style={{
-            ...getNodeStyle(
-                NodeType.LOOP_START,
-                data.moving,
-                selected,
-                data.executing,
-                data.error,
-                data.active,
-                data.interrupted
-            ),
-            borderStyle: 'double',
-        }}
+        style={getNodeStyle(
+            NodeType.LOOP_START,
+            data.moving,
+            selected,
+            data.executing,
+            data.error,
+            data.active,
+            data.interrupted,
+            data.bypass,
+            'double'
+        )}
     >
         <Handle type="target" position={Position.Top} />
         <Handle type="target" position={Position.Left} id="iterations-override" style={{ top: '83%' }} />
