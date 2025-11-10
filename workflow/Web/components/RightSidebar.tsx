@@ -461,7 +461,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                 <div className="tw-w-4 tw-mr-2">
                                     {isToolRunning ? (
                                         <Loader2Icon
-                                            stroke="#33ffcc"
+                                            stroke="var(--vscode-testing-iconPassed)"
                                             strokeWidth={3}
                                             size={24}
                                             className="tw-h-4 tw-w-4 tw-animate-spin"
@@ -624,7 +624,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                             <div className="tw-w-4 tw-mr-2">
                                 {executingNodeIds.has(node.id) && (
                                     <Loader2Icon
-                                        stroke="#33ffcc"
+                                        stroke="var(--vscode-testing-iconPassed)"
                                         strokeWidth={3}
                                         size={24}
                                         className="tw-h-4 tw-w-4 tw-animate-spin"

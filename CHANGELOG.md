@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+### Goal: Align Loader Spinner Color With Success Checkmark in RightSidebar
+
+- Changed: Loader spinner color for tool execution in the RightSidebar now uses the VS Code success token to match the green check icon after completion. Replaced hard-coded `#33ffcc` with `var(--vscode-testing-iconPassed)` in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L461-L469) and [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L624-L631) so the Loader2Icon matches the check mark color theme-consistently.
+
 ## [NebulaFlow 0.2.13]
 
 ### Goal: Tool Safety and Normalization Alignment with Upstream
