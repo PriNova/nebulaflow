@@ -1,88 +1,80 @@
 ## High-level summary
-This patch introduces the concept of a “bypass” state for workflow nodes.  
-Main work:
+The patch tightens the handling of “disabled tools”, focusing on the special-case for the `Bash` tool:
 
-* Adds `bypass?: boolean` to `BaseNodeProps.data`.
-* Extends `getNodeStyle` (Nodes.tsx) to:
-  * Accept the new `bypass` flag.
-  * Accept an optional `defaultBorderStyle` so special nodes (Loop Start/End) can keep their double border without post-merge overrides.
-  * Render bypass nodes with a dashed border and 0.7 opacity.
-* Updates every node component to forward `data.bypass` into `getNodeStyle`.
-* Refactors Loop Start / Loop End nodes to rely on the new `defaultBorderStyle` argument instead of manual `borderStyle: 'double'`.
+1. Comparisons against the tool name are now case-insensitive (and in one place whitespace-tolerant).
+2. `normalizeDisabledTools()` will now fall back to a locally shipped resolver (`Core/toolUtils.ts`) if the Amp SDK’s `resolveToolName` is missing, producing more reliable canonical names.
+3. `ExecuteWorkflow.ts` respects the new comparison logic so that the `dangerouslyAllowAll` escape hatch is blocked whenever any variant of “bash” is disabled.
 
-No behaviour outside of styling is changed.
+No public API surface changes; all adjustments are internal safety/robustness improvements.
 
 ## Tour of changes
-Begin with `workflow/Web/components/nodes/Nodes.tsx`.  
-This is the only functional change; all other file edits simply propagate the new parameters or adjust to the refined API. Understanding `getNodeStyle` first makes the review of the individual node components trivial.
+Begin with `workflow/Application/handlers/llm-settings.ts`.  
+This file introduces the new resolver fall-back and the revised
+`isBashDisabled()` logic. Understanding these two functions clarifies why
+`ExecuteWorkflow.ts` needed a mirror update and how the tool lists are
+normalized before being inspected.
+
+After that, look at `ExecuteWorkflow.ts`, which now mirrors the same
+case-insensitive detection when deciding whether to honour the
+`dangerouslyAllowAll` flag.
 
 ## File level review
 
-### `workflow/Web/components/nodes/Nodes.tsx`
-* API Changes  
-  * `BaseNodeProps.data` gains `bypass?: boolean`. ✔︎ Type-safe.
-  * `getNodeStyle` signature adds `bypass` and `defaultBorderStyle`.
-    * Back-compat preserved by default values.
-* Style logic
-  * `styleForThisNode` decision:
-    ```
-    active === false ? defaultBorderStyle :
-    bypass          ? 'dashed' :
-                      defaultBorderStyle
-    ```
-    ‑ Correctly keeps double borders for Loop nodes even when inactive.
-  * Opacity logic mirrors this (`0.4` inactive, `0.7` bypass, else `1`).
-* Implementation details
-  * Switched to a single `border` shorthand (`2px ${style} ${color}`) so width / style / color are always in sync – good.
-  * Function now returns `as const` – helps TS inference for React style props.
-* Potential issues
-  1. `active` may be `undefined`; code treats it as “active”. Existing behaviour already relied on this—acceptable.
-  2. `bypass` overrides opacity but keeps node clickable; if click-through dim was intended, consider pointer-events style addition.
-  3. Lots of inline colours still rely on VS Code theme variables—safe.
-  4. `defaultBorderStyle` literal union type is fine, but you could widen to `BorderStyle` from CSS to future-proof.
+### `workflow/Application/handlers/llm-settings.ts`
 
-### `workflow/Web/components/nodes/Accumulator_Node.tsx`
-… (and every other node except Loop Start/End)
-* Only change is the extra argument in the `getNodeStyle` call:
-  ```ts
-  data.interrupted,
-  data.bypass
-  ```
-  Correct ordering, compiles.
+Changes
+• Added local import: `resolveToolNameLocal` from `../../Core/toolUtils.js`.  
+• `normalizeDisabledTools()`  
+  – Uses optional chaining to attempt the SDK resolver first, otherwise falls back to the local resolver.  
+  – Keeps original trim/empty-string guard.  
+• `isBashDisabled()`  
+  – Comparison now `.toLowerCase() === 'bash'` and is whitespace-tolerant via `trim()`.
 
-### `workflow/Web/components/nodes/LoopEnd_Node.tsx`
-* Replaces object-spread + manual `borderStyle: 'double'` with:
-  ```ts
-  style={getNodeStyle(
-      NodeType.LOOP_END,
-      …,
-      data.bypass,
-      'double'
-  )}
-  ```
-* Eliminates the earlier double spread bug-risk, cleaner.  
-* Behaviour: inactive LoopEnd nodes with `active === false` keep double border (matches previous). Bypass LoopEnd nodes will turn dashed even though `defaultBorderStyle` is double (`styleForThisNode` branches on bypass only when active is not false) – this is correct per new semantics.
+Review
+1. Correctness  
+   – Fallback guarantees deterministic behaviour when the SDK resolver is absent.  
+   – Case-insensitive check removes previous brittle dependency on exact capitalisation.
 
-### `workflow/Web/components/nodes/LoopStart_Node.tsx`
-* Identical refactor as LoopEnd.
+2. Potential issues  
+   – `resolved` is cast to `string` (`as string`) before the truthiness check. This cast is unnecessary and can hide type errors; consider keeping it typed as `string | undefined`.  
+   – If `resolveToolName` returns `''` (empty string) the truthiness guard will skip the add, but such a value would be odd—worth documenting.  
+   – `normalizeDisabledTools()` now depends on `safeRequireSDK()`’s caching behaviour. If the SDK is hot-swapped at runtime (unlikely), the resolver could change mid-process; caching the resolver in a module-level variable would be more explicit.
 
-### `workflow/Web/components/nodes/*_Node.tsx`
-(Accumulator, CLI, IfElse, LLM, Preview, Text, Variable)
-* Solely forwards `data.bypass` in the correct parameter position.  
-* No other logic touched.
+3. Security  
+   – Lower-casing plus trimming prevents trivial bypasses (`"BASH "` etc.). Good hardening.
 
-### Typings & compile safety
-* All changed files compile if the codebase previously compiled; the new prop is optional.
-* Ensure any other code that destructures `data` picks up `bypass` or declares rest props, otherwise TypeScript will not complain but runtime may read `undefined`.
+4. Performance  
+   – Each call to `safeRequireSDK()` will still perform a `require` attempt and `catch` on failure. If this function is called frequently, cache the boolean “SDK present” flag to avoid redundant `try/catch`.
 
-### Security / performance
-* No effect on runtime behaviour except extra prop propagation. Rendering cost is negligible.
-* No injection risk; values end up in inline styles not CSS class names.
+### `workflow/Application/handlers/ExecuteWorkflow.ts`
+
+Changes
+• Guard that suppresses `dangerouslyAllowAll` if Bash is disabled now reads:
+
+```ts
+if (
+    llmDebug.dangerouslyAllowAll &&
+    llmDebug.disabledTools.some(t => typeof t === 'string' && t.toLowerCase() === 'bash')
+)
+```
+
+Review
+1. Correctness  
+   – Matches the new `isBashDisabled()` semantics except for whitespace—no `.trim()` here. An entry like `' bash'` will bypass the guard. Recommend mirroring `trim().toLowerCase()` for parity.
+
+2. Safety  
+   – Strengthens the previous protection; “BASH” or “bash” can no longer slip through.
+
+3. Style  
+   – Minor: consider extracting a shared utility (`isBashToolName()`) to avoid duplicate comparison logic between files.
+
+4. Types  
+   – `typeof t === 'string'` guard avoids runtime errors if `disabledTools` is poorly typed. Good.
 
 ## Recommendations
-1. Edge-case test matrix (active/inactive × bypass true/false × loop vs regular) to confirm intended visuals.
-2. Consider a visual regression test if your pipeline supports it; styling bugs are subtle.
-3. If bypass nodes should be non-interactive, also add `pointerEvents: 'none'` and/or cursor change.
-4. Minor: export a small enum for border styles to avoid string literals scattered.
 
-Overall the change is well-executed, minimally invasive, and easier to maintain than the previous manual overrides.
+1. Unify Bash comparison logic across codebase  
+   Create `function isBash(name: string): boolean` performing `name.trim().toLowerCase() === 'bash'` and consume it everywhere (normalisation, checks, tests).  
+2. Cache SDK resolver presence/result once at module load to drop repeated `try/catch` overhead.  
+3. Remove unnecessary `as string` cast in `normalizeDisabledTools()`.  
+4. Add unit tests with variants: `'bash'`, `'BASH'`, `' bash '`, `'BaSh'` to ensure coverage.

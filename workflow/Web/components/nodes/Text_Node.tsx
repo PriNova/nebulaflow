@@ -112,7 +112,7 @@ export const TextNode: React.FC<BaseNodeProps & { data: BaseNodeData }> = ({ id,
                     <RunFromHereButton nodeId={id} className="tw-w-[1.75rem] tw-h-[1.75rem]" />
                 </div>
                 <div
-                    className="tw-flex tw-items-center tw-justify-center tw-cursor-text"
+                    className="tw-flex tw-items-center tw-justify-center tw-cursor-pointer"
                     onDoubleClick={handleBodyDoubleClick}
                 >
                     <span style={{ whiteSpace: 'pre-wrap' }}>{data.title || 'Text'}</span>

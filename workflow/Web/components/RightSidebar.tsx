@@ -1,14 +1,14 @@
 import clsx from 'clsx'
-import { Eye, Loader2Icon, Menu } from 'lucide-react'
+import { CircleCheck, CircleX, Eye, Loader2Icon, Menu, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AssistantContentItem } from '../../Core/models'
 import { resolveToolName } from '../services/toolNames'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/shadcn/ui/accordion'
 import { Button } from '../ui/shadcn/ui/button'
 import { Textarea } from '../ui/shadcn/ui/textarea'
+import { CombinedPreviewEditorModal } from './CombinedPreviewEditorModal'
 import { CopyToClipboardButton } from './CopyToClipboardButton'
 import { Markdown } from './Markdown'
-import { MarkdownPreviewModal } from './MarkdownPreviewModal'
 import RunFromHereButton from './RunFromHereButton'
 import type { SelectionSummary } from './hooks/selectionHandling'
 import { NodeType, type WorkflowNodes, formatNodeTitle } from './nodes/Nodes'
@@ -41,6 +41,35 @@ function formatPercentLabel(p: number): string {
     return `${s} %`
 }
 
+function getToolRunStatus(resultJSON?: string): string | null {
+    if (!resultJSON) return null
+    try {
+        const obj = JSON.parse(resultJSON)
+        const status = (obj?.status ?? obj?.run?.status) as unknown
+        if (typeof status === 'string') return status
+        return null
+    } catch {
+        return null
+    }
+}
+
+function hasToolRunError(resultJSON?: string): boolean {
+    if (!resultJSON) return false
+    try {
+        const obj = JSON.parse(resultJSON)
+        const status = (obj?.status ?? obj?.run?.status) as unknown
+        const err = (obj?.error ?? obj?.run?.error) as unknown
+        if (err !== null && typeof err === 'object') return true
+        if (typeof status === 'string') {
+            const s = status.toLowerCase()
+            if (s === 'error' || s === 'failed') return true
+        }
+        return false
+    } catch {
+        return false
+    }
+}
+
 interface RightSidebarProps {
     sortedNodes: WorkflowNodes[]
     nodeResults: Map<string, string>
@@ -58,6 +87,7 @@ interface RightSidebarProps {
     parallelStepByNodeId?: Map<string, number>
     branchByIfElseId?: Map<string, { true: Set<string>; false: Set<string> }>
     onToggleCollapse?: () => void
+    onResultUpdate: (nodeId: string, value: string) => void
 }
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
@@ -77,6 +107,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     parallelStepByNodeId,
     branchByIfElseId,
     onToggleCollapse,
+    onResultUpdate,
 }) => {
     const filteredByActiveNodes = useMemo(
         () => sortedNodes.filter(node => node.type !== NodeType.PREVIEW && node.data.active !== false),
@@ -375,6 +406,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         item: AssistantContentItem,
         index: number,
         nodeId: string,
+        isNodeExecuting: boolean,
         pairedResultJSON?: string
     ) => {
         const key = `${nodeId}:${index}`
@@ -417,9 +449,43 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 className="tw-border tw-border-[var(--vscode-panel-border)] tw-rounded"
             >
                 <AccordionTrigger className="tw-w-full tw-text-xs tw-h-7 tw-py-1 tw-px-2 tw-bg-[var(--vscode-sideBar-background)] tw-rounded-t">
-                    <div className="tw-flex tw-items-center tw-w-full tw-text-left tw-truncate">
-                        <span className="tw-truncate">{title}</span>
-                    </div>
+                    {(() => {
+                        const toolStatus =
+                            item.type === 'tool_use' ? getToolRunStatus(pairedResultJSON) : null
+                        const isToolRunning = isNodeExecuting && toolStatus === 'in-progress'
+                        const isToolDone = toolStatus === 'done' || toolStatus === 'completed'
+                        const isToolError =
+                            item.type === 'tool_use' ? hasToolRunError(pairedResultJSON) : false
+                        return (
+                            <div className="tw-flex tw-items-center tw-w-full tw-text-left tw-truncate">
+                                <div className="tw-w-4 tw-mr-2">
+                                    {isToolRunning ? (
+                                        <Loader2Icon
+                                            stroke="#33ffcc"
+                                            strokeWidth={3}
+                                            size={24}
+                                            className="tw-h-4 tw-w-4 tw-animate-spin"
+                                        />
+                                    ) : isToolError ? (
+                                        <CircleX
+                                            stroke="var(--vscode-charts-red)"
+                                            strokeWidth={3}
+                                            size={24}
+                                            className="tw-h-4 tw-w-4"
+                                        />
+                                    ) : isToolDone ? (
+                                        <CircleCheck
+                                            stroke="var(--vscode-testing-iconPassed)"
+                                            strokeWidth={3}
+                                            size={24}
+                                            className="tw-h-4 tw-w-4"
+                                        />
+                                    ) : null}
+                                </div>
+                                <span className="tw-truncate">{title}</span>
+                            </div>
+                        )
+                    })()}
                 </AccordionTrigger>
                 <AccordionContent>
                     <div className="tw-p-2 tw-bg-[var(--vscode-editor-background)] tw-rounded-b">
@@ -654,6 +720,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                             it,
                                                             idx,
                                                             node.id,
+                                                            executingNodeIds.has(node.id),
                                                             it.type === 'tool_use'
                                                                 ? pairedMap.get(it.id)
                                                                 : undefined
@@ -682,6 +749,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                 <Button
                                                     size="sm"
                                                     variant="secondary"
+                                                    onClick={() => onResultUpdate(node.id, '')}
+                                                    className="tw-h-6 tw-px-2 tw-py-0 tw-gap-1"
+                                                    title="Reset Result"
+                                                >
+                                                    <RotateCcw className="tw-h-4 tw-w-4" />
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
                                                     onClick={() => setPreviewNodeId(node.id)}
                                                     className="tw-h-6 tw-px-2 tw-py-0 tw-gap-1"
                                                     title="Open Preview"
@@ -707,7 +783,16 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                             onChange={e => handleCommandChange(node.id, e.target.value)}
                                         />
                                     ) : (
-                                        <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] tw-max-h-64 tw-overflow-auto">
+                                        <div
+                                            className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] tw-max-h-64 tw-overflow-auto tw-cursor-pointer"
+                                            onDoubleClick={() => {
+                                                const content = nodeResults.get(node.id) || ''
+                                                if (content.trim().length === 0) return
+                                                setPreviewNodeId(node.id)
+                                            }}
+                                            role="button"
+                                            title="Open Preview"
+                                        >
                                             <Markdown
                                                 content={nodeResults.get(node.id) || ''}
                                                 className="tw-text-xs"
@@ -840,7 +925,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                           ))}
                 </div>
             </div>
-            <MarkdownPreviewModal
+            <CombinedPreviewEditorModal
                 isOpen={!!previewNodeId}
                 value={previewNodeId ? nodeResults.get(previewNodeId) || '' : ''}
                 title={
@@ -848,7 +933,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         ? sortedNodes.find(n => n.id === previewNodeId)?.data.title || 'Preview'
                         : 'Preview'
                 }
-                onConfirm={() => setPreviewNodeId(null)}
+                onConfirm={newValue => {
+                    if (previewNodeId) onResultUpdate(previewNodeId, newValue)
+                    setPreviewNodeId(null)
+                }}
                 onCancel={() => setPreviewNodeId(null)}
             />
         </div>

@@ -16,6 +16,10 @@ interface SidebarActionsBarProps {
     isExecuting: boolean
     isPaused: boolean
     onPauseToggle: () => void
+    // storage scope toggle
+    storageScope?: 'workspace' | 'user'
+    onToggleStorageScope?: () => void
+    isTogglingScope?: boolean
 }
 
 export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
@@ -28,6 +32,9 @@ export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
     isExecuting,
     isPaused,
     onPauseToggle,
+    storageScope = 'user',
+    onToggleStorageScope,
+    isTogglingScope = false,
 }) => {
     const [isHelpOpen, setIsHelpOpen] = useState(false)
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
@@ -143,6 +150,18 @@ export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
                         </TooltipTrigger>
                         <TooltipContent>Help</TooltipContent>
                     </Tooltip>
+                    {/* Storage scope toggle below all buttons */}
+                    <div className="tw-pt-1 tw-flex tw-justify-center">
+                        <button
+                            type="button"
+                            className="tw-text-[11px] tw-px-2 tw-py-[2px] tw-rounded-full tw-border tw-border-[var(--vscode-panel-border)] hover:tw-bg-[var(--vscode-button-secondaryHoverBackground)]"
+                            title="Click to switch between User and Workspace"
+                            onClick={onToggleStorageScope}
+                            disabled={isTogglingScope}
+                        >
+                            {storageScope === 'user' ? 'User' : 'Workspace'}
+                        </button>
+                    </div>
                 </div>
             </div>
             <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />

@@ -1,8 +1,11 @@
 import * as vscode from 'vscode'
 import type { ExtensionToWorkflow, WorkflowNodeDTO } from '../../Core/Contracts/Protocol'
+import { type ParallelCallbacks, executeWorkflowParallel } from '../../Core/engine/parallel-scheduler'
 import type { ApprovalResult } from '../../Core/models'
 import { AbortedError } from '../../Core/models'
 import type { WorkflowNodes } from '../../Core/models'
+import { NodeType } from '../../Core/models'
+import { loadSubflow } from '../../DataAccess/fs'
 import { fromProtocolPayload } from '../messaging/converters'
 import { safePost } from '../messaging/safePost'
 import { replaceIndexedInputs } from './ExecuteWorkflow'
@@ -47,6 +50,7 @@ export async function executeSingleNode(
             runAccumulator: undefined,
             runLoopStart: undefined,
             runLoopEnd: undefined,
+            runSubflow: async (..._args: any[]) => runSingleSubflow(node, inputs, abortSignal, webview),
         })
 
         const safeResult = Array.isArray(result) ? result.join('\n') : String(result)
@@ -141,37 +145,31 @@ async function executeSingleLLMNode(
         }
     }
 
-    const disabledTools: string[] | undefined = (node as any)?.data?.disabledTools
-    const dangerouslyAllowAll: boolean | undefined = (node as any)?.data?.dangerouslyAllowAll
-    const rawReasoningEffort: string | undefined = (node as any)?.data?.reasoningEffort
-    const validReasoningEfforts = new Set(['minimal', 'low', 'medium', 'high'])
-    const reasoningEffort =
-        rawReasoningEffort && validReasoningEfforts.has(rawReasoningEffort)
-            ? rawReasoningEffort
-            : 'medium'
-
-    const bashDisabled = Array.isArray(disabledTools)
-        ? disabledTools.some(t => String(t).toLowerCase() === 'bash')
-        : false
-    const shouldApplyAllowAll = dangerouslyAllowAll && !bashDisabled
+    const { computeLLMAmpSettings } = await import('./llm-settings.js')
+    const { settings: llmSettings, debug: llmDebug } = computeLLMAmpSettings(node)
+    const autoApprove = Boolean((llmSettings as any)['amp.dangerouslyAllowAll'])
 
     const amp = await createAmp({
         apiKey,
         workspaceRoots,
         settings: {
             'internal.primaryModel': selectedKey ?? defaultModelKey,
-            ...(disabledTools && disabledTools.length > 0 ? { 'tools.disable': disabledTools } : {}),
-            'reasoning.effort': reasoningEffort as any,
-            ...(shouldApplyAllowAll
-                ? {
-                      'amp.dangerouslyAllowAll': true,
-                      'amp.experimental.commandApproval.enabled': false,
-                      'amp.commands.allowlist': ['*'],
-                      'amp.commands.strict': false,
-                  }
-                : {}),
+            ...llmSettings,
         },
     })
+
+    // Ensure tools are registered before first run
+    try {
+        if (typeof (amp as any).whenToolsReady === 'function') {
+            const enabled = await (amp as any).whenToolsReady()
+            console.debug('[ExecuteSingleNode] Tools ready for node', node.id, {
+                enabled,
+                disabled: llmDebug.disabledTools,
+                allowAll: llmDebug.dangerouslyAllowAll,
+                effort: llmDebug.reasoningEffort,
+            })
+        }
+    } catch {}
 
     try {
         let finalText = ''
@@ -218,7 +216,7 @@ async function executeSingleLLMNode(
                             if (handledBlocked.has(b.toolUseID)) continue
                             handledBlocked.add(b.toolUseID)
 
-                            if (shouldApplyAllowAll) {
+                            if (autoApprove) {
                                 await amp.sendToolInput({
                                     threadID: thread.id,
                                     toolUseID: b.toolUseID,
@@ -476,4 +474,119 @@ async function executeSingleIfElseNode(
     const [leftSide, operator, rightSide] = parts
     const isTrue = operator === '===' ? leftSide === rightSide : leftSide !== rightSide
     return isTrue ? 'true' : 'false'
+}
+
+async function runSingleSubflow(
+    wrapperNode: WorkflowNodes,
+    inputs: string[],
+    abortSignal: AbortSignal,
+    webview: vscode.Webview
+): Promise<string[]> {
+    const subflowId = (wrapperNode as any)?.data?.subflowId as string | undefined
+    if (!subflowId) throw new Error('Subflow node missing subflowId')
+    const def = await loadSubflow(subflowId)
+    if (!def) throw new Error(`Subflow not found: ${subflowId}`)
+
+    const inner = fromProtocolPayload({ nodes: def.graph.nodes as any, edges: def.graph.edges as any })
+    const seeds: Record<string, string> = {}
+    for (let i = 0; i < def.inputs.length; i++) {
+        const port = def.inputs[i]
+        const val = inputs[i] ?? ''
+        const match = inner.nodes.find(
+            n => (n as any).type === NodeType.SUBFLOW_INPUT && (n as any).data?.portId === port.id
+        )
+        if (match) seeds[match.id] = val
+    }
+    const outNodes = inner.nodes.filter(n => (n as any).type === NodeType.SUBFLOW_OUTPUT)
+    if (!outNodes || outNodes.length === 0) throw new Error('Subflow definition missing output nodes')
+    const outNodeIdToPortId = new Map<string, string>()
+    for (const n of outNodes) {
+        const pid = (n as any)?.data?.portId as string | undefined
+        if (pid) outNodeIdToPortId.set(n.id, pid)
+    }
+
+    // Aggregate progress (exclude boundary and inactive nodes)
+    const eligibleInnerIds = new Set(
+        inner.nodes
+            .filter(
+                n =>
+                    (n as any).data?.active !== false &&
+                    (n as any).type !== NodeType.SUBFLOW_INPUT &&
+                    (n as any).type !== NodeType.SUBFLOW_OUTPUT
+            )
+            .map(n => n.id)
+    )
+    const totalInner = eligibleInnerIds.size
+    let completedInner = 0
+    if (totalInner > 0) {
+        await safePost(webview, {
+            type: 'node_execution_status',
+            data: {
+                nodeId: wrapperNode.id,
+                status: 'running',
+                result: `${completedInner}/${totalInner}`,
+            },
+        } as any)
+    }
+
+    const resultByPortId = new Map<string, string>()
+    const callbacks: ParallelCallbacks = {
+        runNode: async (node, _pctx, _signal) => {
+            return await routeNodeExecution(node, 'single-node', {
+                runCLI: (..._args: any[]) =>
+                    executeSingleCLINode(node, [], abortSignal, {} as any, async () => ({
+                        type: 'approved',
+                    })),
+                runLLM: (..._args: any[]) =>
+                    executeSingleLLMNode(node as any, [], abortSignal, {} as any, async () => ({
+                        type: 'approved',
+                    })),
+                runPreview: (..._args: any[]) => executeSinglePreviewNode(node as any, [], {} as any),
+                runInput: (..._args: any[]) => executeSingleInputNode(node as any, []),
+                runVariable: (..._args: any[]) => executeSingleVariableNode(node as any, []),
+                runIfElse: (..._args: any[]) => executeSingleIfElseNode(node as any, []),
+                runAccumulator: undefined,
+                runLoopStart: undefined,
+                runLoopEnd: undefined,
+                runSubflowOutput: async (..._args: any[]) => '',
+                runSubflowInput: async (..._args: any[]) => '',
+            })
+        },
+        onStatus: payload => {
+            if (
+                payload.status === 'completed' &&
+                payload.nodeId &&
+                outNodeIdToPortId.has(payload.nodeId)
+            ) {
+                const pid = outNodeIdToPortId.get(payload.nodeId)!
+                resultByPortId.set(pid, payload.result ?? '')
+            }
+            if (
+                payload.status === 'completed' &&
+                payload.nodeId &&
+                eligibleInnerIds.has(payload.nodeId)
+            ) {
+                completedInner += 1
+                if (totalInner > 0) {
+                    void safePost(webview, {
+                        type: 'node_execution_status',
+                        data: {
+                            nodeId: wrapperNode.id,
+                            status: 'running',
+                            result: `${completedInner}/${totalInner}`,
+                        },
+                    } as any)
+                }
+            }
+        },
+    }
+    await executeWorkflowParallel(
+        inner.nodes as any,
+        inner.edges as any,
+        callbacks,
+        { onError: 'fail-fast', seeds: { outputs: seeds } },
+        abortSignal
+    )
+    const final: string[] = def.outputs.map(o => resultByPortId.get(o.id) ?? '')
+    return final
 }

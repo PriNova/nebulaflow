@@ -132,6 +132,12 @@ export function isNodeExecutionPayload(value: unknown): value is NodeExecutionPa
     )
         return false
     if (
+        'multi' in (value as any) &&
+        (value as any).multi !== undefined &&
+        !(Array.isArray((value as any).multi) && (value as any).multi.every((v: unknown) => isString(v)))
+    )
+        return false
+    if (
         'command' in (value as any) &&
         (value as any).command !== undefined &&
         !isString((value as any).command)
@@ -175,6 +181,32 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
             return true
         case 'calculate_tokens':
             return isObject(msg.data) && isString(msg.data.text) && isString(msg.data.nodeId)
+        case 'create_subflow': {
+            const d = msg.data
+            if (!isObject(d)) return false
+            if (!isString((d as any).id) || !isString((d as any).title) || !isString((d as any).version))
+                return false
+            const g = (d as any).graph
+            if (!isObject(g)) return false
+            const nodes = (g as any).nodes
+            const edges = (g as any).edges
+            if (!Array.isArray(nodes) || !nodes.every(isWorkflowNodeDTO)) return false
+            if (!Array.isArray(edges) || !edges.every(isEdgeDTO)) return false
+            const inputs = (d as any).inputs
+            const outputs = (d as any).outputs
+            if (!Array.isArray(inputs) || !Array.isArray(outputs)) return false
+            return true
+        }
+        case 'get_subflow': {
+            const d = msg.data
+            return isObject(d) && isString((d as any).id)
+        }
+        case 'get_subflows':
+            return true
+        case 'duplicate_subflow': {
+            const d = msg.data
+            return isObject(d) && isString((d as any).id) && isString((d as any).nodeId)
+        }
         case 'execute_node': {
             const data = msg.data
             if (!isObject(data)) return false
@@ -213,6 +245,8 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
                 isString(msg.data.nodeId) &&
                 (msg.data.reason === undefined || isString(msg.data.reason))
             )
+        case 'reset_results':
+            return true
         default:
             return false
     }
@@ -310,6 +344,47 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
                 return false
             }
             return true
+        }
+        case 'subflow_saved':
+            return isObject(msg.data) && isString((msg.data as any).id)
+        case 'provide_subflow': {
+            const d = msg.data
+            if (!isObject(d)) return false
+            if (!isString((d as any).id) || !isString((d as any).title) || !isString((d as any).version))
+                return false
+            const g = (d as any).graph
+            if (!isObject(g)) return false
+            const nodes = (g as any).nodes
+            const edges = (g as any).edges
+            if (!Array.isArray(nodes) || !nodes.every(isWorkflowNodeDTO)) return false
+            if (!Array.isArray(edges) || !edges.every(isEdgeDTO)) return false
+            const inputs = (d as any).inputs
+            const outputs = (d as any).outputs
+            if (!Array.isArray(inputs) || !Array.isArray(outputs)) return false
+            return true
+        }
+        case 'provide_subflows': {
+            const arr = msg.data
+            if (!Array.isArray(arr)) return false
+            for (const item of arr) {
+                if (!isObject(item)) return false
+                if (
+                    !isString((item as any).id) ||
+                    !isString((item as any).title) ||
+                    !isString((item as any).version)
+                )
+                    return false
+            }
+            return true
+        }
+        case 'subflow_copied': {
+            const d = msg.data
+            return (
+                isObject(d) &&
+                isString((d as any).nodeId) &&
+                isString((d as any).oldId) &&
+                isString((d as any).newId)
+            )
         }
         default:
             return false

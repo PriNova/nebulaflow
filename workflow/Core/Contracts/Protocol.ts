@@ -41,6 +41,8 @@ export interface NodeExecutionPayload {
     nodeId: string
     status: 'running' | 'completed' | 'error' | 'interrupted' | 'pending_approval'
     result?: string
+    // Optional multi-output results for nodes that produce multiple outputs (e.g., Subflow)
+    multi?: string[]
     command?: string
 }
 
@@ -56,6 +58,25 @@ export interface NodeSavedState {
 export interface WorkflowStateDTO {
     nodeResults: Record<string, NodeSavedState>
     ifElseDecisions?: Record<string, 'true' | 'false'>
+}
+
+// Subflows
+export interface SubflowPortDTO {
+    id: string
+    name: string
+    index: number
+}
+export interface SubflowGraphDTO {
+    nodes: WorkflowNodeDTO[]
+    edges: EdgeDTO[]
+}
+export interface SubflowDefinitionDTO {
+    id: string
+    title: string
+    version: string
+    inputs: SubflowPortDTO[]
+    outputs: SubflowPortDTO[]
+    graph: SubflowGraphDTO
 }
 
 // Resume metadata for paused/interrupted workflows
@@ -135,6 +156,30 @@ interface ToggleStorageScopeCommand extends BaseWorkflowMessage {
     type: 'toggle_storage_scope'
 }
 
+interface ResetResultsCommand extends BaseWorkflowMessage {
+    type: 'reset_results'
+}
+
+// Subflow commands
+interface CreateSubflowCommand extends BaseWorkflowMessage {
+    type: 'create_subflow'
+    data: SubflowDefinitionDTO
+}
+
+interface GetSubflowCommand extends BaseWorkflowMessage {
+    type: 'get_subflow'
+    data: { id: string }
+}
+
+interface GetSubflowsCommand extends BaseWorkflowMessage {
+    type: 'get_subflows'
+}
+
+interface DuplicateSubflowCommand extends BaseWorkflowMessage {
+    type: 'duplicate_subflow'
+    data: { id: string; nodeId: string }
+}
+
 // From Extension (to webview)
 interface WorkflowLoadedEvent extends BaseWorkflowMessage {
     type: 'workflow_loaded'
@@ -210,6 +255,27 @@ interface StorageScopeEvent extends BaseWorkflowMessage {
     data: { scope: 'workspace' | 'user'; basePath?: string }
 }
 
+// Subflow events
+interface SubflowSavedEvent extends BaseWorkflowMessage {
+    type: 'subflow_saved'
+    data: { id: string }
+}
+
+interface ProvideSubflowEvent extends BaseWorkflowMessage {
+    type: 'provide_subflow'
+    data: SubflowDefinitionDTO
+}
+
+interface ProvideSubflowsEvent extends BaseWorkflowMessage {
+    type: 'provide_subflows'
+    data: Array<{ id: string; title: string; version: string }>
+}
+
+interface SubflowCopiedEvent extends BaseWorkflowMessage {
+    type: 'subflow_copied'
+    data: { nodeId: string; oldId: string; newId: string }
+}
+
 interface ExecuteNodeCommand extends BaseWorkflowMessage {
     type: 'execute_node'
     data: {
@@ -238,6 +304,11 @@ export type WorkflowToExtension =
     | GetCustomNodesCommand
     | GetStorageScopeCommand
     | ToggleStorageScopeCommand
+    | ResetResultsCommand
+    | CreateSubflowCommand
+    | GetSubflowCommand
+    | GetSubflowsCommand
+    | DuplicateSubflowCommand
 
 export type ExtensionToWorkflow =
     | ModelsLoadedEvent
@@ -252,3 +323,7 @@ export type ExtensionToWorkflow =
     | NodeAssistantContentEvent
     | ProvideCustomModelsEvent
     | StorageScopeEvent
+    | SubflowSavedEvent
+    | ProvideSubflowEvent
+    | ProvideSubflowsEvent
+    | SubflowCopiedEvent

@@ -31,3 +31,4 @@ future-enhancements.md
 .sourcegraph/
 .nebulaflow/
 tasks/
+dist-tests

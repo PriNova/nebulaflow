@@ -16,6 +16,7 @@ import { Input } from '../ui/shadcn/ui/input'
 import { Label } from '../ui/shadcn/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/shadcn/ui/popover'
 import { Textarea } from '../ui/shadcn/ui/textarea'
+import { TextEditorModal } from './TextEditorModal'
 import type { AccumulatorNode } from './nodes/Accumulator_Node'
 import type { LLMNode } from './nodes/LLM_Node'
 import type { LoopStartNode } from './nodes/LoopStart_Node'
@@ -78,6 +79,14 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
     const [selectedModel, setSelectedModel] = useState<{ id: string; title?: string } | undefined>(
         undefined
     )
+    const [isPromptEditorOpen, setIsPromptEditorOpen] = useState(false)
+    const [promptDraft, setPromptDraft] = useState('')
+    const [isVariableEditorOpen, setIsVariableEditorOpen] = useState(false)
+    const [variableDraft, setVariableDraft] = useState('')
+    const [isInputEditorOpen, setIsInputEditorOpen] = useState(false)
+    const [inputDraft, setInputDraft] = useState('')
+    const [isConditionEditorOpen, setIsConditionEditorOpen] = useState(false)
+    const [conditionDraft, setConditionDraft] = useState('')
 
     useEffect(() => {
         if (node.type === NodeType.LLM) {
@@ -90,6 +99,15 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
             setSelectedModel(undefined)
         }
     }, [node, onUpdate])
+
+    // Close editors if the selected node changes
+    // biome-ignore lint/correctness/useExhaustiveDependencies: Only need to track node.id, not entire node object
+    useEffect(() => {
+        setIsPromptEditorOpen(false)
+        setIsVariableEditorOpen(false)
+        setIsInputEditorOpen(false)
+        setIsConditionEditorOpen(false)
+    }, [node.id])
 
     const groupedModels = useMemo(() => {
         const groups = new Map<string, { id: string; title?: string }[]>()
@@ -166,6 +184,23 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                         onUpdate(node.id, { title: e.target.value })
                     }
                 />
+                {node.type === NodeType.SUBFLOW ? (
+                    <div className="tw-mt-2 tw-flex tw-justify-end">
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                                window.dispatchEvent(
+                                    new CustomEvent('nebula-save-subflow' as any, {
+                                        detail: { nodeId: node.id },
+                                    })
+                                )
+                            }}
+                        >
+                            Save as Subflow
+                        </Button>
+                    </div>
+                ) : null}
             </div>
             {node.type === NodeType.CLI && (
                 <div className="tw-flex tw-flex-col tw-gap-2">
@@ -230,10 +265,25 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                             onChange={(e: { target: { value: any } }) =>
                                 onUpdate(node.id, { content: e.target.value })
                             }
+                            onDoubleClick={() => {
+                                setPromptDraft(node.data.content || '')
+                                setIsPromptEditorOpen(true)
+                            }}
                             placeholder="Enter LLM prompt... (use ${1}, ${2} and so on for positional inputs)"
                             aria-invalid={!!nodeError}
                         />
                         {nodeError && <p className="tw-text-xs tw-text-red-500">{nodeError}</p>}
+                        <TextEditorModal
+                            isOpen={isPromptEditorOpen}
+                            value={promptDraft}
+                            onChange={setPromptDraft}
+                            onConfirm={() => {
+                                onUpdate(node.id, { content: promptDraft })
+                                setIsPromptEditorOpen(false)
+                            }}
+                            onCancel={() => setIsPromptEditorOpen(false)}
+                            title={node.data.title ?? 'Edit Prompt'}
+                        />
                     </div>
                     {models && (
                         <div>
@@ -402,7 +452,7 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                 </div>
             )}
             {node.type === NodeType.INPUT && (
-                <div>
+                <div className="tw-flex tw-flex-col tw-gap-2">
                     <Button
                         variant="secondary"
                         size="sm"
@@ -412,16 +462,33 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                         <Save className="tw-mr-2" size={14} />
                         Save as Custom Node
                     </Button>
-                    <Label htmlFor="node-input">Input Text</Label>
-                    <Textarea
-                        id="node-input"
-                        className="tw-min-h-[48px] tw-text-sm tw-py-1"
-                        value={node.data.content || ''}
-                        onChange={(e: { target: { value: any } }) =>
-                            onUpdate(node.id, { content: e.target.value })
-                        }
-                        placeholder="Enter input text... (use ${1}, ${2} and so on for positional inputs)"
-                    />
+                    <div>
+                        <Label htmlFor="node-input">Input Text</Label>
+                        <Textarea
+                            id="node-input"
+                            className="tw-min-h-[48px] tw-text-sm tw-py-1"
+                            value={node.data.content || ''}
+                            onChange={(e: { target: { value: any } }) =>
+                                onUpdate(node.id, { content: e.target.value })
+                            }
+                            onDoubleClick={() => {
+                                setInputDraft(node.data.content || '')
+                                setIsInputEditorOpen(true)
+                            }}
+                            placeholder="Enter input text... (use ${1}, ${2} and so on for positional inputs)"
+                        />
+                        <TextEditorModal
+                            isOpen={isInputEditorOpen}
+                            value={inputDraft}
+                            onChange={setInputDraft}
+                            onConfirm={() => {
+                                onUpdate(node.id, { content: inputDraft })
+                                setIsInputEditorOpen(false)
+                            }}
+                            onCancel={() => setIsInputEditorOpen(false)}
+                            title={node.data.title ?? 'Edit Input Text'}
+                        />
+                    </div>
                 </div>
             )}
             {node.type === NodeType.PREVIEW && (
@@ -540,9 +607,53 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                             onChange={(e: { target: { value: any } }) =>
                                 onUpdate(node.id, { content: e.target.value })
                             }
+                            onDoubleClick={() => {
+                                setVariableDraft(node.data.content || '')
+                                setIsVariableEditorOpen(true)
+                            }}
                             placeholder="Enter input text... (use ${1}, ${2} and so on for positional inputs)"
                         />
+                        <TextEditorModal
+                            isOpen={isVariableEditorOpen}
+                            value={variableDraft}
+                            onChange={setVariableDraft}
+                            onConfirm={() => {
+                                onUpdate(node.id, { content: variableDraft })
+                                setIsVariableEditorOpen(false)
+                            }}
+                            onCancel={() => setIsVariableEditorOpen(false)}
+                            title={node.data.title ?? 'Edit Input Text'}
+                        />
                     </div>
+                </div>
+            )}
+            {node.type === NodeType.IF_ELSE && (
+                <div className="tw-flex tw-flex-col tw-gap-2">
+                    <Label htmlFor="ifelse-condition">Condition</Label>
+                    <Textarea
+                        id="ifelse-condition"
+                        className="tw-min-h-[48px] tw-text-sm tw-py-1"
+                        value={node.data.content || ''}
+                        onChange={(e: { target: { value: any } }) =>
+                            onUpdate(node.id, { content: e.target.value })
+                        }
+                        onDoubleClick={() => {
+                            setConditionDraft(node.data.content || '')
+                            setIsConditionEditorOpen(true)
+                        }}
+                        placeholder="e.g., ${1} === done or ${1} !== error"
+                    />
+                    <TextEditorModal
+                        isOpen={isConditionEditorOpen}
+                        value={conditionDraft}
+                        onChange={setConditionDraft}
+                        onConfirm={() => {
+                            onUpdate(node.id, { content: conditionDraft })
+                            setIsConditionEditorOpen(false)
+                        }}
+                        onCancel={() => setIsConditionEditorOpen(false)}
+                        title={node.data.title ?? 'Edit Condition'}
+                    />
                 </div>
             )}
         </div>

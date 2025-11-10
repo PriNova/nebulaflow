@@ -18,6 +18,10 @@ export enum NodeType {
     ACCUMULATOR = 'accumulator',
     VARIABLE = 'variable',
     IF_ELSE = 'if-else',
+    SUBFLOW = 'subflow',
+    // Inner-only boundary nodes for subflows (not exposed in outer canvas)
+    SUBFLOW_INPUT = 'subflow-input',
+    SUBFLOW_OUTPUT = 'subflow-output',
 }
 
 export class AbortedError extends Error {
@@ -62,9 +66,29 @@ export interface WorkflowNode {
     selected?: boolean
 }
 
-import type { AssistantContentItem, Model } from './Contracts/Protocol'
+import type { AssistantContentItem, EdgeDTO, Model, WorkflowNodeDTO } from './Contracts/Protocol'
 
 export type { AssistantContentItem }
+
+export interface SubflowPortDef {
+    id: string
+    name: string
+    index: number
+}
+
+export interface SubflowGraphDTO {
+    nodes: WorkflowNodeDTO[]
+    edges: EdgeDTO[]
+}
+
+export interface SubflowDefinitionDTO {
+    id: string
+    title: string
+    version: string
+    inputs: SubflowPortDef[]
+    outputs: SubflowPortDef[]
+    graph: SubflowGraphDTO
+}
 
 export interface LLMNode extends WorkflowNode {
     type: NodeType.LLM
@@ -114,6 +138,15 @@ export interface IfElseNode extends WorkflowNode {
     }
 }
 
+export interface SubflowNode extends WorkflowNode {
+    type: NodeType.SUBFLOW
+    data: BaseNodeData & {
+        subflowId: string
+        inputPortCount?: number
+        outputPortCount?: number
+    }
+}
+
 export type WorkflowNodes =
     | WorkflowNode
     | LLMNode
@@ -122,6 +155,7 @@ export type WorkflowNodes =
     | AccumulatorNode
     | VariableNode
     | IfElseNode
+    | SubflowNode
 
 // Re-export shared protocol message contracts (types-only)
 export type {

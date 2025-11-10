@@ -8,6 +8,7 @@ import { LLMNode } from './LLM_Node'
 import { LoopEndNode } from './LoopEnd_Node'
 import { LoopStartNode } from './LoopStart_Node'
 import { PreviewNode } from './Preview_Node'
+import { SubflowNode as SubflowNodeComp } from './Subflow_Node'
 import { TextNode } from './Text_Node'
 import { VariableNode } from './Variable_Node'
 
@@ -21,6 +22,9 @@ export enum NodeType {
     ACCUMULATOR = 'accumulator',
     VARIABLE = 'variable',
     IF_ELSE = 'if-else',
+    SUBFLOW = 'subflow',
+    SUBFLOW_INPUT = 'subflow-input',
+    SUBFLOW_OUTPUT = 'subflow-output',
 }
 
 // Human-friendly labels for each node type used in UI-only titles
@@ -34,6 +38,9 @@ export const nodeTypeDisplayLabel: Record<NodeType, string> = {
     [NodeType.ACCUMULATOR]: 'Accumulator Node',
     [NodeType.VARIABLE]: 'Variable Node',
     [NodeType.IF_ELSE]: 'If/Else Node',
+    [NodeType.SUBFLOW]: 'Subflow Node',
+    [NodeType.SUBFLOW_INPUT]: 'Subflow Input',
+    [NodeType.SUBFLOW_OUTPUT]: 'Subflow Output',
 }
 
 // Compose the display title without mutating or persisting the underlying data.title
@@ -61,6 +68,7 @@ export interface BaseNodeProps {
         tokenCount?: number
         iterations?: number
         interrupted?: boolean
+        isEditing?: boolean
         // Fan-in rendering flags available on nodes that opt-in
         fanInEnabled?: boolean
         inputPortCount?: number
@@ -103,6 +111,20 @@ export type WorkflowNode = Omit<ReactFlowNode, 'data' | 'position' | 'type' | 'i
     selected?: boolean
 }
 
+export type SubflowNode = Omit<WorkflowNode, 'data'> & {
+    type: NodeType.SUBFLOW
+    data: BaseNodeData & {
+        subflowId?: string
+        inputPortCount?: number
+        outputPortCount?: number
+        pendingSubflow?: {
+            inputs: Array<{ id: string; name: string; index: number }>
+            outputs: Array<{ id: string; name: string; index: number }>
+            graph: { nodes: any[]; edges: any[] }
+        }
+    }
+}
+
 export type WorkflowNodes =
     | WorkflowNode
     | CLINode
@@ -114,6 +136,7 @@ export type WorkflowNodes =
     | AccumulatorNode
     | VariableNode
     | IfElseNode
+    | SubflowNode
 
 export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
     const id = uuidv4()
@@ -154,6 +177,8 @@ export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
             } as IfElseNode
         case NodeType.LOOP_START:
             return { ...node, id, data: { ...node.data, overrideIterations: false } } as LoopStartNode
+        case NodeType.SUBFLOW:
+            return { ...node, id, data: { ...node.data, fanInEnabled: true } } as SubflowNode
         default:
             return { ...node, id }
     }
@@ -272,4 +297,7 @@ export const nodeTypes = {
     [NodeType.ACCUMULATOR]: AccumulatorNode,
     [NodeType.IF_ELSE]: IfElseNode,
     [NodeType.VARIABLE]: VariableNode,
+    [NodeType.SUBFLOW]: SubflowNodeComp,
+    [NodeType.SUBFLOW_INPUT]: TextNode,
+    [NodeType.SUBFLOW_OUTPUT]: PreviewNode,
 }

@@ -4,6 +4,62 @@ Recommended improvements and optimizations for future implementation.
 
 ## Pending Enhancements
 
+### Tool Safety and Resolver Hygiene
+
+- Goal: Prevent future drift in Bash detection and reduce runtime overhead in tool name normalization.
+- What:
+  - Extract a shared helper `isBash(name: string): boolean` used by both settings and runtime guards to centralize case/trim normalization.
+  - Remove unnecessary `as string` cast in normalization path in [llm-settings.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/llm-settings.ts#L12-L18) to tighten types.
+  - Cache SDK resolver availability from `safeRequireSDK()` in [llm-settings.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/llm-settings.ts#L21-L28) to avoid repeated try/catch on frequent normalization calls.
+- Why: A single source of truth for Bash checks prevents subtle mismatches; minor type cleanup improves safety; caching avoids unnecessary overhead during frequent operations.
+- Priority: P3 (code quality/robustness)
+
+
+### IF/ELSE Property Editor – Polish Items
+
+- Goal: Refine the new condition editor UX and typing without changing behavior
+- What:
+  - Reset `conditionDraft` when the selected node changes to avoid stale draft values.
+  - Avoid a static `id` on the condition textarea (e.g., derive from `node.id`) to prevent potential collisions in multi-panel contexts.
+  - Add a small "Edit" button next to the textarea for keyboard users to open the modal without requiring double‑click.
+  - Tighten `onChange` typing to `React.ChangeEvent<HTMLTextAreaElement>` (remove `any`).
+- Why: Improves accessibility, prevents minor edge‑case collisions, and strengthens type safety with minimal complexity.
+- Priority: P3 (polish)
+
+### Unified Preview/Edit Modal – A11y and UX Polish
+
+- Goal: Improve tab accessibility and small interaction details in the combined modal
+- What:
+  - Add `aria-pressed` and `aria-controls` to the Preview/Edit toggle buttons; use `role="tablist"`/`role="tab"` semantics for better screen reader support.
+  - Restore focus to the toggle that opened the current view when switching tabs for keyboard users.
+  - Optional: remember the last-used tab per session and open the modal with that tab selected (still default to Preview on first open).
+  - Optional: show a subtle "Edited" indicator when the draft differs from the initial value before saving.
+- Why: Enhances accessibility and clarity without changing core behavior or adding dependencies.
+- Priority: P3 (polish)
+
+### Prompt for LLM – RightSidebar Tool Status Indicators Follow‑Ups
+
+- Goal: Harden status parsing and polish visual consistency for tool run indicators
+- What:
+  - Fix null-check edge case in `hasToolRunError` so `null` is not treated as an object when checking `error` fields.
+  - Support string-form error payloads (e.g., `error: "message"`) in addition to object-shaped errors when deriving failure state.
+  - Memoize or cache JSON parsing of paired `tool_result` once per item to avoid repeated `JSON.parse` work across renders.
+  - Replace hard-coded spinner color with theme tokens (VS Code variables) for consistent theming; verify success/error icon colors also use tokens.
+- Why: Improves correctness for mixed error shapes, reduces unnecessary parsing overhead, and aligns UI with the current theme for clarity and consistency.
+- Priority: P2 (robustness/UX polish)
+
+### Subflow Node – Remaining Review Items
+
+- Goal: Tighten subflow editor UX and execution semantics
+- What:
+  - Add autosave and Ctrl/Cmd+S shortcut in subflow editor; show unsaved indicator next to title.
+  - Propagate abort/fail-fast semantics from inner nodes to parent subflow node with clear status mapping (success/error/interrupted) and error surface in RightSidebar.
+  - Preserve and edit subflow output mapping UI (rename, reorder, delete) with validation against duplicate names and stable indices.
+  - Carry ordered inner edges out as deterministic order metadata when mapping outputs to parent connections.
+  - Improve keyboard accessibility: visible focus ring, Enter/Space to open editor, ARIA label with subflow title.
+  - Optional: preview unsaved changes diff before leaving subflow (nodes/edges/outputs) to help users decide to discard or save.
+- Why: Rounds out the subflow user journey (edit, save, navigate, execute) with predictable persistence, clear failure behavior, and accessible controls.
+
 ### Bypass Mode – Interactivity and Typing Polish
 
 - Goal: Clarify bypass-node interactivity and widen style typing for future-proofing

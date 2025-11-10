@@ -12,6 +12,9 @@ export interface NodeImplementations {
     runVariable?: (...args: any[]) => Promise<any>
     runLoopStart?: (...args: any[]) => Promise<any>
     runLoopEnd?: (...args: any[]) => Promise<any>
+    runSubflow?: (...args: any[]) => Promise<any>
+    runSubflowOutput?: (...args: any[]) => Promise<any>
+    runSubflowInput?: (...args: any[]) => Promise<any>
 }
 
 export async function routeNodeExecution(
@@ -56,6 +59,18 @@ export async function routeNodeExecution(
         case NodeType.LOOP_END: {
             if (!impl.runLoopEnd) return unsupported(node, mode)
             return impl.runLoopEnd(...args)
+        }
+        case NodeType.SUBFLOW: {
+            if (!impl.runSubflow) return unsupported(node, mode)
+            return impl.runSubflow(...args)
+        }
+        case NodeType.SUBFLOW_OUTPUT: {
+            if (!impl.runSubflowOutput) return unsupported(node, mode)
+            return impl.runSubflowOutput(...args)
+        }
+        case NodeType.SUBFLOW_INPUT: {
+            if (!impl.runSubflowInput) return unsupported(node, mode)
+            return impl.runSubflowInput(...args)
         }
         default:
             throw new Error(`Unknown node type: ${(node as any).type}`)

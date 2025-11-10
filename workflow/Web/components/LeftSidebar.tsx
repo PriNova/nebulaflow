@@ -3,7 +3,7 @@ import type React from 'react'
 import { Button } from '../ui/shadcn/ui/button'
 import { SidebarActionsBar } from './SidebarActionsBar'
 import { WorkflowSidebar } from './WorkflowSidebar'
-import type { NodeType, WorkflowNodes } from './nodes/Nodes'
+import type { BaseNodeData, NodeType, WorkflowNodes } from './nodes/Nodes'
 
 interface LeftSidebarProps {
     // Collapse control
@@ -21,7 +21,11 @@ interface LeftSidebarProps {
     onPauseToggle: () => void
 
     // WorkflowSidebar props
-    onNodeAdd: (nodeOrLabel: WorkflowNodes | string, nodeType?: NodeType) => void
+    onNodeAdd: (
+        nodeOrLabel: WorkflowNodes | string,
+        nodeType?: NodeType,
+        options?: { position?: { x: number; y: number }; initialData?: Partial<BaseNodeData> }
+    ) => void
     selectedNode?: WorkflowNodes | null
     onNodeUpdate?: (nodeId: string, data: Partial<WorkflowNodes['data']>) => void
     models: { id: string; title?: string }[]
@@ -29,6 +33,7 @@ interface LeftSidebarProps {
     onDeleteCustomNode: (nodeId: string) => void
     onRenameCustomNode: (oldNodeTitle: string, newNodeTitle: string) => void
     customNodes: WorkflowNodes[]
+    subflows: Array<{ id: string; title: string; version: string }>
     nodeErrors?: Map<string, string>
     storageScope?: 'workspace' | 'user'
     onToggleStorageScope?: () => void
@@ -54,6 +59,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     onDeleteCustomNode,
     onRenameCustomNode,
     customNodes,
+    subflows,
     nodeErrors,
     storageScope = 'user',
     onToggleStorageScope,
@@ -89,6 +95,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 isPaused={isPaused}
                 onAbort={onAbort}
                 onPauseToggle={onPauseToggle}
+                storageScope={storageScope}
+                isTogglingScope={isTogglingScope}
+                onToggleStorageScope={onToggleStorageScope}
             />
 
             <div className="tw-flex-1 tw-overflow-y-auto tw-min-h-0">
@@ -101,10 +110,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     onDeleteCustomNode={onDeleteCustomNode}
                     onRenameCustomNode={onRenameCustomNode}
                     customNodes={customNodes}
+                    subflows={subflows}
                     nodeErrors={nodeErrors}
-                    storageScope={storageScope}
-                    isTogglingScope={isTogglingScope}
-                    onToggleStorageScope={onToggleStorageScope}
                 />
             </div>
         </div>

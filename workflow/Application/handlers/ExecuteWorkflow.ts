@@ -9,16 +9,16 @@ import {
     type WorkflowNode,
     type WorkflowNodes,
 } from '../../Core/models'
-import { isToolDisabled } from '../../Core/toolUtils'
+import { loadSubflow } from '../../DataAccess/fs'
 import { expandHome, execute as shellExecute } from '../../DataAccess/shell'
+import { fromProtocolPayload } from '../messaging/converters'
 import { safePost } from '../messaging/safePost'
 import { routeNodeExecution } from './NodeDispatch'
+import { computeLLMAmpSettings } from './llm-settings'
 
 const DEFAULT_LLM_TIMEOUT_MS = 300_000
 
-function isBashDisabled(disabledTools: string[] | undefined): boolean {
-    return isToolDisabled('Bash', disabledTools)
-}
+// Panel-scoped subflow cache is provided by the caller and passed through to subflow execution.
 
 interface IndexedEdges {
     bySource: Map<string, Edge[]>
@@ -58,7 +58,8 @@ export async function executeWorkflow(
     abortSignal: AbortSignal,
     approvalHandler: (nodeId: string) => Promise<ApprovalResult>,
     resume?: { fromNodeId: string; seeds?: { outputs?: Record<string, string> } },
-    pauseRef?: { isPaused: () => boolean }
+    pauseRef?: { isPaused: () => boolean },
+    subflowCache?: Map<string, Record<string, string>>
 ): Promise<void> {
     // Early guard: invalid resume target
     if (resume?.fromNodeId && !nodes.some(n => n.id === resume.fromNodeId)) {
@@ -111,6 +112,8 @@ export async function executeWorkflow(
                     },
                     runLoopStart: undefined,
                     runLoopEnd: undefined,
+                    runSubflow: async (..._args: any[]) =>
+                        runSubflowWrapper(node, ctx, signal, webview, subflowCache),
                 })
             },
             onStatus: payload => {
@@ -467,7 +470,32 @@ export function combineParentOutputsByConnectionOrder(
     }
     localVisited.add(nodeId)
 
-    return parentEdges
+    // Ensure stable input ordering by sorting parent edges by targetHandle in-<n> when present
+    const getInIndex = (h: unknown): number | null => {
+        if (typeof h === 'string') {
+            const m = /^in-(\d+)$/.exec(h)
+            if (m) return Number.parseInt(m[1], 10)
+        }
+        return null
+    }
+    let orderedEdges: any[] = parentEdges as any[]
+    try {
+        const withIn: Array<{ edge: any; n: number }> = []
+        const withoutIn: any[] = []
+        for (const e of parentEdges as any[]) {
+            const n = getInIndex(e.targetHandle)
+            if (n !== null) withIn.push({ edge: e, n })
+            else withoutIn.push(e)
+        }
+        if (withIn.length > 0) {
+            withIn.sort((a, b) => a.n - b.n)
+            orderedEdges = withIn.map(x => x.edge).concat(withoutIn)
+        }
+    } catch {
+        orderedEdges = parentEdges as any[]
+    }
+
+    return orderedEdges
         .map(edge => {
             const parentNode = context?.nodeIndex.get(edge.source)
 
@@ -482,16 +510,247 @@ export function combineParentOutputsByConnectionOrder(
                 return text.replace(/\r\n/g, '\n')
             }
 
-            let output = context?.nodeOutputs.get(edge.source)
-            if (Array.isArray(output)) {
-                output = output.join('\n')
+            const parentVal = context?.nodeOutputs.get(edge.source)
+            if (Array.isArray(parentVal)) {
+                // Multi-output parent (e.g., subflow). If sourceHandle is out-<n>, pick that index; else join.
+                const sh = edge.sourceHandle
+                if (typeof sh === 'string' && sh.startsWith('out-')) {
+                    const idx = Number.parseInt(sh.slice(4), 10)
+                    const v =
+                        Number.isFinite(idx) && idx >= 0 && idx < parentVal.length
+                            ? parentVal[idx]
+                            : parentVal.join('\n')
+                    return String(v).replace(/\r\n/g, '\n')
+                }
+                return parentVal.join('\n').replace(/\r\n/g, '\n')
             }
-            if (output === undefined) {
+            if (parentVal === undefined) {
                 return ''
             }
-            return output.replace(/\r\n/g, '\n')
+            return String(parentVal).replace(/\r\n/g, '\n')
         })
         .filter(output => output !== undefined)
+}
+
+export async function runSubflowWrapper(
+    wrapperNode: WorkflowNodes,
+    outerCtx: IndexedExecutionContext,
+    abortSignal: AbortSignal,
+    webview: vscode.Webview,
+    subflowCache?: Map<string, Record<string, string>>
+): Promise<string[]> {
+    const subflowId = (wrapperNode as any)?.data?.subflowId as string | undefined
+    if (!subflowId) throw new Error('Subflow node missing subflowId')
+
+    const def = await loadSubflow(subflowId)
+    if (!def) throw new Error(`Subflow not found: ${subflowId}`)
+
+    // Prepare inner graph
+    const inner = fromProtocolPayload({ nodes: def.graph.nodes as any, edges: def.graph.edges as any })
+    // Index for seeds: map SubflowInput nodes by port id
+    const byId = new Map(inner.nodes.map(n => [n.id, n]))
+    const inputs = combineParentOutputsByConnectionOrder(wrapperNode.id, outerCtx)
+
+    const seeds: Record<string, string> = {}
+    // Prefer def.inputs order; expect SubflowInput nodes with data.portId matching inputs[].id
+    for (let i = 0; i < def.inputs.length; i++) {
+        const port = def.inputs[i]
+        const val = inputs[i] ?? ''
+        // Find SubflowInput node with matching port id
+        const match = inner.nodes.find(
+            n => (n as any).type === NodeType.SUBFLOW_INPUT && (n as any).data?.portId === port.id
+        )
+        if (match) seeds[match.id] = val
+    }
+    // Load previous inner results (in-memory) and seed only bypassed nodes to enable reuse semantics
+    try {
+        const prev = subflowCache?.get(subflowId)
+        if (prev && typeof prev === 'object') {
+            for (const [nid, val] of Object.entries(prev)) {
+                const nn: any = inner.nodes.find(n => n.id === nid)
+                if (nn && nn.data?.bypass === true && typeof val === 'string') {
+                    seeds[nid] = val
+                }
+            }
+        }
+    } catch {}
+
+    // Identify all SubflowOutput nodes and map by portId
+    const outNodes = inner.nodes.filter(n => (n as any).type === NodeType.SUBFLOW_OUTPUT)
+    if (!outNodes || outNodes.length === 0) throw new Error('Subflow definition missing output nodes')
+    const outNodeIdToPortId = new Map<string, string>()
+    for (const n of outNodes) {
+        const pid = (n as any)?.data?.portId as string | undefined
+        if (pid) outNodeIdToPortId.set(n.id, pid)
+    }
+
+    // Seed pass-through for bypass nodes where parents are already satisfiable from inputs
+    try {
+        // Minimal local edge index for parent lookups
+        const byTarget = new Map<string, { source: string; target: string }[]>()
+        const byId = new Map<string, { source: string; target: string }>()
+        for (const e of inner.edges as any[]) {
+            const arr = byTarget.get(e.target) || []
+            arr.push({ source: e.source, target: e.target })
+            byTarget.set(e.target, arr)
+            byId.set(e.id, { source: e.source, target: e.target })
+        }
+        const tmpCtx: any = {
+            nodeOutputs: new Map<string, string | string[]>(Object.entries(seeds)),
+            nodeIndex: new Map(inner.nodes.map(n => [n.id, n])),
+            edgeIndex: { byTarget, byId },
+        }
+        // Iterate to propagate pass-through seeds along bypass chains
+        const maxIters = inner.nodes.length
+        for (let iter = 0; iter < maxIters; iter++) {
+            let progressed = false
+            for (const n of inner.nodes) {
+                const isBypass = (n as any)?.data?.bypass === true
+                if (!isBypass) continue
+                if (tmpCtx.nodeOutputs.has(n.id)) continue
+                // Compute using currently available parent outputs
+                const vals = combineParentOutputsByConnectionOrder(n.id, tmpCtx)
+                if (vals && vals.length > 0) {
+                    tmpCtx.nodeOutputs.set(n.id, vals.join('\n'))
+                    progressed = true
+                }
+            }
+            if (!progressed) break
+        }
+        // Merge computed pass-through seeds back into seeds map
+        for (const [k, v] of tmpCtx.nodeOutputs as Map<string, string | string[]>) {
+            const s = Array.isArray(v) ? v.join('\n') : (v as string)
+            seeds[k] = s
+        }
+    } catch {
+        // Best-effort; ignore seeding errors
+    }
+
+    // Aggregate progress (exclude boundary and inactive nodes)
+    const eligibleInnerIds = new Set(
+        inner.nodes
+            .filter(
+                n =>
+                    (n as any).data?.active !== false &&
+                    (n as any).type !== NodeType.SUBFLOW_INPUT &&
+                    (n as any).type !== NodeType.SUBFLOW_OUTPUT
+            )
+            .map(n => n.id)
+    )
+    const totalInner = eligibleInnerIds.size
+    let completedInner = 0
+    if (totalInner > 0) {
+        await safePost(webview, {
+            type: 'node_execution_status',
+            data: {
+                nodeId: wrapperNode.id,
+                status: 'running',
+                result: `${completedInner}/${totalInner}`,
+            },
+        } as any)
+    }
+
+    const resultByPortId = new Map<string, string>()
+    const lastOutputs = new Map<string, string>()
+    const callbacks: ParallelCallbacks = {
+        runNode: async (node, pctx, signal) => {
+            const ctx = pctx as unknown as IndexedExecutionContext
+            return await routeNodeExecution(node, 'workflow', {
+                runCLI: (..._args: any[]) =>
+                    executeCLINode(node, signal, {} as any, async () => ({ type: 'approved' }), ctx),
+                runLLM: (..._args: any[]) =>
+                    executeLLMNode(node, ctx, signal, {} as any, async () => ({ type: 'approved' })),
+                runPreview: (..._args: any[]) => executePreviewNode(node.id, {} as any, ctx),
+                runInput: (..._args: any[]) => executeInputNode(node, ctx),
+                runIfElse: (..._args: any[]) => executeIfElseNode(ctx, node),
+                runAccumulator: async (..._args: any[]) => {
+                    const vals = combineParentOutputsByConnectionOrder(node.id, ctx)
+                    const content = node.data.content
+                        ? replaceIndexedInputs(node.data.content, vals, ctx)
+                        : ''
+                    const variableName = (node as any).data.variableName as string
+                    const initialValue = (node as any).data.initialValue as string | undefined
+                    let accumulatedValue = ctx.accumulatorValues?.get(variableName) || initialValue || ''
+                    accumulatedValue += '\n' + content
+                    ctx.accumulatorValues?.set(variableName, accumulatedValue)
+                    return accumulatedValue
+                },
+                runVariable: async (..._args: any[]) => {
+                    const vals = combineParentOutputsByConnectionOrder(node.id, ctx)
+                    const text = node.data.content
+                        ? replaceIndexedInputs(node.data.content, vals, ctx)
+                        : ''
+                    const variableName = (node as any).data.variableName as string
+                    const initialValue = (node as any).data.initialValue as string | undefined
+                    let variableValue = ctx.variableValues?.get(variableName) || initialValue || ''
+                    variableValue = text
+                    ctx.variableValues?.set(variableName, variableValue)
+                    return variableValue
+                },
+                runLoopStart: undefined,
+                runLoopEnd: undefined,
+                runSubflowOutput: async (..._args: any[]) => {
+                    const vals = combineParentOutputsByConnectionOrder(node.id, ctx)
+                    return (vals || []).join('\n').trim()
+                },
+                runSubflowInput: async (..._args: any[]) => {
+                    // Should generally be seeded; return seeded value if any
+                    const v = ctx.nodeOutputs.get(node.id)
+                    return Array.isArray(v) ? v.join('\n') : v ?? ''
+                },
+            })
+        },
+        onStatus: payload => {
+            if (payload.status === 'completed' && payload.nodeId) {
+                if (outNodeIdToPortId.has(payload.nodeId)) {
+                    const pid = outNodeIdToPortId.get(payload.nodeId)!
+                    resultByPortId.set(pid, payload.result ?? '')
+                }
+                if (typeof payload.result === 'string') {
+                    lastOutputs.set(payload.nodeId, payload.result)
+                }
+            }
+            if (
+                payload.status === 'completed' &&
+                payload.nodeId &&
+                eligibleInnerIds.has(payload.nodeId)
+            ) {
+                completedInner += 1
+                // Emit wrapper-only aggregate progress
+                if (totalInner > 0) {
+                    void safePost(webview, {
+                        type: 'node_execution_status',
+                        data: {
+                            nodeId: wrapperNode.id,
+                            status: 'running',
+                            result: `${completedInner}/${totalInner}`,
+                        },
+                    } as any)
+                }
+            }
+        },
+    }
+
+    const options = { onError: 'fail-fast', seeds: { outputs: seeds } } as const
+    await executeWorkflowParallel(
+        inner.nodes as any,
+        inner.edges as any,
+        callbacks,
+        options,
+        abortSignal
+    )
+
+    // Persist inner node outputs in-memory (used for resume/bypass seeding)
+    try {
+        const toSave: Record<string, string> = {}
+        for (const [k, v] of lastOutputs) toSave[k] = v
+        if (subflowCache) subflowCache.set(subflowId, toSave)
+        // Note: intentional no-op post. UI does not consume subflow_state; avoid sending invalid message type.
+    } catch {}
+
+    // Order results by def.outputs
+    const final: string[] = def.outputs.map(o => resultByPortId.get(o.id) ?? '')
+    return final
 }
 
 async function executeLLMNode(
@@ -545,36 +804,36 @@ async function executeLLMNode(
         }
     }
 
-    const disabledTools: string[] | undefined = (node as any)?.data?.disabledTools
-    const dangerouslyAllowAll: boolean | undefined = (node as any)?.data?.dangerouslyAllowAll
-    const rawReasoningEffort: string | undefined = (node as any)?.data?.reasoningEffort
-    const validReasoningEfforts = new Set(['minimal', 'low', 'medium', 'high'])
-    const reasoningEffort =
-        rawReasoningEffort && validReasoningEfforts.has(rawReasoningEffort)
-            ? rawReasoningEffort
-            : 'medium'
-    const bashDisabled = isBashDisabled(disabledTools)
-    const shouldApplyAllowAll = dangerouslyAllowAll && !bashDisabled
-    if (bashDisabled && dangerouslyAllowAll) {
+    const { settings: llmSettings, debug: llmDebug } = computeLLMAmpSettings(node)
+    if (
+        llmDebug.dangerouslyAllowAll &&
+        llmDebug.disabledTools.some(t => typeof t === 'string' && t.toLowerCase() === 'bash')
+    ) {
         console.debug('[ExecuteWorkflow] Bash is disabled; ignoring dangerouslyAllowAll flag for safety')
     }
+    const autoApprove = Boolean((llmSettings as any)['amp.dangerouslyAllowAll'])
     const amp = await createAmp({
         apiKey,
         workspaceRoots,
         settings: {
             'internal.primaryModel': selectedKey ?? defaultModelKey,
-            ...(disabledTools && disabledTools.length > 0 ? { 'tools.disable': disabledTools } : {}),
-            'reasoning.effort': reasoningEffort as any,
-            ...(shouldApplyAllowAll
-                ? {
-                      'amp.dangerouslyAllowAll': true,
-                      'amp.experimental.commandApproval.enabled': false,
-                      'amp.commands.allowlist': ['*'],
-                      'amp.commands.strict': false,
-                  }
-                : {}),
+            ...llmSettings,
         },
     })
+    // Ensure tools are registered before first run
+    try {
+        if (typeof (amp as any).whenToolsReady === 'function') {
+            const enabled = await (amp as any).whenToolsReady()
+            console.debug('[ExecuteWorkflow] Tools ready for node', node.id, {
+                enabled,
+                disabled: llmDebug.disabledTools,
+                allowAll: llmDebug.dangerouslyAllowAll,
+                effort: llmDebug.reasoningEffort,
+            })
+        }
+    } catch {
+        // Non-fatal: continue
+    }
     try {
         let finalText = ''
         const handledBlocked = new Set<string>()
@@ -623,7 +882,7 @@ async function executeLLMNode(
                             handledBlocked.add(b.toolUseID)
 
                             // Auto-approve when dangerouslyAllowAll is enabled, regardless of toAllow content
-                            if (shouldApplyAllowAll) {
+                            if (autoApprove) {
                                 if (!b.toAllow || b.toAllow.length === 0) {
                                     console.warn(
                                         '[ExecuteWorkflow] Auto-approving toolUseID=%s with no explicit toAllow',

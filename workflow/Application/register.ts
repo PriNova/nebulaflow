@@ -5,9 +5,12 @@ import type { ApprovalResult, ExtensionToWorkflow } from '../Core/models'
 import {
     deleteCustomNode,
     getCustomNodes,
+    getSubflows,
+    loadSubflow,
     loadWorkflow,
     renameCustomNode,
     saveCustomNode,
+    saveSubflow,
     saveWorkflow,
 } from '../DataAccess/fs'
 import { executeSingleNode } from './handlers/ExecuteSingleNode'
@@ -24,6 +27,7 @@ interface ExecutionContext {
         reject: (error: unknown) => void
         removeAbortListener?: () => void
     } | null
+    subflowCache: Map<string, Record<string, string>>
 }
 
 const panelExecutionRegistry = new WeakMap<vscode.Webview, ExecutionContext>()
@@ -40,7 +44,12 @@ function formatPanelTitle(uri?: vscode.Uri): string {
 function getOrCreatePanelContext(webview: vscode.Webview): ExecutionContext {
     let context = panelExecutionRegistry.get(webview)
     if (!context) {
-        context = { abortController: null, pauseRequested: false, pendingApproval: null }
+        context = {
+            abortController: null,
+            pauseRequested: false,
+            pendingApproval: null,
+            subflowCache: new Map<string, Record<string, string>>(),
+        }
         panelExecutionRegistry.set(webview, context)
     }
     return context
@@ -110,6 +119,94 @@ export function activate(context: vscode.ExtensionContext): void {
                     return
                 }
                 switch (message.type) {
+                    case 'create_subflow': {
+                        try {
+                            const result = await saveSubflow((message as any).data)
+                            if ('id' in result) {
+                                await safePost(
+                                    webview,
+                                    {
+                                        type: 'subflow_saved',
+                                        data: { id: (result as any).id },
+                                    } as ExtensionToWorkflow,
+                                    { strict: isDev }
+                                )
+                            } else {
+                                void vscode.window.showErrorMessage('Failed to save subflow')
+                            }
+                        } catch (e: any) {
+                            void vscode.window.showErrorMessage(
+                                `Failed to save subflow: ${e?.message ?? e}`
+                            )
+                        }
+                        break
+                    }
+                    case 'get_subflow': {
+                        try {
+                            const id = (message as any).data?.id as string
+                            const def = await loadSubflow(id)
+                            if (def) {
+                                await safePost(
+                                    webview,
+                                    { type: 'provide_subflow', data: def } as ExtensionToWorkflow,
+                                    { strict: isDev }
+                                )
+                            } else {
+                                void vscode.window.showErrorMessage(`Subflow not found: ${id}`)
+                            }
+                        } catch (e: any) {
+                            void vscode.window.showErrorMessage(
+                                `Failed to load subflow: ${e?.message ?? e}`
+                            )
+                        }
+                        break
+                    }
+                    case 'get_subflows': {
+                        try {
+                            const list = await getSubflows()
+                            await safePost(
+                                webview,
+                                { type: 'provide_subflows', data: list } as ExtensionToWorkflow,
+                                { strict: isDev }
+                            )
+                        } catch (e: any) {
+                            void vscode.window.showErrorMessage(
+                                `Failed to list subflows: ${e?.message ?? e}`
+                            )
+                        }
+                        break
+                    }
+                    case 'duplicate_subflow': {
+                        try {
+                            const payload = (message as any).data || {}
+                            const id = (payload as any).id as string
+                            const nodeId = (payload as any).nodeId as string
+                            const def = await loadSubflow(id)
+                            if (!def) {
+                                void vscode.window.showErrorMessage(`Subflow not found: ${id}`)
+                                break
+                            }
+                            const copy = { ...(def as any), id: '' } as any
+                            const result = await saveSubflow(copy)
+                            if ('id' in result) {
+                                await safePost(
+                                    webview,
+                                    {
+                                        type: 'subflow_copied',
+                                        data: { nodeId, oldId: id, newId: (result as any).id },
+                                    } as ExtensionToWorkflow,
+                                    { strict: isDev }
+                                )
+                            } else {
+                                void vscode.window.showErrorMessage('Failed to duplicate subflow')
+                            }
+                        } catch (e: any) {
+                            void vscode.window.showErrorMessage(
+                                `Failed to duplicate subflow: ${e?.message ?? e}`
+                            )
+                        }
+                        break
+                    }
                     case 'get_models': {
                         try {
                             // Dynamically require to avoid hard failure when SDK is not linked
@@ -191,6 +288,11 @@ export function activate(context: vscode.ExtensionContext): void {
                                 { strict: isDev }
                             )
                         }
+                        break
+                    }
+                    case 'reset_results': {
+                        const panelContext = getOrCreatePanelContext(webview)
+                        panelContext.subflowCache.clear()
                         break
                     }
                     case 'load_workflow': {
@@ -330,7 +432,8 @@ export function activate(context: vscode.ExtensionContext): void {
                                     panelContext.abortController.signal,
                                     approvalHandler,
                                     filteredResume,
-                                    pauseRef
+                                    pauseRef,
+                                    panelContext.subflowCache
                                 )
                             } finally {
                                 const controller = panelContext.abortController

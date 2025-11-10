@@ -36,7 +36,8 @@ const computePreviewContent = (
     previewNode: WorkflowNodes,
     parentEdges: Edge[],
     nodeResults: Map<string, string>,
-    edgeOrderMap: Map<string, number>
+    edgeOrderMap: Map<string, number>,
+    nodeMultiResults: Map<string, string[]>
 ): string => {
     // Sort edges to this preview by their order (source order at the preview target)
     const sortedEdges = [...parentEdges].sort((a, b) => {
@@ -48,7 +49,17 @@ const computePreviewContent = (
     // Concatenate parent outputs in order
     const contents: string[] = []
     for (const edge of sortedEdges) {
-        const parentOutput = nodeResults.get(edge.source)
+        const parentId = edge.source
+        const handle = edge.sourceHandle
+        const multi = nodeMultiResults.get(parentId)
+        if (Array.isArray(multi) && typeof handle === 'string' && handle.startsWith('out-')) {
+            const idx = Number.parseInt(handle.slice(4), 10)
+            if (Number.isFinite(idx) && idx >= 0 && idx < multi.length) {
+                contents.push(multi[idx])
+                continue
+            }
+        }
+        const parentOutput = nodeResults.get(parentId)
         if (parentOutput) {
             contents.push(parentOutput)
         }
@@ -141,6 +152,9 @@ export const useMessageHandler = (
         },
         [setNodeResults]
     )
+
+    // Track multi-output results (e.g., subflow outputs by index) without causing extra renders
+    const nodeMultiResultsRef = useRef<Map<string, string[]>>(new Map())
 
     useEffect(() => {
         vscodeAPI.postMessage({ type: 'get_models' } as any)
@@ -241,6 +255,11 @@ export const useMessageHandler = (
                                     result?.trim().toLowerCase() === 'true' ? 'true' : 'false'
                                 setIfElseDecisions(prev => new Map(prev).set(nodeId, decision))
                             }
+                            // Track multi-output results for this node (if provided)
+                            const multi = (event.data.data as any)?.multi
+                            if (Array.isArray(multi)) {
+                                nodeMultiResultsRef.current.set(nodeId, multi)
+                            }
                             if (node?.type === NodeType.PREVIEW) {
                                 onNodeUpdate(node.id, { content: result as any })
                             } else {
@@ -263,7 +282,8 @@ export const useMessageHandler = (
                                             previewNode,
                                             preview.parentEdges,
                                             updatedResults,
-                                            edgeOrderMap
+                                            edgeOrderMap,
+                                            nodeMultiResultsRef.current
                                         )
                                         // Only update if content has changed to avoid unnecessary updates
                                         if (content !== previewNode.data.content) {
@@ -338,6 +358,38 @@ export const useMessageHandler = (
                     setStorageScope?.(info || null)
                     break
                 }
+                case 'subflow_saved': {
+                    // no-op here; caller likely rewires graph immediately
+                    break
+                }
+                case 'provide_subflow': {
+                    try {
+                        const def = (event.data as any)?.data
+                        window.dispatchEvent(
+                            new CustomEvent('nebula-subflow-provide' as any, { detail: def })
+                        )
+                    } catch {}
+                    break
+                }
+                case 'provide_subflows': {
+                    try {
+                        const list = (event.data as any)?.data
+                        window.dispatchEvent(
+                            new CustomEvent('nebula-subflows-provide' as any, { detail: list })
+                        )
+                    } catch {}
+                    break
+                }
+                case 'subflow_copied': {
+                    try {
+                        const info = (event.data as any)?.data
+                        if (info?.nodeId && info?.newId) {
+                            onNodeUpdate(info.nodeId, { subflowId: info.newId })
+                        }
+                    } catch {}
+                    break
+                }
+                // fall through
             }
         }
         const off = vscodeAPI.onMessage(messageHandler as any)

@@ -4,6 +4,81 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+### Added
+
+### Changed
+
+### Removed
+
+## [NebulaFlow 0.2.13]
+
+### Goal: Tool Safety and Normalization Alignment with Upstream
+
+- Fixed: Case-insensitive Bash detection in [llm-settings.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/llm-settings.ts#L28-L33) and runtime guard in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteWorkflow.ts#L805-L814) to ensure lowercase "bash" from UI cannot bypass the disable flag; guard also logs and ignores `dangerouslyAllowAll` when Bash is disabled.
+- Changed: Disabled tool normalization now falls back to the in-repo resolver when the SDK resolver is unavailable, ensuring canonical names across environments. See [llm-settings.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/llm-settings.ts#L1-L19).
+
+## [NebulaFlow 0.2.12]
+
+### Goal: Quick Preview from Result and Simplified Library Categories
+
+### Added
+- RightSidebar: Double-click on the inline Result container opens the Preview for that node; the container now shows a zoom-in cursor, is clickable with `role="button"`, and has a helpful title tooltip. See [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx).
+
+### Changed
+- WorkflowSidebar category labels normalized via `displayCategoryLabel`:
+  - LLM → Agent, CLI → Shell, PREVIEW → Preview, IF_ELSE → Conditionals, SUBFLOW → Subflows. See [WorkflowSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/WorkflowSidebar.tsx).
+- Library accordion reorganized for clarity and quicker access:
+  - Separate sections for Agent, Text (Text, Accumulator, Variable), Shell, Preview, Conditionals, and Subflows with simplified headings.
+
+### Why
+- Faster inspection: double-clicking results to open full preview reduces friction when scanning outputs.
+- Clearer navigation: category names align with node semantics and the library is grouped into intuitive sections, improving discoverability.
+
+### Goal: Unified Preview + Edit Modal for RightSidebar Results
+
+### Added
+- New combined modal component with Preview/Edit tabs for node results: [CombinedPreviewEditorModal.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/CombinedPreviewEditorModal.tsx). Uses existing [Markdown.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Markdown.tsx) for preview and shadcn [Textarea](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/ui/shadcn/ui/textarea.tsx) for editing. Includes copy button and Save/Close actions.
+- RightSidebar now opens the combined modal from the Eye button and allows saving edits back to results. See usage in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L910-L923).
+- Flow wires an explicit result update callback to keep `nodeResults` as the source of truth. See handler in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L183-L189) and prop pass-through in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L1631-L1632).
+
+### Changed
+- RightSidebar replaces the read-only [MarkdownPreviewModal.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/MarkdownPreviewModal.tsx) with the unified [CombinedPreviewEditorModal.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/CombinedPreviewEditorModal.tsx) when opening results from the eye icon. Preview_Node remains unchanged and still uses the read-only preview modal.
+
+### Why
+- Simplicity and explicit data flow: enables quick inspection and in-place edits of results without introducing new dependencies; updates are funneled through Flow’s state for clarity and control.
+
+### Goal: Prompt for LLM – RightSidebar tool status indicators
+
+### Added
+- Parsed tool execution status from paired `tool_result` JSON without protocol changes. Helpers `getToolRunStatus` and `hasToolRunError` added in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L44-L71).
+- Tool run icons in assistant items: spinner only while truly running, green check on completion, red X on failure. Header logic at [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L448-L478); call site and updated signature at [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L400-L409).
+
+### Changed
+- Spinner gated by live execution state to avoid stale indicators after timeout/abort: shows only when `executingNodeIds.has(node.id)` AND tool `status === 'in-progress'`. See [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L715-L722).
+
+### Behavior
+- Reset on fresh run: `useWorkflowExecution` clears `nodeAssistantContent` and increments `executionRunId`; RightSidebar resets local state on `executionRunId` change. See [workflowExecution.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/workflowExecution.ts#L68-L76) and [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L593-L600).
+- Spinners disappear immediately on stop/error: `node_execution_status` events update `executingNodeIds` on `error`, `completed`, `interrupted`, `execution_completed`, and `execution_paused`. See [messageHandling.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/messageHandling.ts#L207-L299).
+
+### Why
+- Simple and explicit: UI derives status from existing `tool_use`/`tool_result` messages with no protocol changes.
+- Reliable: spinner depends on live execution state and hides on timeout/abort/stop.
+- Robust and extensible: safe JSON parsing with clear mappings; easy to add future badges.
+
+### Goal: Subflow Node – Critical/High Fixes for Data Safety, IDs, and A11y
+
+### Fixed
+- Prevent data loss when leaving a subflow editor: added dirty-check with confirmation before navigating back to parent. Baseline captured on open and refreshed on Save in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L619-L700) and prompt on back in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L1453-L1469).
+- Ensure unique IDs for generated inner edges when creating a subflow from selection by using `uuidv4()` instead of derived IDs in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L1156-L1176).
+- Improve keyboard accessibility for Subflow wrapper node: set `tabIndex=0` regardless of selection in [Subflow_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Subflow_Node.tsx#L54-L58).
+
+### Why
+- Avoids accidental loss of edits when navigating out of the subflow editor, aligning with standard editor safety.
+- Guarantees edge ID stability and prevents collisions that could corrupt inner graphs.
+- Ensures the Subflow node is reachable via keyboard at all times for better accessibility.
+
 ### Goal: Bypass Visual State and Unified Node Border Styling
 
 ### Added
@@ -60,6 +135,15 @@ All notable changes to this project will be documented in this file.
 
 ### Why
 - Improves modularity and reuse (LeftSidebar mirrors right), enhances discoverability and ergonomics of sidebar controls, enables quick copying of raw outputs, and tightens preview/readability without adding complexity.
+
+### Goal: If/Else Node – Expose Condition Editor in PropertyEditor
+
+### Added
+- If/Else node condition textarea in [PropertyEditor.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/PropertyEditor.tsx#L630-L657) mirroring Cody’s workflow pattern. Double‑click opens the full [TextEditorModal.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/TextEditorModal.tsx) for multi-line editing.
+
+### Why
+- Brings the conditional editor inline with other nodes so If/Else becomes immediately usable. The engine already consumes `node.data.content` to evaluate conditions in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteWorkflow.ts#L1145-L1152), so surfacing this control completes the UX path.
+
 ## [NebulaFlow 0.2.11]
 
 ### Goal: Inline Markdown rendering for node Result in RightSidebar

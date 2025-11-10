@@ -9,6 +9,8 @@ const PERSISTENCE_ROOT = '.nebulaflow'
 const LEGACY_PERSISTENCE_ROOT = '.sourcegraph'
 const WORKFLOWS_DIR = `${PERSISTENCE_ROOT}/workflows`
 const NODES_DIR = `${PERSISTENCE_ROOT}/nodes`
+const SUBFLOWS_DIR = `${PERSISTENCE_ROOT}/subflows`
+
 const LEGACY_WORKFLOWS_DIR = `${LEGACY_PERSISTENCE_ROOT}/workflows`
 const LEGACY_NODES_DIR = `${LEGACY_PERSISTENCE_ROOT}/nodes`
 
@@ -60,6 +62,103 @@ function isSupportedVersion(version: unknown): boolean {
     // Accept any 1.x.x version
     const match = /^1\.\d+\.\d+$/.exec(version)
     return match !== null
+}
+
+// ----- Subflows FS helpers -----
+import type { SubflowDefinitionDTO } from '../Core/models'
+
+function getSubflowFileUri(root: vscode.Uri, id: string): vscode.Uri {
+    const dir = vscode.Uri.joinPath(root, SUBFLOWS_DIR)
+    const fname = `${sanitizeFilename(id)}.json`
+    return vscode.Uri.joinPath(dir, fname)
+}
+
+export async function saveSubflow(
+    def: SubflowDefinitionDTO
+): Promise<{ id: string } | { error: string }> {
+    try {
+        const { scope, root } = getRootForScope()
+        if (!root) {
+            vscode.window.showErrorMessage(
+                scope === 'workspace' ? 'No workspace found.' : 'Invalid global storage path.'
+            )
+            return { error: 'no-root' }
+        }
+        const dir = vscode.Uri.joinPath(root, SUBFLOWS_DIR)
+        try {
+            await vscode.workspace.fs.createDirectory(dir)
+        } catch {}
+        const id = def.id || cryptoRandomId()
+        const file = getSubflowFileUri(root, id)
+        const data = { ...def, id }
+        await vscode.workspace.fs.writeFile(file, Buffer.from(JSON.stringify(data, null, 2), 'utf-8'))
+        return { id }
+    } catch (error: any) {
+        return { error: error?.message || 'save-failed' }
+    }
+}
+
+export async function loadSubflow(id: string): Promise<SubflowDefinitionDTO | null> {
+    try {
+        const { scope, root } = getRootForScope()
+        if (!root) {
+            vscode.window.showErrorMessage(
+                scope === 'workspace' ? 'No workspace found.' : 'Invalid global storage path.'
+            )
+            return null
+        }
+        const file = getSubflowFileUri(root, id)
+        const bytes = await vscode.workspace.fs.readFile(file)
+        const def = JSON.parse(bytes.toString()) as SubflowDefinitionDTO
+        return def
+    } catch {
+        return null
+    }
+}
+
+export async function getSubflows(): Promise<
+    Array<Pick<SubflowDefinitionDTO, 'id' | 'title' | 'version'>>
+> {
+    try {
+        const { scope, root } = getRootForScope()
+        if (!root) {
+            vscode.window.showErrorMessage(
+                scope === 'workspace' ? 'No workspace found.' : 'Invalid global storage path.'
+            )
+            return []
+        }
+        const dir = vscode.Uri.joinPath(root, SUBFLOWS_DIR)
+        try {
+            await vscode.workspace.fs.createDirectory(dir)
+        } catch {}
+        const items = await vscode.workspace.fs.readDirectory(dir)
+        const out: Array<Pick<SubflowDefinitionDTO, 'id' | 'title' | 'version'>> = []
+        for (const [filename, type] of items) {
+            if (type !== vscode.FileType.File || !filename.endsWith('.json')) continue
+            try {
+                const file = vscode.Uri.joinPath(dir, filename)
+                const bytes = await vscode.workspace.fs.readFile(file)
+                const def = JSON.parse(bytes.toString()) as SubflowDefinitionDTO
+                out.push({ id: def.id, title: def.title, version: def.version })
+            } catch {}
+        }
+        return out
+    } catch {
+        return []
+    }
+}
+
+function cryptoRandomId(): string {
+    try {
+        const array = new Uint8Array(16)
+        // @ts-ignore
+        ;(globalThis.crypto || (require('node:crypto') as any).webcrypto).getRandomValues(array)
+        return Array.from(array)
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('')
+    } catch {
+        return `${Date.now()}_${Math.random().toString(36).slice(2)}`
+    }
 }
 
 // Normalize LLM node model IDs to SDK keys for save/load robustness

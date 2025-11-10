@@ -121,7 +121,8 @@ export async function executeWorkflowParallel(
         // Treat seeded parents as satisfied; also treat disabled parents as satisfied (pass-through)
         // BUT: do not skip if the parent is included AND marked with bypass, because it will still emit completion
         const parent = nodeIndex.get(e.source)
-        const parentDisabled = parent ? parent.data?.active === false : false
+        // Treat missing parents (excluded by inactivity) as disabled for dependency purposes
+        const parentDisabled = parent ? parent.data?.active === false : true
         const parentIsBypassIncluded =
             parent && includedIds.has(e.source) && (parent as any)?.data?.bypass === true
         if ((!seedIds.has(e.source) || parentIsBypassIncluded) && !parentDisabled) {
@@ -236,7 +237,12 @@ export async function executeWorkflowParallel(
                 // Store for downstream
                 ctx.nodeOutputs.set(node.id, asText)
                 try {
-                    await onStatus({ nodeId: node.id, status: 'completed', result: asText })
+                    await onStatus({
+                        nodeId: node.id,
+                        status: 'completed',
+                        result: asText,
+                        ...(Array.isArray(seeded) ? { multi: seeded as string[] } : {}),
+                    })
                 } catch {}
 
                 if (node.type === NodeType.IF_ELSE) {
@@ -322,7 +328,14 @@ export async function executeWorkflowParallel(
                 if (res.status === 'ok') {
                     const asText = toResultString(res.result)
                     try {
-                        await onStatus({ nodeId: node.id, status: 'completed', result: asText })
+                        await onStatus({
+                            nodeId: node.id,
+                            status: 'completed',
+                            result: asText,
+                            ...(Array.isArray((res as any).result)
+                                ? { multi: (res as any).result as string[] }
+                                : {}),
+                        })
                     } catch {
                         // ignore status callback errors
                     }
