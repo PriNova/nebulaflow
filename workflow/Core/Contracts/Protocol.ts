@@ -230,6 +230,17 @@ interface NodeAssistantContentEvent extends BaseWorkflowMessage {
     data: { nodeId: string; threadID?: string; content: AssistantContentItem[] }
 }
 
+// Subflow-scoped node events (forwarded when viewing a subflow)
+interface SubflowNodeExecutionStatusEvent extends BaseWorkflowMessage {
+    type: 'subflow_node_execution_status'
+    data: { subflowId: string; payload: NodeExecutionPayload }
+}
+
+interface SubflowNodeAssistantContentEvent extends BaseWorkflowMessage {
+    type: 'subflow_node_assistant_content'
+    data: { subflowId: string; nodeId: string; threadID?: string; content: AssistantContentItem[] }
+}
+
 interface NodeApprovalCommand extends BaseWorkflowMessage {
     type: 'node_approved'
     data: { nodeId: string; modifiedCommand?: string }
@@ -321,6 +332,8 @@ export type ExtensionToWorkflow =
     | NodeExecutionStatusEvent
     | TokenCountEvent
     | NodeAssistantContentEvent
+    | SubflowNodeExecutionStatusEvent
+    | SubflowNodeAssistantContentEvent
     | ProvideCustomModelsEvent
     | StorageScopeEvent
     | SubflowSavedEvent

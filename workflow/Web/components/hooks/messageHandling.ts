@@ -143,7 +143,8 @@ export const useMessageHandler = (
     setCompletedThisRun?: React.Dispatch<React.SetStateAction<Set<string>>>,
     setStorageScope?: React.Dispatch<
         React.SetStateAction<{ scope: 'workspace' | 'user'; basePath?: string } | null>
-    >
+    >,
+    activeSubflowIdRef?: React.MutableRefObject<string | null>
 ) => {
     const lastExecutedNodeIdRef = useRef<string | null>(null)
     const batchUpdateNodeResults = useCallback(
@@ -156,10 +157,102 @@ export const useMessageHandler = (
     // Track multi-output results (e.g., subflow outputs by index) without causing extra renders
     const nodeMultiResultsRef = useRef<Map<string, string[]>>(new Map())
 
+    const applyNodeExecutionStatus = (
+        nodeId: string,
+        status: 'running' | 'completed' | 'error' | 'interrupted' | 'pending_approval',
+        result?: string,
+        multi?: string[]
+    ) => {
+        if (nodeId && status) {
+            if (status === 'interrupted') {
+                setInterruptedNodeId(nodeId)
+                setExecutingNodeIds(prev => {
+                    const next = new Set(prev)
+                    next.delete(nodeId)
+                    return next
+                })
+            }
+            if (status === 'pending_approval') {
+                setPendingApprovalNodeId(nodeId)
+            } else if (status === 'running') {
+                setExecutingNodeIds(prev => {
+                    const next = new Set(prev)
+                    next.add(nodeId)
+                    return next
+                })
+                setNodeErrors(prev => {
+                    const updated = new Map(prev)
+                    updated.delete(nodeId)
+                    return updated
+                })
+            } else if (status === 'error') {
+                setExecutingNodeIds(prev => {
+                    const next = new Set(prev)
+                    next.delete(nodeId)
+                    return next
+                })
+                setNodeErrors(prev => new Map(prev).set(nodeId, result ?? ''))
+            } else if (status === 'completed') {
+                lastExecutedNodeIdRef.current = nodeId
+                setExecutingNodeIds(prev => {
+                    const next = new Set(prev)
+                    next.delete(nodeId)
+                    return next
+                })
+                // Mark node as completed in this run for precise resume seeding
+                setCompletedThisRun?.(prev => {
+                    const next = new Set(prev)
+                    next.add(nodeId)
+                    return next
+                })
+                const node = nodes.find(n => n.id === nodeId)
+                // Capture If/Else decisions for resume
+                if (node?.type === NodeType.IF_ELSE) {
+                    const decision = result?.trim().toLowerCase() === 'true' ? 'true' : 'false'
+                    setIfElseDecisions(prev => new Map(prev).set(nodeId, decision))
+                }
+                // Track multi-output results for this node (if provided)
+                if (Array.isArray(multi)) {
+                    nodeMultiResultsRef.current.set(nodeId, multi)
+                }
+                if (node?.type === NodeType.PREVIEW) {
+                    onNodeUpdate(node.id, { content: result as any })
+                } else {
+                    // Propagate completion to downstream Preview nodes
+                    const downstreamPreviews = getDownstreamPreviewNodes(nodeId, edges, nodes)
+                    // Build edge order map once to avoid O(E²) lookups
+                    const edgeOrderMap = new Map(orderedEdges.map(e => [e.id, e.data?.orderNumber ?? 0]))
+                    for (const preview of downstreamPreviews) {
+                        // Create a map with the just-completed node's result
+                        const updatedResults = new Map(nodeResults).set(nodeId, result ?? '')
+                        const previewNode = nodes.find(n => n.id === preview.id)
+                        if (previewNode) {
+                            const content = computePreviewContent(
+                                previewNode,
+                                preview.parentEdges,
+                                updatedResults,
+                                edgeOrderMap,
+                                nodeMultiResultsRef.current
+                            )
+                            // Only update if content has changed to avoid unnecessary updates
+                            if (content !== previewNode.data.content) {
+                                onNodeUpdate(preview.id, { content })
+                            }
+                        }
+                    }
+                }
+            } else {
+                setExecutingNodeIds(prev => new Set())
+            }
+            setNodeResults(prev => new Map(prev).set(nodeId, result ?? ''))
+        }
+    }
+
     useEffect(() => {
         vscodeAPI.postMessage({ type: 'get_models' } as any)
     }, [vscodeAPI])
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: message handler relies on stable refs and setter identity; exhaustive deps not desired here
     useEffect(() => {
         const messageHandler = (event: MessageEvent<ExtensionToWorkflow>) => {
             switch (event.data.type) {
@@ -205,97 +298,25 @@ export const useMessageHandler = (
                     break
                 }
                 case 'node_execution_status': {
-                    const { nodeId, status, result } = event.data.data as any
-                    if (nodeId && status) {
-                        if (status === 'interrupted') {
-                            setInterruptedNodeId(nodeId)
-                            setExecutingNodeIds(prev => {
-                                const next = new Set(prev)
-                                next.delete(nodeId)
-                                return next
-                            })
-                        }
-                        if (status === 'pending_approval') {
-                            setPendingApprovalNodeId(nodeId)
-                        } else if (status === 'running') {
-                            setExecutingNodeIds(prev => {
-                                const next = new Set(prev)
-                                next.add(nodeId)
-                                return next
-                            })
-                            setNodeErrors(prev => {
-                                const updated = new Map(prev)
-                                updated.delete(nodeId)
-                                return updated
-                            })
-                        } else if (status === 'error') {
-                            setExecutingNodeIds(prev => {
-                                const next = new Set(prev)
-                                next.delete(nodeId)
-                                return next
-                            })
-                            setNodeErrors(prev => new Map(prev).set(nodeId, result ?? ''))
-                        } else if (status === 'completed') {
-                            lastExecutedNodeIdRef.current = nodeId
-                            setExecutingNodeIds(prev => {
-                                const next = new Set(prev)
-                                next.delete(nodeId)
-                                return next
-                            })
-                            // Mark node as completed in this run for precise resume seeding
-                            setCompletedThisRun?.(prev => {
-                                const next = new Set(prev)
-                                next.add(nodeId)
-                                return next
-                            })
-                            const node = nodes.find(n => n.id === nodeId)
-                            // Capture If/Else decisions for resume
-                            if (node?.type === NodeType.IF_ELSE) {
-                                const decision =
-                                    result?.trim().toLowerCase() === 'true' ? 'true' : 'false'
-                                setIfElseDecisions(prev => new Map(prev).set(nodeId, decision))
-                            }
-                            // Track multi-output results for this node (if provided)
-                            const multi = (event.data.data as any)?.multi
-                            if (Array.isArray(multi)) {
-                                nodeMultiResultsRef.current.set(nodeId, multi)
-                            }
-                            if (node?.type === NodeType.PREVIEW) {
-                                onNodeUpdate(node.id, { content: result as any })
-                            } else {
-                                // Propagate completion to downstream Preview nodes
-                                const downstreamPreviews = getDownstreamPreviewNodes(
-                                    nodeId,
-                                    edges,
-                                    nodes
-                                )
-                                // Build edge order map once to avoid O(E²) lookups
-                                const edgeOrderMap = new Map(
-                                    orderedEdges.map(e => [e.id, e.data?.orderNumber ?? 0])
-                                )
-                                for (const preview of downstreamPreviews) {
-                                    // Create a map with the just-completed node's result
-                                    const updatedResults = new Map(nodeResults).set(nodeId, result ?? '')
-                                    const previewNode = nodes.find(n => n.id === preview.id)
-                                    if (previewNode) {
-                                        const content = computePreviewContent(
-                                            previewNode,
-                                            preview.parentEdges,
-                                            updatedResults,
-                                            edgeOrderMap,
-                                            nodeMultiResultsRef.current
-                                        )
-                                        // Only update if content has changed to avoid unnecessary updates
-                                        if (content !== previewNode.data.content) {
-                                            onNodeUpdate(preview.id, { content })
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            setExecutingNodeIds(prev => new Set())
-                        }
-                        setNodeResults(prev => new Map(prev).set(nodeId, result ?? ''))
+                    const payload = event.data.data as any
+                    applyNodeExecutionStatus(
+                        payload.nodeId,
+                        payload.status,
+                        payload.result,
+                        (payload as any)?.multi
+                    )
+                    break
+                }
+                case 'subflow_node_execution_status': {
+                    const { subflowId, payload } = (event.data as any).data || {}
+                    // Only apply when viewing this subflow
+                    if (payload && subflowId && activeSubflowIdRef?.current === subflowId) {
+                        applyNodeExecutionStatus(
+                            payload.nodeId,
+                            payload.status,
+                            payload.result,
+                            (payload as any)?.multi
+                        )
                     }
                     break
                 }
@@ -333,7 +354,28 @@ export const useMessageHandler = (
                 }
                 case 'node_assistant_content': {
                     const { nodeId, content } = event.data.data as any
+                    // If assistant content arrives, mark node as executing (handles mid-run opens)
+                    if (nodeId) {
+                        setExecutingNodeIds(prev => {
+                            const next = new Set(prev)
+                            next.add(nodeId)
+                            return next
+                        })
+                    }
                     setNodeAssistantContent(prev => new Map(prev).set(nodeId, content))
+                    break
+                }
+                case 'subflow_node_assistant_content': {
+                    const { subflowId, nodeId, content } = (event.data as any).data || {}
+                    if (subflowId && activeSubflowIdRef?.current === subflowId && nodeId) {
+                        // If assistant content arrives, mark node as executing (handles mid-run opens)
+                        setExecutingNodeIds(prev => {
+                            const next = new Set(prev)
+                            next.add(nodeId)
+                            return next
+                        })
+                        setNodeAssistantContent(prev => new Map(prev).set(nodeId, content))
+                    }
                     break
                 }
                 case 'models_loaded': {
@@ -368,7 +410,9 @@ export const useMessageHandler = (
                         window.dispatchEvent(
                             new CustomEvent('nebula-subflow-provide' as any, { detail: def })
                         )
-                    } catch {}
+                    } catch (err) {
+                        console.error('[messageHandling] Failed to dispatch provide_subflow event', err)
+                    }
                     break
                 }
                 case 'provide_subflows': {
@@ -377,7 +421,9 @@ export const useMessageHandler = (
                         window.dispatchEvent(
                             new CustomEvent('nebula-subflows-provide' as any, { detail: list })
                         )
-                    } catch {}
+                    } catch (err) {
+                        console.error('[messageHandling] Failed to dispatch provide_subflows event', err)
+                    }
                     break
                 }
                 case 'subflow_copied': {
@@ -386,7 +432,9 @@ export const useMessageHandler = (
                         if (info?.nodeId && info?.newId) {
                             onNodeUpdate(info.nodeId, { subflowId: info.newId })
                         }
-                    } catch {}
+                    } catch (err) {
+                        console.error('[messageHandling] Failed to handle subflow_copied event', err)
+                    }
                     break
                 }
                 // fall through

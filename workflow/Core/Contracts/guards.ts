@@ -327,6 +327,21 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
                 Array.isArray((msg.data as any).content) &&
                 (msg.data as any).content.every(isAssistantContentItem)
             )
+        case 'subflow_node_execution_status':
+            return (
+                isObject(msg.data) &&
+                isString((msg.data as any).subflowId) &&
+                isNodeExecutionPayload((msg.data as any).payload)
+            )
+        case 'subflow_node_assistant_content':
+            return (
+                isObject(msg.data) &&
+                isString((msg.data as any).subflowId) &&
+                isString((msg.data as any).nodeId) &&
+                ((msg.data as any).threadID === undefined || isString((msg.data as any).threadID)) &&
+                Array.isArray((msg.data as any).content) &&
+                (msg.data as any).content.every(isAssistantContentItem)
+            )
         case 'models_loaded':
             return Array.isArray(msg.data)
         case 'provide_custom_nodes':

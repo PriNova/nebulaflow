@@ -104,7 +104,7 @@ export const SubflowNode: React.FC<BaseNodeProps & { data: SubflowNode['data'] }
                             openSubflow()
                         }}
                         title="Open Subflow"
-                        disabled={!data.subflowId || !!data.executing}
+                        disabled={!data.subflowId}
                     >
                         Open
                     </button>

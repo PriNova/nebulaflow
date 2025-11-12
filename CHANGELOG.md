@@ -12,6 +12,21 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+### Goal: Subflow Event Forwarding – Explicit Error Logging
+
+- Changed: Added explicit `console.error` in extension when forwarding inner subflow messages to the webview fails in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteWorkflow.ts#L673-L681) to make delivery issues diagnosable during development.
+- Changed: Added explicit `console.error` around subflow open request posting in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L641-L664) so failures to request a subflow are visible during development.
+- Changed: Added explicit `console.error` for subflow-related dispatches in the webview handler in [messageHandling.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/messageHandling.ts#L407-L433), covering `provide_subflow`, `provide_subflows`, and `subflow_copied` paths.
+- Why: Silent catches obscured failures in message delivery/dispatch paths; minimal logging keeps behavior unchanged while making issues easy to diagnose.
+
+### Goal: Open Subflow While Running (stable listener + snapshot)
+
+- Changed: Registered a single, stable “open subflow” listener using event constants and refs in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L37-L51), with the handler registered once and reading latest graph state from refs at [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L143-L161) and [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L640-L663).
+- Changed: Snapshot current nodes/edges on “Open” via a deep clone utility to avoid shared mutations during execution churn in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L41-L51) and [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L648-L651).
+- Changed: Harmonized the “provide subflow” listener to use the event constant with a trimmed dependency list in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L665-L790).
+- Changed: Enabled the Subflow node “Open” button during execution (only disabled when `subflowId` is missing) in [Subflow_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Subflow_Node.tsx#L96-L110).
+- Why: Prevents missed events and race conditions under heavy updates so users can reliably open a running subflow, captures a consistent snapshot for the view stack, and avoids duplicate stack frames via an idempotence guard.
+
 ### Goal: Align Loader Spinner Color With Success Checkmark in RightSidebar
 
 - Changed: Loader spinner color for tool execution in the RightSidebar now uses the VS Code success token to match the green check icon after completion. Replaced hard-coded `#33ffcc` with `var(--vscode-testing-iconPassed)` in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L461-L469) and [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L624-L631) so the Loader2Icon matches the check mark color theme-consistently.

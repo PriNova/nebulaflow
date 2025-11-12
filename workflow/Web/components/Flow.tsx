@@ -34,6 +34,22 @@ import { NodeType } from './nodes/Nodes'
 import { type WorkflowNodes, defaultWorkflow, nodeTypes } from './nodes/Nodes'
 import { isValidEdgeConnection } from './utils/edgeValidation'
 
+// Event keys
+const OPEN_SUBFLOW_EVT = 'nebula-open-subflow' as const
+const PROVIDE_SUBFLOW_EVT = 'nebula-subflow-provide' as const
+
+// Deep clone utility for graph snapshots (prefers structuredClone; falls back to JSON copy)
+const deepClone = <T,>(value: T): T => {
+    try {
+        if (typeof structuredClone === 'function') {
+            return structuredClone(value as any)
+        }
+    } catch {
+        // ignore and fall back
+    }
+    return JSON.parse(JSON.stringify(value)) as T
+}
+
 const FitViewHandler: React.FC<{
     fitRequested: boolean
     nodes: WorkflowNodes[]
@@ -123,6 +139,25 @@ export const Flow: React.FC<{
     const [disabledOutputsBySubflowId, setDisabledOutputsBySubflowId] = useState<
         Map<string, Set<string>>
     >(new Map())
+
+    // Refs to keep latest values for one-time listeners
+    const nodesRef = useRef(nodes)
+    const edgesRef = useRef(edges)
+    const activeSubflowIdRef = useRef(activeSubflowId)
+    const vscodeAPIRef = useRef(vscodeAPI)
+
+    useEffect(() => {
+        nodesRef.current = nodes
+    }, [nodes])
+    useEffect(() => {
+        edgesRef.current = edges
+    }, [edges])
+    useEffect(() => {
+        activeSubflowIdRef.current = activeSubflowId
+    }, [activeSubflowId])
+    useEffect(() => {
+        vscodeAPIRef.current = vscodeAPI
+    }, [vscodeAPI])
 
     // Determine which subflow outputs are disabled based on inner graph active flags
     const computeDisabledOutputHandles = useCallback(
@@ -374,7 +409,8 @@ export const Flow: React.FC<{
         setIsPaused,
         requestFitOnNextRender,
         setCompletedThisRun,
-        setStorageScope
+        setStorageScope,
+        activeSubflowIdRef
     )
 
     useEffect(() => {
@@ -602,16 +638,36 @@ export const Flow: React.FC<{
         return () => window.removeEventListener('nebula-run-only-this' as any, handler as any)
     }, [edges, nodeResults, nodes, vscodeAPI, isPaused])
 
-    // Open subflow handler
+    // Open subflow handler (stable, single registration)
     useEffect(() => {
         const openHandler = (e: any) => {
             const subflowId: string | undefined = e?.detail?.subflowId
             if (!subflowId) return
-            // Save current view
-            setViewStack(prev => [...prev, { nodes, edges }])
+            // Idempotence: avoid stacking if already active
+            if (activeSubflowIdRef.current === subflowId) return
+            // Snapshot current view (deep clone to avoid shared nested object mutations)
+            const nodesSnap = deepClone(nodesRef.current)
+            const edgesSnap = deepClone(edgesRef.current)
+            setViewStack(prev => [...prev, { nodes: nodesSnap, edges: edgesSnap }])
             setActiveSubflowId(subflowId)
-            vscodeAPI.postMessage({ type: 'get_subflow', data: { id: subflowId } } as any)
+            try {
+                vscodeAPIRef.current.postMessage({
+                    type: 'get_subflow',
+                    data: { id: subflowId },
+                } as any)
+            } catch (err) {
+                // Log so subflow fetch delivery failures are visible during development
+                console.error('[Flow] Failed to request subflow from extension', err)
+            }
         }
+        window.addEventListener(OPEN_SUBFLOW_EVT as any, openHandler as any)
+        return () => {
+            window.removeEventListener(OPEN_SUBFLOW_EVT as any, openHandler as any)
+        }
+    }, [])
+
+    // Provide subflow handler (kept as-is; registration may rebind)
+    useEffect(() => {
         const provideHandler = (e: any) => {
             const def = e?.detail
             if (!def) return
@@ -728,24 +784,14 @@ export const Flow: React.FC<{
                         initialResults.set(n.id, r)
                     }
                 }
-                setNodeResults(initialResults)
+                setNodeResults(prev => new Map([...prev, ...initialResults]))
             } catch {}
         }
-        window.addEventListener('nebula-open-subflow' as any, openHandler as any)
-        window.addEventListener('nebula-subflow-provide' as any, provideHandler as any)
+        window.addEventListener(PROVIDE_SUBFLOW_EVT as any, provideHandler as any)
         return () => {
-            window.removeEventListener('nebula-open-subflow' as any, openHandler as any)
-            window.removeEventListener('nebula-subflow-provide' as any, provideHandler as any)
+            window.removeEventListener(PROVIDE_SUBFLOW_EVT as any, provideHandler as any)
         }
-    }, [
-        nodes,
-        edges,
-        vscodeAPI,
-        requestFitOnNextRender,
-        pendingSubflowRename,
-        notify,
-        computeDisabledOutputHandles,
-    ])
+    }, [vscodeAPI, requestFitOnNextRender, pendingSubflowRename, notify, computeDisabledOutputHandles])
     // Listen for subflow library updates
     useEffect(() => {
         const handler = (e: any) => {

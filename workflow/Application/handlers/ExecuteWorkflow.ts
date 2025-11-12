@@ -652,15 +652,52 @@ export async function runSubflowWrapper(
 
     const resultByPortId = new Map<string, string>()
     const lastOutputs = new Map<string, string>()
+
+    // Proxy inner node events to subflow-scoped events for the outer webview
+    const subflowWebviewProxy = {
+        postMessage: async (innerMsg: any) => {
+            try {
+                if (innerMsg?.type === 'node_execution_status' && innerMsg?.data) {
+                    await safePost(webview, {
+                        type: 'subflow_node_execution_status',
+                        data: { subflowId, payload: innerMsg.data },
+                    } as any)
+                } else if (innerMsg?.type === 'node_assistant_content' && innerMsg?.data) {
+                    await safePost(webview, {
+                        type: 'subflow_node_assistant_content',
+                        data: {
+                            subflowId,
+                            nodeId: innerMsg.data.nodeId,
+                            threadID: innerMsg.data.threadID,
+                            content: innerMsg.data.content,
+                        },
+                    } as any)
+                }
+            } catch (err) {
+                // Log forwarding failures so message delivery issues are diagnosable
+                console.error('[subflowWebviewProxy] Failed to forward inner message', err)
+            }
+            return true
+        },
+    } as unknown as vscode.Webview
+
     const callbacks: ParallelCallbacks = {
         runNode: async (node, pctx, signal) => {
             const ctx = pctx as unknown as IndexedExecutionContext
             return await routeNodeExecution(node, 'workflow', {
                 runCLI: (..._args: any[]) =>
-                    executeCLINode(node, signal, {} as any, async () => ({ type: 'approved' }), ctx),
+                    executeCLINode(
+                        node,
+                        signal,
+                        subflowWebviewProxy,
+                        async () => ({ type: 'approved' }),
+                        ctx
+                    ),
                 runLLM: (..._args: any[]) =>
-                    executeLLMNode(node, ctx, signal, {} as any, async () => ({ type: 'approved' })),
-                runPreview: (..._args: any[]) => executePreviewNode(node.id, {} as any, ctx),
+                    executeLLMNode(node, ctx, signal, subflowWebviewProxy, async () => ({
+                        type: 'approved',
+                    })),
+                runPreview: (..._args: any[]) => executePreviewNode(node.id, subflowWebviewProxy, ctx),
                 runInput: (..._args: any[]) => executeInputNode(node, ctx),
                 runIfElse: (..._args: any[]) => executeIfElseNode(ctx, node),
                 runAccumulator: async (..._args: any[]) => {
@@ -701,6 +738,12 @@ export async function runSubflowWrapper(
             })
         },
         onStatus: payload => {
+            // Forward inner node status while subflow view is open
+            void safePost(webview, {
+                type: 'subflow_node_execution_status',
+                data: { subflowId, payload },
+            } as any)
+
             if (payload.status === 'completed' && payload.nodeId) {
                 if (outNodeIdToPortId.has(payload.nodeId)) {
                     const pid = outNodeIdToPortId.get(payload.nodeId)!

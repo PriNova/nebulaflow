@@ -4,6 +4,28 @@ Recommended improvements and optimizations for future implementation.
 
 ## Pending Enhancements
 
+### Subflow Open – Follow-ups
+
+- Goal: Harden and polish the open/provide subflow pipeline without changing core behavior.
+- What:
+  - Add a typed `CustomEvent<{ subflowId: string }>` alias for the open event and a sibling alias for provide to remove `any` and improve maintainability.
+  - Add minimal dev-only logging or a user notification when `postMessage` calls throw, to aid diagnosis without spamming users.
+  - Consider centralizing the deep snapshot logic into a tiny `cloneGraph(nodes, edges)` helper to guarantee deep copies and avoid drift across call sites.
+  - Optional micro-optimization: coalesce ref-sync effects (nodes/edges/activeSubflowId) if profiling shows reflow pressure.
+  - Optional: subtle visual hint (e.g., a brief highlight) when opening a subflow during execution to acknowledge the action.
+- Why: Improves type safety and debuggability, keeps snapshots consistent, and adds small UX clarity without increasing complexity.
+- Priority: P3 (robustness/UX polish)
+
+### Subflow Live Progress – Type Safety and Clone Helper
+
+- Goal: Tighten typing for subflow-scoped webview events and centralize deep cloning used on subflow open.
+- What:
+-   - Replace `any` payloads in subflow message handlers with exact Protocol types by importing the discriminated message contracts in [messageHandling.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/messageHandling.ts).
+-   - Introduce a small `cloneGraph(nodes, edges)` that prefers `structuredClone` with a JSON fallback to replace ad-hoc deepClone usage in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx).
+-   - Optional: route dev logs through a minimal logger with levels behind a dev flag to keep console noise controlled as the surface grows.
+- Why: Improves type safety and maintainability for subflow live updates, and ensures consistent, safe snapshotting when opening subflows mid-run.
+- Priority: P2 (robustness/maintainability)
+
 ### Tool Safety and Resolver Hygiene
 
 - Goal: Prevent future drift in Bash detection and reduce runtime overhead in tool name normalization.
