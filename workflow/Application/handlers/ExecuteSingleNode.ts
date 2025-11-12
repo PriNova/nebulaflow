@@ -8,7 +8,7 @@ import { NodeType } from '../../Core/models'
 import { loadSubflow } from '../../DataAccess/fs'
 import { fromProtocolPayload } from '../messaging/converters'
 import { safePost } from '../messaging/safePost'
-import { replaceIndexedInputs } from './ExecuteWorkflow'
+import { commandsNotAllowed, replaceIndexedInputs, sanitizeForShell } from './ExecuteWorkflow'
 import type { IndexedExecutionContext } from './ExecuteWorkflow'
 import { routeNodeExecution } from './NodeDispatch'
 
@@ -380,27 +380,138 @@ async function executeSingleCLINode(
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
         ? { variableValues: new Map(Object.entries(variables)) as any }
         : undefined
-    const command = hasTemplate
+
+    const mode = (((node as any).data?.mode as any) || 'command') as 'command' | 'script'
+    const base = hasTemplate
         ? replaceIndexedInputs(template, inputs, ctx as any)
         : (inputs[0] ?? '').toString()
+    let effective = base
 
     // Minimal approval path for single node execution: reuse existing hook
     if ((node as any).data?.needsUserApproval) {
         await safePost(webview, {
             type: 'node_execution_status',
-            data: { nodeId: node.id, status: 'pending_approval', result: `${command}` },
+            data: { nodeId: node.id, status: 'pending_approval', result: `${base}` },
         })
         const approval = await approvalHandler(node.id)
         if (approval.type === 'aborted') {
             throw new AbortedError()
         }
+        if (approval.type === 'approved' && typeof approval.command === 'string') {
+            effective = approval.command
+        }
     }
 
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
     try {
-        const { expandHome, execute: shellExecute } = await import('../../DataAccess/shell.js')
-        const filteredCommand = expandHome(command) || ''
-        const { output } = await shellExecute(filteredCommand, abortSignal, { cwd })
+        const {
+            expandHome,
+            execute: shellExecute,
+            executeScript: shellExecuteScript,
+            executeCommandSpawn: shellExecuteCommandSpawn,
+        } = await import('../../DataAccess/shell.js')
+        if (mode === 'script') {
+            // Build stdin for script
+            const stdinCfg = ((node as any).data?.stdin ?? {}) as {
+                source?: 'none' | 'parents-all' | 'parent-index' | 'literal'
+                parentIndex?: number
+                literal?: string
+                stripCodeFences?: boolean
+                normalizeCRLF?: boolean
+            }
+            let stdinText: string | undefined
+            const source = stdinCfg.source || 'none'
+            if (source === 'parents-all') {
+                stdinText = inputs.join('\n')
+            } else if (source === 'parent-index') {
+                const idx = Math.max(1, Number(stdinCfg.parentIndex || 1)) - 1
+                stdinText = inputs[idx] ?? ''
+            } else if (source === 'literal') {
+                stdinText = replaceIndexedInputs(stdinCfg.literal || '', inputs, ctx as any)
+            }
+            if (stdinText != null) {
+                const hasFences = /(\n|^)```/.test(stdinText)
+                const shouldStrip =
+                    stdinCfg.stripCodeFences === true ||
+                    (stdinCfg.stripCodeFences === undefined && hasFences)
+                if (shouldStrip) {
+                    stdinText = stdinText
+                        .split('\n')
+                        .filter(line => !/^```/.test(line))
+                        .join('\n')
+                }
+                const hasCRLF = /\r\n/.test(stdinText)
+                const shouldNormalize =
+                    (stdinCfg.normalizeCRLF !== false && hasCRLF) || stdinCfg.normalizeCRLF === true
+                if (shouldNormalize) {
+                    stdinText = stdinText.replace(/\r\n/g, '\n')
+                }
+            }
+
+            const envCfg = ((node as any).data?.env ?? {}) as {
+                exposeParents?: boolean
+                names?: string[]
+                static?: Record<string, string>
+            }
+            const extraEnv: Record<string, string> = {}
+            if (envCfg.exposeParents) {
+                if (Array.isArray(envCfg.names) && envCfg.names.length > 0) {
+                    for (let i = 0; i < inputs.length && i < envCfg.names.length; i++) {
+                        const k = envCfg.names[i]
+                        if (k && typeof k === 'string') extraEnv[k] = inputs[i] ?? ''
+                    }
+                } else {
+                    for (let i = 0; i < inputs.length; i++) extraEnv[`INPUT_${i + 1}`] = inputs[i] ?? ''
+                }
+            }
+            if (envCfg.static && typeof envCfg.static === 'object') {
+                for (const [k, v] of Object.entries(envCfg.static)) {
+                    extraEnv[k] = replaceIndexedInputs(String(v ?? ''), inputs, ctx as any)
+                }
+            }
+
+            const shell =
+                ((node as any).data?.shell as any) || (process.platform === 'win32' ? 'pwsh' : 'bash')
+            const flags = ((node as any).data?.flags ?? {}) as any
+
+            const { output, exitCode } = await shellExecuteScript({
+                shell,
+                flags: {
+                    exitOnError: !!flags.exitOnError,
+                    unsetVars: !!flags.unsetVars,
+                    pipefail: !!flags.pipefail,
+                    noProfile: flags.noProfile !== false,
+                    nonInteractive: flags.nonInteractive !== false,
+                    executionPolicyBypass: !!flags.executionPolicyBypass,
+                },
+                script: effective,
+                stdinText,
+                cwd,
+                env: extraEnv,
+                abortSignal,
+            })
+            if (exitCode !== '0' && (node as any).data?.shouldAbort) {
+                throw new Error(output)
+            }
+            return output
+        }
+
+        const filteredCommand = expandHome(effective) || ''
+        const safety: 'safe' | 'advanced' =
+            ((node as any).data?.safetyLevel as any) === 'advanced' ? 'advanced' : 'safe'
+        if (safety !== 'advanced') {
+            if (commandsNotAllowed.some(cmd => sanitizeForShell(filteredCommand).startsWith(cmd))) {
+                void vscode.window.showErrorMessage('Command cannot be executed')
+                throw new Error('Command cannot be executed')
+            }
+        }
+        const userSpawn = Boolean((node as any).data?.streamOutput)
+        const autoSpawn = !userSpawn && (filteredCommand.length > 200 || /[|><]/.test(filteredCommand))
+        const runner = userSpawn || autoSpawn ? shellExecuteCommandSpawn : shellExecute
+        const { output, exitCode } = await runner(filteredCommand, abortSignal, { cwd })
+        if (exitCode !== '0' && (node as any).data?.shouldAbort) {
+            throw new Error(output)
+        }
         return output
     } catch (error: unknown) {
         if (error instanceof AbortedError) {

@@ -12,6 +12,34 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+### Goal: Shell (CLI) Node – Double‑Click Modal Editing for Script/Command
+
+- Added: Double-click on Script textarea and Command input in [PropertyEditor.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/PropertyEditor.tsx#L240-L291) opens the [TextEditorModal.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/TextEditorModal.tsx) for focused editing; modal closes automatically when the selected node changes.
+- Added: Double-click on the Shell node body opens the modal in [CLI_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/CLI_Node.tsx#L109-L135), mirroring the LLM node behavior.
+- Added: Mode‑aware title fallback for the modal ("Edit Script" or "Edit Command") when no explicit `title` is set, based on `data.mode` in both [PropertyEditor.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/PropertyEditor.tsx#L284-L289) and [CLI_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/CLI_Node.tsx#L125-L129).
+- Changed: Reused the existing global `nebula-edit-node` lifecycle handled in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L538-L567); no changes required to the handler.
+- Why: Provides a consistent, discoverable way to edit Shell scripts/commands inline or via the node card, matching the established Agent (LLM) node pattern.
+
+### Goal: Shell Node – Terminal-like Script Mode, Safety Parity, and Buffered Spawn
+
+- Added: Script mode (multiline) executed via in-memory stdin with reliable newline handling and no here-docs/temp files. Handled in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteWorkflow.ts) and [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteSingleNode.ts) using new shell adapters.
+- Added: Explicit stdin channel with sources (none, parents-all, parent-index, literal) and preprocessors (strip code fences, normalize CRLF). Configurable via [PropertyEditor.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/PropertyEditor.tsx); consumed in execution handlers.
+- Added: Env mapping to expose parent outputs as INPUT_1…N or custom names, plus optional static env (JSON) with reserved-var guards. Implemented in handlers; guarded/merged in [shell.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/shell.ts).
+- Added: Shell selection and strict flags. POSIX shells support set -e/-u/-o pipefail; PowerShell supports -NoProfile/-NonInteractive/optional -ExecutionPolicy Bypass. UI in [PropertyEditor.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/PropertyEditor.tsx); enforced in [shell.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/shell.ts).
+- Added: Structured approval preview (Mode, Shell, Safety, Stdin, Flags) in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx) for CLI node approvals.
+- Added: New shell adapters for robust execution and large output handling with truncation guards: `executeScript(...)` and `executeCommandSpawn(...)` in [shell.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/shell.ts). Includes cross‑platform termination with SIGINT/SIGTERM and `taskkill` fallback on Windows.
+- Changed: Command mode deny‑list and sanitization now enforced in Single Node path for safety parity with workflow execution. See shared exports and checks in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteWorkflow.ts) and [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteSingleNode.ts).
+- Changed: "Stream output" UI label clarified to "Spawn (buffered) (command mode)" to match buffered aggregation semantics; Script mode uses spawn (buffered) by default. See [PropertyEditor.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/PropertyEditor.tsx) and docs in [README.md](file:///home/prinova/CodeProjects/nebulaflow/README.md).
+- Changed: Abort-on-error toggle honored in both Script and Command modes for Single Node path, aligning with workflow handler behavior. See [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteSingleNode.ts).
+- Changed: `execute` (exec) and new spawn/script paths apply max-output truncation to prevent memory pressure on very large outputs in [shell.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/shell.ts).
+
+### Goal: Canvas-only Deselection and Sidebar Event Containment
+
+- Changed: Moved background click/key handlers from the outer wrapper to the canvas container (`ref={centerRef}`) so deselection is scoped to the canvas only in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L980-L988).
+- Changed: Stopped sidebar event bubbling by adding `onClick`/`onKeyDown` with `stopPropagation()` on the right sidebar panel container in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L1629-L1634).
+- Fixed: Hardened background-click handler with a target guard so only true background clicks clear selection; preserved Shift/Enter semantics in [selectionHandling.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/selectionHandling.ts#L78-L96).
+- Why: Prevents RightSidebar interactions from clearing canvas selection while keeping canvas selection behavior unchanged.
+
 ### Goal: Subflow Event Forwarding – Explicit Error Logging
 
 - Changed: Added explicit `console.error` in extension when forwarding inner subflow messages to the webview fails in [ExecuteWorkflow.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteWorkflow.ts#L673-L681) to make delivery issues diagnosable during development.

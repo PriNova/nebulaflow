@@ -1,8 +1,9 @@
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react'
 import type React from 'react'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import RunFromHereButton from '../RunFromHereButton'
 import RunOnlyThisButton from '../RunOnlyThisButton'
+import { TextEditorModal } from '../TextEditorModal'
 import { FanInTargetHandles } from './FanInTargetHandles'
 import {
     type BaseNodeData,
@@ -25,6 +26,41 @@ export const CLINode: React.FC<BaseNodeProps> = ({ id, data, selected }) => {
     useEffect(() => {
         if (data?.fanInEnabled) updateNodeInternals(id)
     }, [id, data?.fanInEnabled, data?.inputPortCount, updateNodeInternals])
+
+    const [draft, setDraft] = useState('')
+
+    const dispatchEditEvent = useCallback(
+        (action: 'start' | 'commit' | 'cancel', payload?: any) => {
+            const detail: any = { id, action }
+            if (payload?.content !== undefined) {
+                detail.content = payload.content
+            }
+            window.dispatchEvent(
+                new CustomEvent('nebula-edit-node', {
+                    detail,
+                })
+            )
+        },
+        [id]
+    )
+
+    useEffect(() => {
+        if (data.isEditing) {
+            setDraft(data.content || '')
+        }
+    }, [data.isEditing, data.content])
+
+    const handleBodyDoubleClick = () => {
+        dispatchEditEvent('start')
+    }
+
+    const handleCommit = () => {
+        dispatchEditEvent('commit', { content: draft })
+    }
+
+    const handleCancel = () => {
+        dispatchEditEvent('cancel')
+    }
 
     return (
         <div
@@ -74,9 +110,23 @@ export const CLINode: React.FC<BaseNodeProps> = ({ id, data, selected }) => {
                     />
                     <RunFromHereButton nodeId={id} className="tw-w-[1.75rem] tw-h-[1.75rem]" />
                 </div>
-                <div className="tw-flex tw-items-center tw-justify-center">
+                <div
+                    className="tw-flex tw-items-center tw-justify-center tw-cursor-pointer"
+                    onDoubleClick={handleBodyDoubleClick}
+                >
                     <span>{data.title}</span>
                 </div>
+                <TextEditorModal
+                    isOpen={data.isEditing === true}
+                    value={draft}
+                    onChange={setDraft}
+                    onConfirm={handleCommit}
+                    onCancel={handleCancel}
+                    title={
+                        data.title ??
+                        (((data as any).mode ?? 'command') === 'script' ? 'Edit Script' : 'Edit Command')
+                    }
+                />
             </div>
             <Handle type="source" position={Position.Bottom} />
         </div>

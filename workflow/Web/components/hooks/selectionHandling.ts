@@ -77,10 +77,17 @@ export const useInteractionHandling = (
 
     const handleBackgroundClick = useCallback(
         (event: React.MouseEvent | React.KeyboardEvent) => {
-            if (
-                (event.type === 'click' && !(event as React.MouseEvent).shiftKey) ||
-                (event as React.KeyboardEvent).key === 'Enter'
-            ) {
+            if (event.type === 'click') {
+                const mouseEvent = event as React.MouseEvent
+                if (mouseEvent.target !== mouseEvent.currentTarget) return
+                if (!mouseEvent.shiftKey) {
+                    setSelectedNodes([])
+                    setActiveNode(null)
+                }
+                return
+            }
+
+            if ((event as React.KeyboardEvent).key === 'Enter') {
                 setSelectedNodes([])
                 setActiveNode(null)
             }

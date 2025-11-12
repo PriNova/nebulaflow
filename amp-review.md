@@ -1,101 +1,100 @@
 ## High-level summary
-This patch overhauls the “open sub-flow while running” feature and adds a new channel for forwarding node-level events from an executing sub-flow back to the webview.  
-Key points  
-• Flow.tsx now registers one **stable** `open subflow` listener and snapshots the current canvas via a deep-clone helper.  
-• New **subflow-scoped** messages (`subflow_node_execution_status`, `subflow_node_assistant_content`) are defined in the protocol, validated in guards, generated in the extension runtimes (`ExecuteWorkflow.ts`), and consumed in the React hook (`messageHandling.ts`).  
-• The “Open” button on a Subflow node is no longer disabled during execution.  
+The change introduces an in-place, modal text editor for CLI / Script nodes.
 
-Non-functional files (`CHANGELOG.md`, `amp-review.md`, `future-enhancements.md`) were updated to reflect the change.
+1. **PropertyEditor**
+   • Adds a “CLI editor” modal identical in behaviour to the prompt / variable / input / condition editors.  
+   • Opens the modal on double-click in the textarea and updates the node’s `content` on confirm.
+
+2. **CLI_Node**
+   • Enables double-click editing directly on the node in the canvas.  
+   • Maintains a local `draft` state, shows `TextEditorModal` when `data.isEditing === true`, and communicates editing actions (`start`, `commit`, `cancel`) through a `nebula-edit-node` CustomEvent.
+
+No back-end, types, or test changes were included.
+
+---
 
 ## Tour of changes
-Begin with `workflow/Web/components/Flow.tsx`. The new stable `useEffect` (around lines 600-670 after patch) drives the rest of the refactor: it explains why refs were introduced, why event-key constants were added, and why downstream files needed new message types.  
-After Flow.tsx, inspect:
+Begin with `workflow/Web/components/nodes/CLI_Node.tsx`.  
+It is the source of the new editing workflow (dispatching custom events, showing the modal). Understanding this file clarifies how the UI enters the *editing* state that the PropertyEditor now respects.
 
-1. `workflow/Application/handlers/ExecuteWorkflow.ts` – adds the proxy that emits the new subflow events.  
-2. `workflow/Core/Contracts/{Protocol.ts, guards.ts}` – formalises and validates the new event shapes.  
-3. `workflow/Web/components/hooks/messageHandling.ts` – consumes those events.  
-4. `workflow/Web/components/nodes/Subflow_Node.tsx` – UX change (button enabled while running).
+After that, review `PropertyEditor.tsx`, which merely consumes the same modal component but is more boiler-plate and mirrors existing patterns.
+
+---
 
 ## File level review
 
-### `CHANGELOG.md` / `amp-review.md` / `future-enhancements.md`
-Documentation only – accurate and helpful. No issues.
+### `workflow/Web/components/nodes/CLI_Node.tsx`
 
-### `workflow/Application/handlers/ExecuteWorkflow.ts`
 Changes
-• Builds a `subflowWebviewProxy` that rewrites inner node events into the new subflow-scoped events.  
-• Forwards those events in both `runNode` callbacks and the wrapper’s `onStatus`.
+• Imports `useCallback`, `useState`, and `TextEditorModal`.  
+• Declares `draft` state synchronised with `data.content` when editing starts.  
+• Adds `dispatchEditEvent` helper sending `{id, action, content?}` as `nebula-edit-node` CustomEvents.  
+• The root `<div>` now has `onDoubleClick={handleBodyDoubleClick}` to request `start` editing.  
+• Renders `TextEditorModal` when `data.isEditing === true`, and on confirm/cancel dispatches `commit` / `cancel`.
 
 Review
-1. Correctness – Logic correctly matches new message contracts. `await` on `safePost` maintains ordering.  
-2. Error handling – `catch {}` silently ignores failures; add at least `console.error` in dev or telemetry in prod.  
-3. Types – The proxy is cast to `unknown as vscode.Webview`; consider an explicit minimal interface with `postMessage` only.  
-4. Performance – `safePost` is async; the wrapper does not `await` the outer `postMessage`. That’s fine, but ensure `safePost` failures never reject unhandled.  
-5. Security – No new attack surface; messages are validated on the receiver side.
+1. Correctness  
+   a. `useEffect` sets `draft` only when `data.isEditing` toggles to true – good.  
+   b. `dispatchEditEvent` leaks neither closure nor stale props; dependencies are fine (`[id]`).  
+   c. On commit, only the event is dispatched; the modal is closed by external state change (parent should set `isEditing=false`). Make sure such listener exists, otherwise the modal will remain open.
 
-### `workflow/Core/Contracts/Protocol.ts`
-Adds two message interfaces and extends the union.
+2. Possible bugs / edge-cases  
+   • If the parent does not update `data.content` before flipping `isEditing` to `false`, the node will briefly show stale text. Consider optimistic update (`setDraft('')`) after commit.  
+   • The component relies on the presence of the boolean flag on `data`. If a consumer accidentally sets `isEditing` to `''` or `null`, the modal will not open/close – validate prop types if possible.  
+   • `onDoubleClick` is attached to the entire body, but not to the handles/top-bar; good choice but verify it does not conflict with drag behaviour in xyflow.
 
-Review
-• Good use of nested payload (`{ subflowId, payload }`) for status to avoid collision with existing events.  
-• Types are self-contained – no fixes needed.
+3. Performance  
+   • `dispatchEditEvent` constructs a new object for every commit/start/cancel; negligible.  
+   • No unnecessary re-renders; `useCallback` memoizes the dispatcher.
 
-### `workflow/Core/Contracts/guards.ts`
-Adds type-guards for the two new messages.
+4. Security  
+   • No user-provided content is executed; only displayed in a modal. Standard XSS rules of React apply.
 
-Review
-• Implementation matches the interfaces.  
-• Minor: duplicate property extraction could be DRYed but fine.
+5. Typing  
+   • `payload?: any` is loose. If you are already in TypeScript, consider an explicit interface:
+     ```ts
+     type EditPayload = { content: string };
+     ```
+   • `data.isEditing` is typed as `any`; define in `BaseNodeData` to avoid casts.
 
-### `workflow/Web/components/Flow.tsx`
-Major refactor.
+Suggestions
+• Clear `draft` after `commit`/`cancel` to prevent showing old text when reopened.
+• Add keyboard shortcut (e.g., Ctrl+Enter) to commit from the modal for better UX.
 
-1. Event constants & `deepClone`  
-   – 👍 avoids string duplication.  
-   – Fallback JSON copy is *deep* but loses functions, Dates, Maps. The React Flow node/edge models are POJOs, so acceptable. If ever extended (e.g., Map in `data`), this will break; consider a dedicated `cloneGraph()` util with `structuredClone` polyfill.
+---
 
-2. `useRef` mirrors  
-   – Keeps latest `nodes`, `edges`, etc. so the stable listener remains fresh. Implementation is correct.  
-   – Micro-nit: could consolidate the four small effects into one.
+### `workflow/Web/components/PropertyEditor.tsx`
 
-3. Open subflow effect  
-   – Empty dep array: listener mounted once ⇒ leak fixed.  
-   – Idempotence guard prevents duplicate stack frames. ✔  
-   – `try { vscodeAPIRef.current.postMessage(...) } catch {}` suppresses diagnostics – at least log in dev.  
-   – Correctly deep-clones before pushing to `viewStack`.
-
-4. Provide subflow effect  
-   – Dependency list trimmed; nodes/edges removed because they are supplied by the event. Good.  
-   – Uses `setNodeResults(prev => new Map([...prev, ...initialResults]))` preserving past results – nice touch.
-
-### `workflow/Web/components/hooks/messageHandling.ts`
 Changes
-• Accepts `activeSubflowIdRef` so the hook can decide whether to apply forwarded events.  
-• Factored the bulky “applyNodeExecutionStatus” body into its own helper for reuse.  
-• Adds handling for the two new messages.
+• Adds `isCliEditorOpen` and `cliDraft` state.  
+• Resets both in `useEffect` when a new node is selected.  
+• On double-click inside the textarea (for both script and command modes) opens the modal.  
+• Renders a `TextEditorModal` identical to the one used elsewhere.
 
 Review
-1. Correctness – Logic paths mirror existing handling; guard ensures we only mutate state for the subflow currently viewed.  
-2. Performance – No extra renders: state setters are batched and guarded.  
-3. Safety – `applyNodeExecutionStatus` relies on stable `nodes`, `edges`; hook closure captures them so they stay up-to-date because the hook itself re-runs on each render – fine.  
-4. Typing – The new event payloads are typed as `any`; could leverage the newly added TS interfaces for stronger safety.
+1. Correctness  
+   • State reset effect correctly includes `node.id` dependency.  
+   • `onDoubleClick` handler derives draft from `node.data.content || ''` – safe.  
+   • `onConfirm` updates `content` via `onUpdate` and closes the modal – same pattern as others.
 
-### `workflow/Web/components/nodes/Subflow_Node.tsx`
-Change
-• `disabled={!data.subflowId}` (removed `|| !!data.executing`).
+2. Possible bugs  
+   • The `placeholder` mentions positional inputs but not environment variables – minor UX.  
+   • Duplicate code for the two textareas (`script` vs `command`). Could be factored into a small component.
 
-Review
-• Enables opening while running. Ensure backend tolerates multiple `get_subflow` calls; appears safe due to idempotence guard in Flow.tsx.  
-• UX might need a hint that node is executing (spinner, etc.).
+3. Performance / UX  
+   • Double-click may conflict with text selection. A visible “edit” icon may be clearer, but behaviour is consistent with existing editors.  
+   • Consider opening the modal automatically for multi-line content to avoid editing inside a cramped `<textarea>`.
 
-## Overall recommendations
-1. Replace silent `catch {}` blocks with at least `console.error` (dev) or telemetry (prod).  
-2. Extract `cloneGraph()` util that always deep-clones nodes & edges; include compatibility polyfill for `structuredClone`.  
-3. Type the custom events (`CustomEvent<{ subflowId: string }>` etc.) to remove `as any`.  
-4. Consider merging the four “update ref” effects in Flow.tsx – tiny optimisation.  
-5. Add tests that verify:  
-   • Only one `openHandler` listener exists after many renders.  
-   • Opening a subflow mid-run correctly forwards inner node events.  
-   • Deep-clone snapshot is not mutated by subsequent node updates.
+4. Typing  
+   • `onChange={(e) => onUpdate(...)}` uses `any`. Can be typed as `React.ChangeEvent<HTMLTextAreaElement>`.
 
-The functional refactor is solid and removes the event-listener leak while enabling live inspection of running sub-flows; address the minor error-handling and deep-clone concerns before merge.
+---
+
+## Overall notes & recommendations
+• The feature is consistent with the existing editor experience and uses the shared `TextEditorModal` component, keeping UI uniform.  
+• Ensure there is a global listener that consumes `nebula-edit-node` events, mutates the node data, and toggles `isEditing`, otherwise the CLI_Node modal may not close.  
+• Add unit / integration tests:  
+  – Double-click ▶️ dispatches `start` and opens modal.  
+  – Confirm ▶️ dispatches `commit` with correct payload and closes modal.  
+  – Cancel ▶️ dispatches `cancel`.  
+• Refactor the duplicated textarea blocks in `PropertyEditor` to reduce maintenance cost.

@@ -975,17 +975,15 @@ export const Flow: React.FC<{
                 className="hover:tw-bg-[var(--vscode-textLink-activeForeground)] tw-bg-[var(--vscode-panel-border)] tw-cursor-ew-resize tw-select-none"
                 onMouseDown={handleMouseDown}
             />
-            <div
-                className="tw-flex-1 tw-bg-[var(--vscode-editor-background)] tw-shadow-inner tw-h-full tw-overflow-hidden"
-                onClick={handleBackgroundClick}
-                onKeyDown={handleBackgroundKeyDown}
-                role="button"
-                tabIndex={0}
-            >
+            <div className="tw-flex-1 tw-bg-[var(--vscode-editor-background)] tw-shadow-inner tw-h-full tw-overflow-hidden">
                 <div className="tw-flex tw-flex-1 tw-h-full">
                     <div
                         ref={centerRef}
                         className="tw-relative tw-flex-1 tw-bg-[var(--vscode-editor-background)] tw-h-full tw-min-w-0"
+                        onClick={handleBackgroundClick}
+                        onKeyDown={handleBackgroundKeyDown}
+                        role="button"
+                        tabIndex={0}
                         onDragOver={handleCanvasDragOver}
                         onDrop={handleCanvasDrop}
                     >
@@ -1631,6 +1629,8 @@ export const Flow: React.FC<{
                         id="right-sidebar-panel"
                         style={{ width: (rightCollapsed ? COLLAPSED_WIDTH : rightSidebarWidth) + 'px' }}
                         className="tw-flex-shrink-0 tw-border-r tw-border-solid tw-border-[var(--vscode-panel-border)] tw-bg-[var(--vscode-sideBar-background)] tw-h-full tw-overflow-y-auto"
+                        onClick={e => e.stopPropagation()}
+                        onKeyDown={e => e.stopPropagation()}
                     >
                         {rightCollapsed ? (
                             <div className="tw-border-b tw-border-border tw-bg-sidebar-background tw-px-2 tw-py-2 tw-flex tw-justify-center">

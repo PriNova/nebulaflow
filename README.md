@@ -33,16 +33,33 @@ The LLM node runs via the Amp SDK. The editor acts as a visual wrapper around th
 
 ## Features
 
+### Shell Node (CLI)
+
+- Switch between Command (one-liner) and Script (multiline via stdin) in the Property Editor.
+- Script mode preserves newlines; no here-docs or temp files needed.
+- Stdin source can be set to parents-all, parent-index, or literal; optionally strip code fences and normalize CRLF.
+- Env mapping exposes parent outputs as INPUT_1…N or custom names; use stdin for large payloads.
+- Shell/flags: bash/sh/zsh (`set -e`, `set -u`, `set -o pipefail`), pwsh (`-NoProfile`, `-NonInteractive`, optional `-ExecutionPolicy Bypass`).
+- Safety: Command mode uses denylist/sanitization by default (Safe). Script mode uses stdin semantics. Advanced disables sanitization (use approvals during authoring).
+- Execution: Script mode uses spawn (buffered) by default; Command mode can use spawn (buffered) via a toggle. Output is aggregated and truncated when too large.
+- Approvals: When enabled, the Right Sidebar shows an editable script/command and a structured summary (Mode, Shell, Safety, Stdin, Flags) before you approve.
+
 - Visual workflow editor with @xyflow/react
 - Node types: CLI, LLM, Preview, Text Input, Loop Start/End, Accumulator, Variable, If/Else
 - Graph execution with ordered edges, token counting for previews, and abortion support
-- Runtime approvals for CLI nodes (approve/modify commands before run)
+- Shell node enhancements:
+  - Script mode (multiline) via in-memory stdin (no temp files)
+  - Stdin sources (none, parents-all, parent-index, literal) with strip-fences and CRLF normalize
+  - Env mapping (expose parents as INPUT_1…N, custom names, static env)
+  - Shell selection and strict flags (bash/sh/zsh set -e/-u/pipefail; pwsh NoProfile/NonInteractive/ExecutionPolicy)
+  - Spawn toggle for command mode; script mode uses spawn (buffered) by default
+  - Structured approval preview (Mode, Shell, Safety, Stdin, Flags)
 - Workspace persistence:
-- Workflows: `.nebulaflow/workflows/*.json`
-- Custom nodes: `.nebulaflow/nodes/*.json`
+  - Workflows: `.nebulaflow/workflows/*.json`
+  - Custom nodes: `.nebulaflow/nodes/*.json`
 - Security protections:
-  - Dangerous CLI prefixes blocked (e.g., `rm`, `sudo`, `chown`, etc.)
-  - Command sanitization and abort handling
+  - Dangerous CLI prefixes blocked in command mode (e.g., `rm`, `sudo`, `chown`, etc.)
+  - Command sanitization and abort handling; approvals available; Advanced mode disables sanitization
 
 ## Requirements
 
@@ -142,7 +159,7 @@ This repo follows a vertical slice style within the `workflow/` directory:
 - Web (UI): webview UI, user-initiated actions, and protocol mirror
 - Application: request/message handling, command orchestration
 - Core: pure types/models and execution helpers (graph sorting, node execution glue)
-- DataAccess: file system and shell adapters for persistence and process execution
+- DataAccess: file system and shell adapters for persistence and process execution (script mode + spawn/streaming)
 
 Execution flow:
 
@@ -160,9 +177,9 @@ Execution flow:
 ## Security
 
 - CLI nodes:
-  - Disallowed command prefixes (non-exhaustive): `rm`, `chmod`, `shutdown`, `sudo`, `chown`, `kill`, `reboot`, `poweroff`, `systemctl`, etc.
-  - Commands are sanitized before execution and can be aborted
-  - Optional user approval gate before running commands
+  - Command mode (one-liners): disallowed prefixes and sanitization are applied; optional approval.
+  - Script mode (multiline via stdin): runs via spawn; denylist is not applied, but approvals still work and strict flags are available.
+  - Advanced mode: disables sanitization; use with approval during authoring. In non-interactive environments, disable approvals.
 - Errors are surfaced via VS Code notifications; execution halts on errors/abort
 
 ## Troubleshooting

@@ -4,6 +4,48 @@ Recommended improvements and optimizations for future implementation.
 
 ## Pending Enhancements
 
+### Shell Node Modal Editing – Minor Polish
+
+- Goal: Refine modal editing ergonomics and typing for the Shell (CLI) node without changing behavior.
+- What:
+  - Ensure a safe string fallback for the Command input value in [PropertyEditor.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/PropertyEditor.tsx#L260-L266) to avoid uncontrolled→controlled warnings when `content` is undefined.
+  - Clear the local `draft` state after commit/cancel in [CLI_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/CLI_Node.tsx#L57-L63) to prevent stale values on subsequent edits.
+  - Type the `nebula-edit-node` payload explicitly in [CLI_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/CLI_Node.tsx#L32-L45) for stronger compile-time safety.
+- Why: Improves robustness (no React console warnings), prevents subtle UX nits with stale drafts, and strengthens type safety with minimal code.
+- Priority: P3 (polish)
+
+### Shell Node – Live Streaming and Validation Polish
+
+- Goal: Provide true live streaming of process output to the UI and improve input validation feedback.
+- What:
+  - Implement buffer-by-buffer streaming from spawn to the webview so users see output as it arrives (maintain truncation guard).
+  - Surface JSON parse errors for Static Env editor inline (with a small error state) instead of silently ignoring invalid JSON.
+  - Clarify parent-index stdin semantics: validate out-of-range indices and allow choosing 0- or 1-based indexing explicitly; show a brief helper hint.
+  - Unify shell imports (named vs dynamic) across workflow/single-node handlers to keep style consistent.
+- Why: Aligns UX with terminal expectations, prevents silent misconfiguration, and keeps code style consistent.
+- Priority: P2 (UX/robustness)
+
+### Selection Handling – Keyboard Consolidation and Focus Ergonomics
+
+- Goal: Consolidate keyboard handling and confirm focus reachability after handler relocation.
+- What:
+  - Move Enter-key deselection logic exclusively to `handleBackgroundKeyDown` and remove duplication from `handleBackgroundClick` in [selectionHandling.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/selectionHandling.ts#L88-L106).
+  - Verify keyboard focus is intuitive when the inner canvas holds `role`/`tabIndex` and the outer wrapper no longer does, especially on narrow layouts in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L983-L986).
+- Why: Reduces duplication and ensures accessible, predictable keyboard navigation after scoping handlers to the canvas.
+- Priority: P2 (robustness/a11y)
+
+### RightSidebar Event Containment – Hardening and Consistency
+
+- Goal: Standardize containment and add an extra safety stop.
+- What:
+  - Add `onMouseDown={e => e.stopPropagation()}` on the right sidebar panel to prevent mouse-down from bubbling, matching click/key containment in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L1629-L1634).
+  - Choose a single strategy (stopPropagation vs target guards) and apply it consistently for background deselection and sidebar containment.
+  - Add a narrow type guard in selection handlers to reduce casts when refining `MouseEvent`/`KeyboardEvent` branches in [selectionHandling.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/selectionHandling.ts#L78-L96).
+  - Confirm/document Shift+click semantics on empty canvas (currently a no-op that keeps selection) in [selectionHandling.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/selectionHandling.ts#L82-L87).
+  - If/when tests exist, consider coverage for sidebar/canvas Shift/Enter containment behavior.
+- Why: Further reduces accidental deselection and keeps containment behavior uniform across inputs.
+- Priority: P3 (polish/consistency)
+
 ### Subflow Open – Follow-ups
 
 - Goal: Harden and polish the open/provide subflow pipeline without changing core behavior.

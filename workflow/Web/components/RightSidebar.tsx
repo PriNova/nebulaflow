@@ -801,6 +801,70 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                     )}
                                 </div>
 
+                                {node.id === pendingApprovalNodeId && node.type === NodeType.CLI && (
+                                    <div className="tw-mt-2 tw-space-y-2 tw-text-xs">
+                                        <div className="tw-grid tw-grid-cols-2 tw-gap-2">
+                                            <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
+                                                <div className="tw-font-semibold">Mode</div>
+                                                <div>
+                                                    {((node as any).data?.mode ?? 'command') as string}
+                                                </div>
+                                            </div>
+                                            <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
+                                                <div className="tw-font-semibold">Shell</div>
+                                                <div>
+                                                    {((node as any).data?.shell ?? 'bash') as string}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="tw-grid tw-grid-cols-2 tw-gap-2">
+                                            <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
+                                                <div className="tw-font-semibold">Safety</div>
+                                                <div>
+                                                    {
+                                                        ((node as any).data?.safetyLevel ??
+                                                            'safe') as string
+                                                    }
+                                                </div>
+                                            </div>
+                                            <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
+                                                <div className="tw-font-semibold">Stdin</div>
+                                                <div>
+                                                    {
+                                                        ((node as any).data?.stdin?.source ??
+                                                            'none') as string
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
+                                            <div className="tw-font-semibold">Flags</div>
+                                            <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                                {(() => {
+                                                    const d = (node as any).data?.flags || {}
+                                                    const enabled: string[] = []
+                                                    if (d.exitOnError) enabled.push('set -e')
+                                                    if (d.unsetVars) enabled.push('set -u')
+                                                    if (d.pipefail) enabled.push('set -o pipefail')
+                                                    if (
+                                                        d.noProfile !== false &&
+                                                        ((node as any).data?.shell ?? 'bash') === 'pwsh'
+                                                    )
+                                                        enabled.push('-NoProfile')
+                                                    if (
+                                                        d.nonInteractive !== false &&
+                                                        ((node as any).data?.shell ?? 'bash') === 'pwsh'
+                                                    )
+                                                        enabled.push('-NonInteractive')
+                                                    if (d.executionPolicyBypass)
+                                                        enabled.push('-ExecutionPolicy Bypass')
+                                                    return enabled.length > 0 ? enabled.join(', ') : '—'
+                                                })()}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {node.id === pendingApprovalNodeId && (
                                     <div className="tw-flex tw-w-full tw-gap-2 tw-mt-2 tw-justify-center">
                                         <Button
