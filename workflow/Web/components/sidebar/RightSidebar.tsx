@@ -3,6 +3,7 @@ import { NodeType, type WorkflowNodes, formatNodeTitle } from '@nodes/Nodes'
 import { CopyToClipboardButton } from '@shared/CopyToClipboardButton'
 import { Markdown } from '@shared/Markdown'
 import RunFromHereButton from '@shared/RunFromHereButton'
+import RunOnlyThisButton from '@shared/RunOnlyThisButton'
 import clsx from 'clsx'
 import { CircleCheck, CircleX, Eye, Loader2Icon, Menu, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -661,6 +662,23 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                             <span className="tw-text-xs tw-tabular-nums tw-opacity-70">
                                                 {formatPercentLabel(latestPercent)}
                                             </span>
+                                        )}
+                                        {(node.type === NodeType.LLM ||
+                                            node.type === NodeType.CLI ||
+                                            node.type === NodeType.INPUT ||
+                                            node.type === NodeType.VARIABLE ||
+                                            node.type === NodeType.IF_ELSE ||
+                                            node.type === NodeType.SUBFLOW) && (
+                                            <RunOnlyThisButton
+                                                nodeId={node.id}
+                                                className="tw-w-[1.75rem] tw-h-[1.75rem]"
+                                                disabled={
+                                                    isPaused ||
+                                                    executingNodeIds.size > 0 ||
+                                                    (node.type === NodeType.SUBFLOW &&
+                                                        !(node as any).data?.subflowId)
+                                                }
+                                            />
                                         )}
                                         {onRunFromHere && (
                                             <RunFromHereButton

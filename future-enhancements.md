@@ -284,6 +284,16 @@ Recommended improvements and optimizations for future implementation.
 - **Why**: Pause should provide consistent semantics across all execution modes. Currently, `RunOnlyThis` ignores pause requests, potentially confusing users who expect uniform behavior.
 - **Priority**: P2 (consistency; improves semantic uniformity of pause feature)
 - **Status**: Not included in pause feature release; deferred for future enhancement
++
++### RunOnlyThis – Type Safety, Coverage, and Guard Consolidation
++
++- **Goal**: Tighten typing and guard behavior for the `RunOnlyThis` affordance in the RightSidebar while keeping execution semantics simple.
++- **What**:
++  - Extend the `WorkflowNodes[NodeType.SUBFLOW]` data type so `subflowId` is modeled explicitly and remove the `(node as any)` access used in the RightSidebar disabled condition for SUBFLOW nodes in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx).
++  - Define a single `RUN_ONLY_THIS_ENABLED_TYPES` (or similar) list alongside node-type definitions in [Nodes.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Nodes.tsx) or [models.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/models.ts) and reuse it in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx) to decide when the button is shown, avoiding drift as new executable node types are added.
++  - Extract a small helper (e.g., `canRunOnlyThis(node, state)`) local to the webview slice to centralize `isPaused`, `executingNodeIds.size > 0`, and SUBFLOW-without-`subflowId` checks so both the button’s disabled state and the `useRunOnlyThis` guard follow the same rules.
++  - Add focused tests (when/where test harness exists) that cover visibility per node type, disabled behavior for paused/executing/SUBFLOW-without-id scenarios, and that clicking the enabled button dispatches the `nebula-run-only-this` event with the correct `nodeId`.
++- **Why**: Makes the RunOnlyThis affordance safer and more maintainable as the node catalog evolves, removes `any` casts around SUBFLOW metadata, and keeps UI/handler guards aligned through a single decision point while preserving the existing single-node execution flow.
 
 ### Pause Workflow - Resume After Brief Pause Race Condition
 

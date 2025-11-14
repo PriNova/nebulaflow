@@ -129,6 +129,11 @@ Why: Aligns with Vertical Slice Architecture, reduces duplicate handling and dri
 
 - Changed: Loader spinner color for tool execution in the RightSidebar now uses the VS Code success token to match the green check icon after completion. Replaced hard-coded `#33ffcc` with `var(--vscode-testing-iconPassed)` in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L461-L469) and [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L624-L631) so the Loader2Icon matches the check mark color theme-consistently.
 
+### Goal: RunOnlyThis in RightSidebar Playbox
+
+- What: Added the `RunOnlyThis` single-node execution button into the RightSidebar Playbox header for supported node types (LLM, CLI, INPUT, VARIABLE, IF_ELSE, SUBFLOW), sharing the compact icon-only affordance and disabled states used by `RunFromHere`. The button dispatches a `nebula-run-only-this` custom event with the selected node id, which is handled by `useRunOnlyThis` to post an `execute_node` message for single-node execution. See [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx) and [useRunOnlyThis.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/effects/useRunOnlyThis.ts).
+- Why: Makes the "run just this node" affordance discoverable in the same context where users inspect node results and approvals, while reusing the existing single-node execution path. Placing the control in the RightSidebar aligns with the vertical slice for execution controls and keeps wiring explicit through the existing event/message pipeline.
+
 ## [NebulaFlow 0.2.13]
 
 ### Goal: Tool Safety and Normalization Alignment with Upstream
