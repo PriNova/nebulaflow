@@ -63,13 +63,13 @@ Core capabilities
 - Webview app (React): React Flow graph, sidebars, and messaging to the extension.
   - See [index.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/index.tsx#L9-L14), [WorkflowApp.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/WorkflowApp.tsx#L9-L16), [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx#L75-L83)
 - Node types and execution routing: CLI, LLM, Preview, Input, Variable, If/Else, Accumulator (Loop nodes exist; parallel path excludes loops).
-  - See [models.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/models.ts#L11-L21), [NodeDispatch.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/NodeDispatch.ts#L17-L31), [parallel-scheduler.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/engine/parallel-scheduler.ts#L3-L11)
+  - See [models.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/models.ts#L11-L21), [NodeDispatch.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Application/handlers/NodeDispatch.ts#L1-L18), [parallel-scheduler.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Core/engine/parallel-scheduler.ts#L1-L11)
 - Parallel executor with branch control and resume seeds: caps by node type, materializes/prunes IF/ELSE branches, supports seed outputs/decisions.
-  - See [parallel-scheduler.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/engine/parallel-scheduler.ts#L62-L79), [parallel-scheduler.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/engine/parallel-scheduler.ts#L159-L176)
+  - See [parallel-scheduler.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Core/engine/parallel-scheduler.ts#L62-L79), [parallel-scheduler.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Core/engine/parallel-scheduler.ts#L159-L176)
 - LLM node via Amp SDK: creates an in‑process agent, streams JSONL events, forwards assistant content, and handles tool approvals; model selection normalized via SDK.
-  - See [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteSingleNode.ts#L110-L121), [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteSingleNode.ts#L176-L184), [fs.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/fs.ts#L40-L55)
+  - See [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Application/handlers/ExecuteSingleNode.ts#L93-L121), [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Application/handlers/ExecuteSingleNode.ts#L174-L184), [fs.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/fs.ts#L40-L55)
 - CLI node: executes shell commands with abort support and optional approval.
-  - See [shell.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/shell.ts#L10-L23), [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteSingleNode.ts#L389-L399)
+  - See [shell.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/shell.ts#L10-L23), [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Application/handlers/ExecuteSingleNode.ts#L389-L399)
 - Persistence and custom nodes: saves workflows under `.nebulaflow/workflows/`, custom nodes under `.nebulaflow/nodes/`; migrates legacy dirs.
   - See [fs.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/fs.ts#L7-L13), [fs.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/fs.ts#L198-L205)
 - Webview UI for LLM node config and execution controls.
@@ -77,7 +77,7 @@ Core capabilities
 
 External contribution points
 - Amp SDK integration: LLM nodes inherit SDK capabilities (MCP servers and custom tools registered via SDK tool service).
-  - See [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/ExecuteSingleNode.ts#L110-L121)
+  - See [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Application/handlers/ExecuteSingleNode.ts#L93-L121)
 - Small scripts via CLI node: runs local shell commands, with optional user approval and abort.
   - See [shell.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/shell.ts#L10-L23)
 - Custom nodes as files: user-defined node JSON stored in `.nebulaflow/nodes/` and loaded into the palette.
@@ -96,8 +96,8 @@ External contribution points
 
 - Extension entry: `src/extension.ts` (registers `nebulaFlow.openWorkflow`, hosts webview, handles protocol).
 - Protocol (ext side): `workflow/Core/Contracts/Protocol.ts` (node/edge types, message contracts).
-- Execution (ext side): `workflow/Application/handlers/ExecuteWorkflow.ts` (graph execution, node handlers, LLM/CLI/preview logic).
-- LLM node: `workflow/Application/handlers/ExecuteWorkflow.ts` lines 271–306 (`executeLLMNode`); requires `AMP_API_KEY` env var; races SDK call against 120s timeout and abort signal.
+- Execution (ext side): `workflow/WorkflowExecution/Application/handlers/ExecuteWorkflow.ts` (graph execution, node handlers, LLM/CLI/preview logic).
+- LLM node: `workflow/WorkflowExecution/Application/handlers/ExecuteWorkflow.ts` lines 750–820 (`executeLLMNode` path); requires `AMP_API_KEY` env var; workflows stream events and approvals via the slice.
 - Webview app: React + @xyflow/react under `workflow/Web/` via Vite; entry `workflow/Web/workflow.html` + `workflow/Web/index.tsx`.
 - Nodes/graph: `workflow/Web/components/nodes/Nodes.tsx` (NodeType, default workflow, nodeTypes); LLM node UI in `workflow/Web/components/nodes/LLM_Node.tsx`.
 - Webview protocol mirror: `workflow/Web/services/WorkflowProtocol.ts`.

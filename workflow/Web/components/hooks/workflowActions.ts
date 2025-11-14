@@ -1,8 +1,8 @@
+import type { Edge } from '@graph/CustomOrderedEdge'
+import { NodeType, type WorkflowNodes } from '@nodes/Nodes'
 import { useCallback } from 'react'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
 import type { GenericVSCodeWrapper } from '../../utils/vscode'
-import type { Edge } from '../CustomOrderedEdge'
-import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
 
 export const useWorkflowActions = (
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>,

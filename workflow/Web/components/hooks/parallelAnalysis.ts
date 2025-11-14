@@ -1,12 +1,12 @@
+import type { Edge } from '@graph/CustomOrderedEdge'
+import type { WorkflowNodes } from '@nodes/Nodes'
 import { useMemo } from 'react'
 import {
     type BranchSubgraphsResult,
     type ParallelAnalysisResult,
     computeBranchSubgraphs,
     computeParallelSteps,
-} from '../../../Core/engine/parallel-analysis'
-import type { Edge } from '../CustomOrderedEdge'
-import type { WorkflowNodes } from '../nodes/Nodes'
+} from '../../../WorkflowExecution/Core/engine/parallel-analysis'
 
 export interface ParallelAnalysisHookResult {
     stepByNodeId: Map<string, number>

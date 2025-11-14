@@ -1,8 +1,8 @@
+import RunFromHereButton from '@shared/RunFromHereButton'
+import RunOnlyThisButton from '@shared/RunOnlyThisButton'
 import { useUpdateNodeInternals } from '@xyflow/react'
 import type React from 'react'
 import { useEffect } from 'react'
-import RunFromHereButton from '../RunFromHereButton'
-import RunOnlyThisButton from '../RunOnlyThisButton'
 import { FanInTargetHandles } from './FanInTargetHandles'
 import { FanOutSourceHandles } from './FanOutSourceHandles'
 import {

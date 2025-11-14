@@ -14,7 +14,7 @@ The LLM node runs via the Amp SDK. The editor acts as a visual wrapper around th
 - SDK distribution: NebulaFlow vendors the SDK as `@prinova/amp-sdk` from a local tarball under `vendor/amp-sdk/`. No local path linking is required.
 - Auth: Set `AMP_API_KEY` in your environment so the LLM node can execute via the SDK.
 
-- **Category Label Display**: User-facing category names map to improved labels in the sidebar node palette ([WorkflowSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/WorkflowSidebar.tsx#L44-L50)):
+- **Category Label Display**: User-facing category names map to improved labels in the sidebar node palette ([WorkflowSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/WorkflowSidebar.tsx#L44-L50)):
   - `llm` → `Agents`
   - `text-format` → `Text`
   - Unmapped categories pass through unchanged
@@ -135,7 +135,12 @@ If you see a message about missing webview assets, run `npm run build` or start 
 │  ├ Web/                        # React webview app (Vite) → dist/webviews
 │  │  ├ workflow.html            # Webview HTML entry
 │  │  ├ index.tsx / WorkflowApp.tsx
-│  │  └ vite.config.mts
+│  │  ├ vite.config.mts
+│  │  └ components/
+│  │     ├ sidebar/              # Left/Right sidebars, PropertyEditor, actions
+│  │     ├ graph/                 # Custom edge component, edge paths, validation
+│  │     ├ modals/               # Help, confirm delete, text editor, markdown preview
+│  │     └ shared/               # Reusable UI (Markdown, copy button, run buttons, logo)
 │  ├ Application/                # Extension-side app layer (messaging, handlers)
 │  │  ├ register.ts              # VS Code command + webview lifecycle
 │  │  └ handlers/ExecuteWorkflow.ts
@@ -157,6 +162,12 @@ If you see a message about missing webview assets, run `npm run build` or start 
 This repo follows a vertical slice style within the `workflow/` directory:
 
 - Web (UI): webview UI, user-initiated actions, and protocol mirror
+  - Web slices under `workflow/Web/components/`:
+    - `sidebar/` (left/right sidebars, PropertyEditor, actions)
+    - `graph/` (custom edges, edge paths, edge validation)
+    - `modals/` (help, confirm delete, text editor, markdown preview)
+    - `shared/` (reusable UI: Markdown, copy button, run buttons, spinning logo)
+  - Path aliases for slices are defined in [tsconfig.json](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/tsconfig.json#L16-L23) and [vite.config.mts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/vite.config.mts#L9-L17): `@graph/*`, `@sidebar/*`, `@modals/*`, `@nodes/*`, `@shared/*`.
 - Application: request/message handling, command orchestration
 - Core: pure types/models and execution helpers (graph sorting, node execution glue)
 - DataAccess: file system and shell adapters for persistence and process execution (script mode + spawn/streaming)

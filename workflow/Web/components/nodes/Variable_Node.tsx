@@ -1,9 +1,9 @@
+import { TextEditorModal } from '@modals/TextEditorModal'
+import RunFromHereButton from '@shared/RunFromHereButton'
+import RunOnlyThisButton from '@shared/RunOnlyThisButton'
 import { Handle, Position } from '@xyflow/react'
 import type React from 'react'
 import { useCallback, useEffect, useState } from 'react'
-import RunFromHereButton from '../RunFromHereButton'
-import RunOnlyThisButton from '../RunOnlyThisButton'
-import { TextEditorModal } from '../TextEditorModal'
 import {
     type BaseNodeData,
     type BaseNodeProps,
@@ -108,6 +108,11 @@ export const VariableNode: React.FC<BaseNodeProps> = ({ id, data, selected }) =>
                     onConfirm={handleCommit}
                     onCancel={handleCancel}
                     title={data.title ?? 'Edit Variable Input'}
+                    onSwitchToResults={() => {
+                        window.dispatchEvent(
+                            new CustomEvent('nebula-open-result-editor', { detail: { id } })
+                        )
+                    }}
                 />
             </div>
             <Handle type="source" position={Position.Bottom} />

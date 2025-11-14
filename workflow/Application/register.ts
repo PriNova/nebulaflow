@@ -2,22 +2,16 @@ import * as path from 'node:path'
 import * as vscode from 'vscode'
 import { isWorkflowToExtension } from '../Core/Contracts/guards'
 import type { ApprovalResult, ExtensionToWorkflow } from '../Core/models'
-import {
-    deleteCustomNode,
-    getCustomNodes,
-    getSubflows,
-    loadSubflow,
-    loadWorkflow,
-    renameCustomNode,
-    saveCustomNode,
-    saveSubflow,
-    saveWorkflow,
-} from '../DataAccess/fs'
-import { executeSingleNode } from './handlers/ExecuteSingleNode'
-import { executeWorkflow } from './handlers/ExecuteWorkflow'
+import { getCustomNodes } from '../DataAccess/fs'
+import { registerHandlers as registerLLMHandlers } from '../LLMIntegration/Application/register'
+import { registerHandlers as registerLibraryHandlers } from '../Library/Application/register'
+import { safePost } from '../Shared/Infrastructure/messaging/safePost'
+import { setActiveWorkflowUri } from '../Shared/Infrastructure/workspace'
+import { registerHandlers as registerSubflowsHandlers } from '../Subflows/Application/register'
+import { executeSingleNode } from '../WorkflowExecution/Application/handlers/ExecuteSingleNode'
+import { executeWorkflow } from '../WorkflowExecution/Application/handlers/ExecuteWorkflow'
+import { registerHandlers as registerPersistenceHandlers } from '../WorkflowPersistence/Application/register'
 import { fromProtocolPayload, toProtocolPayload } from './messaging/converters'
-import { safePost } from './messaging/safePost'
-import { setActiveWorkflowUri } from './workspace'
 
 interface ExecutionContext {
     abortController: AbortController | null
@@ -112,201 +106,35 @@ export function activate(context: vscode.ExtensionContext): void {
         const webview = panel.webview
         let isDisposed = false
 
+        // Slice router composition
+        const router = new Map<string, (message: any, env: any) => Promise<void> | void>()
+        const updatePanelTitle = (uri?: vscode.Uri) => {
+            panel.title = formatPanelTitle(uri)
+        }
+        registerPersistenceHandlers(router)
+        registerLibraryHandlers(router)
+        registerSubflowsHandlers(router)
+        registerLLMHandlers(router)
+
         const isDev = context.extensionMode === vscode.ExtensionMode.Development
         webview.onDidReceiveMessage(
             async (message: unknown) => {
                 if (!isWorkflowToExtension(message)) {
                     return
                 }
+                const handler = router.get((message as any).type)
+                if (handler) {
+                    await handler(message as any, { webview, isDev, updatePanelTitle })
+                    return
+                }
                 switch (message.type) {
-                    case 'create_subflow': {
-                        try {
-                            const result = await saveSubflow((message as any).data)
-                            if ('id' in result) {
-                                await safePost(
-                                    webview,
-                                    {
-                                        type: 'subflow_saved',
-                                        data: { id: (result as any).id },
-                                    } as ExtensionToWorkflow,
-                                    { strict: isDev }
-                                )
-                            } else {
-                                void vscode.window.showErrorMessage('Failed to save subflow')
-                            }
-                        } catch (e: any) {
-                            void vscode.window.showErrorMessage(
-                                `Failed to save subflow: ${e?.message ?? e}`
-                            )
-                        }
-                        break
-                    }
-                    case 'get_subflow': {
-                        try {
-                            const id = (message as any).data?.id as string
-                            const def = await loadSubflow(id)
-                            if (def) {
-                                await safePost(
-                                    webview,
-                                    { type: 'provide_subflow', data: def } as ExtensionToWorkflow,
-                                    { strict: isDev }
-                                )
-                            } else {
-                                void vscode.window.showErrorMessage(`Subflow not found: ${id}`)
-                            }
-                        } catch (e: any) {
-                            void vscode.window.showErrorMessage(
-                                `Failed to load subflow: ${e?.message ?? e}`
-                            )
-                        }
-                        break
-                    }
-                    case 'get_subflows': {
-                        try {
-                            const list = await getSubflows()
-                            await safePost(
-                                webview,
-                                { type: 'provide_subflows', data: list } as ExtensionToWorkflow,
-                                { strict: isDev }
-                            )
-                        } catch (e: any) {
-                            void vscode.window.showErrorMessage(
-                                `Failed to list subflows: ${e?.message ?? e}`
-                            )
-                        }
-                        break
-                    }
-                    case 'duplicate_subflow': {
-                        try {
-                            const payload = (message as any).data || {}
-                            const id = (payload as any).id as string
-                            const nodeId = (payload as any).nodeId as string
-                            const def = await loadSubflow(id)
-                            if (!def) {
-                                void vscode.window.showErrorMessage(`Subflow not found: ${id}`)
-                                break
-                            }
-                            const copy = { ...(def as any), id: '' } as any
-                            const result = await saveSubflow(copy)
-                            if ('id' in result) {
-                                await safePost(
-                                    webview,
-                                    {
-                                        type: 'subflow_copied',
-                                        data: { nodeId, oldId: id, newId: (result as any).id },
-                                    } as ExtensionToWorkflow,
-                                    { strict: isDev }
-                                )
-                            } else {
-                                void vscode.window.showErrorMessage('Failed to duplicate subflow')
-                            }
-                        } catch (e: any) {
-                            void vscode.window.showErrorMessage(
-                                `Failed to duplicate subflow: ${e?.message ?? e}`
-                            )
-                        }
-                        break
-                    }
-                    case 'get_models': {
-                        try {
-                            // Dynamically require to avoid hard failure when SDK is not linked
-                            const sdk = require('@prinova/amp-sdk') as any
-                            const listModels:
-                                | (() => Array<{ key: string; displayName: string }>)
-                                | undefined = sdk?.listModels
-                            const models =
-                                typeof listModels === 'function'
-                                    ? listModels().map((m: any) => ({ id: m.key, title: m.displayName }))
-                                    : []
-                            await safePost(
-                                webview,
-                                { type: 'models_loaded', data: models } as ExtensionToWorkflow,
-                                { strict: isDev }
-                            )
-                        } catch {
-                            await safePost(
-                                webview,
-                                { type: 'models_loaded', data: [] } as ExtensionToWorkflow,
-                                { strict: isDev }
-                            )
-                        }
-                        break
-                    }
-                    case 'get_storage_scope': {
-                        const info = readStorageScope()
-                        await safePost(
-                            webview,
-                            { type: 'storage_scope', data: info } as ExtensionToWorkflow,
-                            { strict: isDev }
-                        )
-                        break
-                    }
-                    case 'toggle_storage_scope': {
-                        const cfg = vscode.workspace.getConfiguration('nebulaFlow')
-                        const current =
-                            cfg.get<string>('storageScope', 'user') === 'workspace'
-                                ? 'workspace'
-                                : 'user'
-                        const next = current === 'workspace' ? 'user' : 'workspace'
-                        const target = vscode.workspace.workspaceFolders?.length
-                            ? vscode.ConfigurationTarget.Workspace
-                            : vscode.ConfigurationTarget.Global
-                        await cfg.update('storageScope', next, target)
-                        // onDidChangeConfiguration handler will refresh content and badge
-                        break
-                    }
-                    case 'save_workflow': {
-                        const result = await saveWorkflow(message.data)
-                        if (result && 'uri' in result) {
-                            currentWorkflowUri = result.uri
-                            panel.title = formatPanelTitle(currentWorkflowUri)
-                            setActiveWorkflowUri(currentWorkflowUri)
-                            await safePost(
-                                webview,
-                                {
-                                    type: 'workflow_saved',
-                                    data: { path: result.uri.fsPath },
-                                } as ExtensionToWorkflow,
-                                { strict: isDev }
-                            )
-                        } else if (result && 'error' in result) {
-                            await safePost(
-                                webview,
-                                {
-                                    type: 'workflow_save_failed',
-                                    data: { error: result.error },
-                                } as ExtensionToWorkflow,
-                                { strict: isDev }
-                            )
-                        } else {
-                            await safePost(
-                                webview,
-                                {
-                                    type: 'workflow_save_failed',
-                                    data: { error: 'cancelled' },
-                                } as ExtensionToWorkflow,
-                                { strict: isDev }
-                            )
-                        }
-                        break
-                    }
                     case 'reset_results': {
                         const panelContext = getOrCreatePanelContext(webview)
                         panelContext.subflowCache.clear()
                         break
                     }
                     case 'load_workflow': {
-                        const result = await loadWorkflow()
-                        if (result) {
-                            currentWorkflowUri = result.uri
-                            panel.title = formatPanelTitle(currentWorkflowUri)
-                            setActiveWorkflowUri(currentWorkflowUri)
-                            await safePost(
-                                webview,
-                                { type: 'workflow_loaded', data: result.dto } as ExtensionToWorkflow,
-                                { strict: isDev }
-                            )
-                        }
+                        // Legacy path removed. Handled by WorkflowPersistence slice.
                         break
                     }
                     case 'pause_workflow': {
@@ -328,11 +156,11 @@ export function activate(context: vscode.ExtensionContext): void {
                             )
                             break
                         }
-                        if (message.data?.nodes && message.data?.edges) {
+                        if ((message as any).data?.nodes && (message as any).data?.edges) {
                             panelContext.abortController = new AbortController()
                             activeAbortControllers.add(panelContext.abortController)
                             try {
-                                const { nodes, edges } = fromProtocolPayload(message.data)
+                                const { nodes, edges } = fromProtocolPayload((message as any).data)
                                 const resume = (message as any)?.data?.resume
                                 const approvalHandler = createWaitForApproval(webview)
 
@@ -515,12 +343,12 @@ export function activate(context: vscode.ExtensionContext): void {
                         break
                     }
                     case 'calculate_tokens': {
-                        const text = message.data.text || ''
+                        const text = (message as any).data.text || ''
                         await safePost(
                             webview,
                             {
                                 type: 'token_count',
-                                data: { nodeId: message.data.nodeId, count: text.length },
+                                data: { nodeId: (message as any).data.nodeId, count: text.length },
                             } as ExtensionToWorkflow,
                             { strict: isDev }
                         )
@@ -532,7 +360,7 @@ export function activate(context: vscode.ExtensionContext): void {
                             panelContext.pendingApproval.removeAbortListener?.()
                             panelContext.pendingApproval.resolve({
                                 type: 'approved',
-                                command: message.data.modifiedCommand,
+                                command: (message as any).data.modifiedCommand,
                             })
                             panelContext.pendingApproval = null
                         }
@@ -547,123 +375,6 @@ export function activate(context: vscode.ExtensionContext): void {
                             )
                             panelContext.pendingApproval = null
                         }
-                        break
-                    }
-                    case 'open_external_link': {
-                        try {
-                            const uri = vscode.Uri.parse(message.url)
-                            const scheme = uri.scheme.toLowerCase()
-                            // Open HTTP(S)/mailto/tel externally via OS/browser
-                            if (
-                                scheme === 'http' ||
-                                scheme === 'https' ||
-                                scheme === 'mailto' ||
-                                scheme === 'tel'
-                            ) {
-                                await vscode.env.openExternal(uri)
-                                break
-                            }
-                            // Open file-like URIs inside VS Code (supports remote workspaces)
-                            if (
-                                scheme === 'file' ||
-                                scheme === 'vscode-remote' ||
-                                scheme === 'vscode-file' ||
-                                scheme === 'vscode'
-                            ) {
-                                // Extract optional line range from fragment: #L10 or #L10-L20
-                                let range: [number, number] | null = null
-                                const frag = uri.fragment
-                                const match = /^L(\d+)(?:-L(\d+))?$/.exec(frag)
-                                if (match) {
-                                    const start = Math.max(0, Number.parseInt(match[1], 10) - 1)
-                                    const end = Math.max(
-                                        0,
-                                        Number.parseInt(match[2] ?? match[1], 10) - 1
-                                    )
-                                    range = [start, end]
-                                }
-                                const openUri = uri.with({ fragment: '' })
-                                try {
-                                    const stat = await vscode.workspace.fs.stat(openUri)
-                                    if (stat.type === vscode.FileType.Directory) {
-                                        await vscode.commands.executeCommand('revealInExplorer', openUri)
-                                    } else {
-                                        const doc = await vscode.workspace.openTextDocument(openUri)
-                                        const editor = await vscode.window.showTextDocument(doc, {
-                                            preview: false,
-                                        })
-                                        if (range) {
-                                            const from = new vscode.Position(range[0], 0)
-                                            const to = new vscode.Position(range[1], 0)
-                                            const selRange = new vscode.Range(from, to)
-                                            editor.revealRange(
-                                                selRange,
-                                                vscode.TextEditorRevealType.InCenter
-                                            )
-                                            editor.selection = new vscode.Selection(from, from)
-                                        }
-                                    }
-                                } catch {
-                                    // Fallback to external for non-workspace URIs
-                                    await vscode.env.openExternal(uri)
-                                }
-                                break
-                            }
-                            // Fallback: open externally
-                            await vscode.env.openExternal(uri)
-                        } catch (e: any) {
-                            await vscode.window.showWarningMessage(
-                                `Could not open link: ${e?.message ?? String(e)}`
-                            )
-                        }
-                        break
-                    }
-                    case 'save_customNode': {
-                        await saveCustomNode(
-                            fromProtocolPayload({ nodes: [message.data], edges: [] }).nodes[0]
-                        )
-                        const nodes = await getCustomNodes()
-                        const msg = {
-                            type: 'provide_custom_nodes',
-                            data: toProtocolPayload({ nodes, edges: [] }).nodes!,
-                        } as ExtensionToWorkflow
-                        await safePost(webview, msg, { strict: isDev })
-                        break
-                    }
-                    case 'get_custom_nodes': {
-                        const nodes = await getCustomNodes()
-                        const msg = {
-                            type: 'provide_custom_nodes',
-                            data: toProtocolPayload({ nodes, edges: [] }).nodes!,
-                        } as ExtensionToWorkflow
-                        await safePost(webview, msg, { strict: isDev })
-                        // Also provide current storage scope so UI can display badge
-                        const info = readStorageScope()
-                        await safePost(
-                            webview,
-                            { type: 'storage_scope', data: info } as ExtensionToWorkflow,
-                            { strict: isDev }
-                        )
-                        break
-                    }
-                    case 'delete_customNode': {
-                        await deleteCustomNode(message.data)
-                        const nodes = await getCustomNodes()
-                        const msg = {
-                            type: 'provide_custom_nodes',
-                            data: toProtocolPayload({ nodes, edges: [] }).nodes!,
-                        } as ExtensionToWorkflow
-                        await safePost(webview, msg, { strict: isDev })
-                        break
-                    }
-                    case 'rename_customNode': {
-                        await renameCustomNode(message.data.oldNodeTitle, message.data.newNodeTitle)
-                        const nodes = await getCustomNodes()
-                        const msg = {
-                            type: 'provide_custom_nodes',
-                            data: toProtocolPayload({ nodes, edges: [] }).nodes!,
-                        } as ExtensionToWorkflow
-                        await safePost(webview, msg, { strict: isDev })
                         break
                     }
                 }
@@ -688,6 +399,8 @@ export function activate(context: vscode.ExtensionContext): void {
             }
             // Clear active workflow association on panel close
             setActiveWorkflowUri(undefined)
+            // Clear slice router to release closures
+            router.clear()
             // No need to call panel.dispose() inside onDidDispose
         })
 

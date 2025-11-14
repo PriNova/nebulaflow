@@ -1,3 +1,12 @@
+import {
+    type BaseNodeData,
+    DEFAULT_LLM_MODEL_ID,
+    DEFAULT_LLM_MODEL_TITLE,
+    DEFAULT_LLM_REASONING_EFFORT,
+    NodeType,
+    type WorkflowNodes,
+    createNode,
+} from '@nodes/Nodes'
 import { type NodeChange, applyNodeChanges, useReactFlow } from '@xyflow/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { unstable_batchedUpdates } from 'react-dom'
@@ -7,15 +16,6 @@ import { toWorkflowNodeDTO } from '../../utils/nodeDto'
 import type { GenericVSCodeWrapper } from '../../utils/vscode'
 import type { LLMNode } from '../nodes/LLM_Node'
 import type { LoopStartNode } from '../nodes/LoopStart_Node'
-import {
-    type BaseNodeData,
-    DEFAULT_LLM_MODEL_ID,
-    DEFAULT_LLM_MODEL_TITLE,
-    DEFAULT_LLM_REASONING_EFFORT,
-    NodeType,
-    type WorkflowNodes,
-    createNode,
-} from '../nodes/Nodes'
 
 interface IndexedNodes {
     byId: Map<string, WorkflowNodes>

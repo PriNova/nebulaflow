@@ -1,8 +1,58 @@
 # Future Enhancements
 
+### Tool Catalog Alignment – Alias and UI Polish
+
+- Goal: Refine alias behavior and webview tool listing now that tool-name metadata is sourced from the Amp SDK.
+- What:
+  - Clarify or adjust alias precedence between SDK and NebulaFlow-local aliases in [toolNames.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/services/toolNames.ts), documenting that SDK resolution wins when both define the same alias (e.g., `GitDiff`).
+  - Decide whether to keep or remove redundant local aliases that duplicate SDK entries (such as `GitDiff`), or clearly mark them as defensive back-compat shims.
+  - If future UX requires hiding or reordering tools in the LLM node "Tools" selector, introduce a thin filtering/ordering layer on top of the SDK-provided `getAllToolNames()` output so the UI retains control without forking canonical metadata.
+- Why: Keeps alias semantics explicit and maintainable as the SDK evolves, avoids silent override assumptions, and preserves flexibility to shape the UI tool list while still using the SDK as the single source of truth.
+
 Recommended improvements and optimizations for future implementation.
 
 ## Pending Enhancements
+
+### VSA Refactor – Follow-ups
+
+- Goal: Tighten typing, safety posture, and add tests after the large-file refactor.
+- What:
+  - Typed CustomEvents: Replace string-typed CustomEvents in effect hooks with typed constants and payloads; extend `WindowEventMap` and define payload interfaces for `nebula-edit-node`, `nebula-run-from-here`, `nebula-run-only-this`, subflow events. Affects [useEditNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/effects/useEditNode.ts), [useRunFromHere.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/effects/useRunFromHere.ts), [useRunOnlyThis.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/effects/useRunOnlyThis.ts), and subflow hooks.
+  - CLI safety posture: Denylist-based guard remains in place; consider moving to an allowlist or capability-scoped execution model for higher assurance. Track in Core execution [sanitize.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Core/execution/sanitize.ts).
+  - Unit tests for Core helpers: Add unit coverage for pure functions in Core/execution, e.g., [inputs.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Core/execution/inputs.ts), [combine.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Core/execution/combine.ts), [sanitize.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Core/execution/sanitize.ts), and [graph.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Core/execution/graph.ts).
+  - Minor polish: Deduplicate `HANDLE_THICKNESS` across [LeftSidebarContainer.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/layout/LeftSidebarContainer.tsx) and [RightSidebarContainer.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/layout/RightSidebarContainer.tsx); forward and/or remove unused props (`onRunFromHere`) in [RightSidebarContainer.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/layout/RightSidebarContainer.tsx); consider `useCallback` on small inline handlers where beneficial (e.g., [FlowCanvas.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/canvas/FlowCanvas.tsx)).
+- Why: Improves type safety and reliability, strengthens security posture over time, and adds confidence via tests without increasing complexity.
+- Priority: P2 (typing/robustness)
+### Input/Results Editor Switch – Follow-ups
+
+- Goal: Polish typing, reuse, and small edge cases for the new modal switching UX.
+- What:
+  - Add typed custom events to the global `WindowEventMap` for `nebula-open-result-editor` and reuse the existing typed shape for `nebula-edit-node` to remove `any` casts in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx#L235-L248).
+  - Disable or guard the "Save" action when input is empty or unchanged in [TextEditorModal.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/modals/TextEditorModal.tsx#L81-L88) to reduce accidental saves; keep semantics simple.
+  - Extract a small helper (e.g., `openResultEditorForNode(id: string)`) to dispatch `nebula-open-result-editor` and reuse it across nodes: [CLI_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/CLI_Node.tsx), [LLM_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/LLM_Node.tsx), [Text_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Text_Node.tsx), [Variable_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/Variable_Node.tsx).
+  - Optionally handle re-opening the same preview id by toggling `previewNodeId` through `null` before setting it again in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx#L239-L248) to force a fresh open when needed.
+- Why: Improves type safety, removes duplication, and polishes interaction edge cases without increasing complexity.
+- Priority: P2 (polish/typing)
+
+### Webview Feature Slices & Aliases – Follow-ups
+
+- Goal: Small polish items to keep imports and aliases consistent and ergonomic.
+- What:
+  - Normalize import style in the one remaining file noted in the review to match the alias-first pattern (prefer alias imports over deep relative paths consistently).
+  - Optional alias polish: consider adding an alias for `services` if future refactors increase cross-feature usage; keep unused aliases out of config to avoid clutter.
+- Why: Maintains consistency after the slice/alias migration and keeps config lean.
+- Priority: P3 (polish)
+
+### Slice Router – Cleanup and Consolidation
+
+- Goal: Finish the transition to slice-first routing and reduce duplication/maintenance risk.
+- What:
+  - Guard duplicate router registrations and remove dead legacy switch cases that are now handled by slices; the `load_workflow` stub in [register.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/register.ts#L136-L139) can be removed once consumers are fully on the slice path.
+  - Centralize common slice wiring types (`SliceEnv`, `Router`) and small helpers (e.g., `readStorageScope`) under Shared to avoid copy/paste across slice registers. A good home would be `workflow/Shared/Infrastructure` with named exports; update imports in [Library register](file:///home/prinova/CodeProjects/nebulaflow/workflow/Library/Application/register.ts#L1-L12), [Subflows register](file:///home/prinova/CodeProjects/nebulaflow/workflow/Subflows/Application/register.ts#L1-L10), and [WorkflowPersistence register](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowPersistence/Application/register.ts#L1-L12).
+  - Add consistent `try/catch` error guards to Library CRUD handlers to match the defensive pattern used in Subflows and WorkflowPersistence; see [Library register](file:///home/prinova/CodeProjects/nebulaflow/workflow/Library/Application/register.ts#L18-L63).
+  - Normalize `safePost` usage with minimal error handling for symmetry across slices (log or user warning on failure where appropriate).
+  - Consider dropping explicit ".js" extensions in TS import specifiers in slice files to reduce bundling brittleness across tooling; verify current bundler settings resolve extensionless paths reliably.
+- Why: Prevents drift between legacy and slice paths, reduces boilerplate across slices, and keeps error handling and module resolution consistent.
 
 ### Shell Node Modal Editing – Minor Polish
 

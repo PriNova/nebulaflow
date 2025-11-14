@@ -1,4 +1,5 @@
 {
+    "ignoreDeprecations": "6.0",
     "compilerOptions": {
         "target": "ES2023",
         "lib": ["ES2023", "DOM", "DOM.Iterable"],
@@ -11,7 +12,16 @@
         "resolveJsonModule": true,
         "isolatedModules": true,
         "types": ["vite/client"],
-        "noUnusedLocals": false
+        "noUnusedLocals": false,
+
+        "baseUrl": ".",
+        "paths": {
+            "@graph/*": ["components/graph/*"],
+            "@sidebar/*": ["components/sidebar/*"],
+            "@modals/*": ["components/modals/*"],
+            "@nodes/*": ["components/nodes/*"],
+            "@shared/*": ["components/shared/*"]
+        }
     },
     "include": ["**/*.ts", "**/*.tsx", "workflow.html"]
 }

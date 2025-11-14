@@ -1,8 +1,8 @@
+import { MarkdownPreviewModal } from '@modals/MarkdownPreviewModal'
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react'
 import type React from 'react'
 import { useCallback, useEffect } from 'react'
 import { Textarea } from '../../ui/shadcn/ui/textarea'
-import { MarkdownPreviewModal } from '../MarkdownPreviewModal'
 import { FanInTargetHandles } from './FanInTargetHandles'
 import {
     type BaseNodeData,

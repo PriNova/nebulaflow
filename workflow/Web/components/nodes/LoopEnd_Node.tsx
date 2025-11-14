@@ -1,6 +1,6 @@
+import RunFromHereButton from '@shared/RunFromHereButton'
 import { Handle, Position } from '@xyflow/react'
 import type React from 'react'
-import RunFromHereButton from '../RunFromHereButton'
 import {
     type BaseNodeData,
     type BaseNodeProps,

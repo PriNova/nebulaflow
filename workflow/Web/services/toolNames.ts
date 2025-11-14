@@ -1,4 +1,9 @@
+// Local copy of Amp SDK's tool name metadata, kept environment-agnostic so it
+// can be used safely in the webview bundle. This should be kept in sync with
+// @prinova/amp-sdk's tool-aliases module.
+
 export const BUILTIN_TOOL_NAMES = {
+    // File system operations
     LIST_DIRECTORY: 'list_directory',
     READ: 'Read',
     EDIT_FILE: 'edit_file',
@@ -7,14 +12,17 @@ export const BUILTIN_TOOL_NAMES = {
     FORMAT_FILE: 'format_file',
     GLOB: 'glob',
 
+    // Search and analysis
     GREP: 'Grep',
     CODEBASE_SEARCH_AGENT: 'codebase_search_agent',
     LIBRARIAN: 'librarian',
     WEB_CRAWLER: 'web_crawler',
 
+    // Execution
     BASH: 'Bash',
     RUN_JAVASCRIPT: 'run_javascript',
 
+    // Development tools
     GET_DIAGNOSTICS: 'get_diagnostics',
     PRUNE_CONTEXT: 'prune_context',
     MULTIPLE_CHOICE: 'multiple_choice',
@@ -22,14 +30,17 @@ export const BUILTIN_TOOL_NAMES = {
     TODO_WRITE: 'todo_write',
     MERMAID: 'mermaid',
 
+    // Sub-agent orchestration
     TASK: 'Task',
     ORACLE: 'oracle',
 
+    // Git operations
     GIT_DIFF: 'summarize_git_diff',
     COMMIT: 'commit',
 } as const
 
-export const TOOL_NAME_ALIASES: Record<string, string> = {
+const SDK_TOOL_NAME_ALIASES = {
+    // Direct matches (prefer exact tool registration names)
     list_directory: 'list_directory',
     Grep: 'Grep',
     glob: 'glob',
@@ -55,8 +66,10 @@ export const TOOL_NAME_ALIASES: Record<string, string> = {
     todo_write: 'todo_write',
     mermaid: 'mermaid',
     prune_context: 'prune_context',
+} as const
 
-    // convenience
+// NebulaFlow-specific convenience aliases (kept for backwards compatibility)
+const LOCAL_ALIASES: Record<string, string> = {
     read: 'Read',
     edit: 'edit_file',
     create: 'create_file',
@@ -68,6 +81,12 @@ export const TOOL_NAME_ALIASES: Record<string, string> = {
     format: 'format_file',
     diagnostics: 'get_diagnostics',
     web: 'web_crawler',
+    GitDiff: 'summarize_git_diff',
+}
+
+export const TOOL_NAME_ALIASES: Record<string, string> = {
+    ...SDK_TOOL_NAME_ALIASES,
+    ...LOCAL_ALIASES,
 }
 
 export function getAllToolNames(): string[] {
@@ -75,10 +94,13 @@ export function getAllToolNames(): string[] {
 }
 
 export function resolveToolName(nameOrAlias: string): string | undefined {
-    const officialNames = Object.values(BUILTIN_TOOL_NAMES) as string[]
-    const key = nameOrAlias.trim()
-    if (officialNames.includes(key)) return key
-    return TOOL_NAME_ALIASES[key]
+    // Check if it's already an official tool name
+    if (Object.values(BUILTIN_TOOL_NAMES).includes(nameOrAlias as any)) {
+        return nameOrAlias
+    }
+
+    // Check aliases (including NebulaFlow-specific ones)
+    return TOOL_NAME_ALIASES[nameOrAlias.trim()]
 }
 
 export function isToolEnabled(toolName: string, disabledTools: string[] = []): boolean {

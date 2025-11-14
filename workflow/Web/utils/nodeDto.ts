@@ -1,4 +1,4 @@
-import { NodeType, type WorkflowNodes } from '../components/nodes/Nodes'
+import { NodeType, type WorkflowNodes } from '@nodes/Nodes'
 import type { WorkflowNodeDTO } from '../services/Protocol'
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

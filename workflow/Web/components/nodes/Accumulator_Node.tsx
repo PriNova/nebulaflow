@@ -1,6 +1,6 @@
+import RunFromHereButton from '@shared/RunFromHereButton'
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react'
 import { useEffect } from 'react'
-import RunFromHereButton from '../RunFromHereButton'
 import { FanInTargetHandles } from './FanInTargetHandles'
 import {
     type BaseNodeData,

@@ -1,6 +1,6 @@
+import type { Edge } from '@graph/CustomOrderedEdge'
 import type { Node as ReactFlowNode } from '@xyflow/react'
 import { v4 as uuidv4 } from 'uuid'
-import type { Edge } from '../CustomOrderedEdge'
 import { AccumulatorNode } from './Accumulator_Node'
 import { CLINode } from './CLI_Node'
 import { IfElseNode } from './IfElse_Node'

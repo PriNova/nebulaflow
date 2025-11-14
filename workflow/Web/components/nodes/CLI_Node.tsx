@@ -1,9 +1,9 @@
+import { TextEditorModal } from '@modals/TextEditorModal'
+import RunFromHereButton from '@shared/RunFromHereButton'
+import RunOnlyThisButton from '@shared/RunOnlyThisButton'
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react'
 import type React from 'react'
 import { useCallback, useEffect, useState } from 'react'
-import RunFromHereButton from '../RunFromHereButton'
-import RunOnlyThisButton from '../RunOnlyThisButton'
-import { TextEditorModal } from '../TextEditorModal'
 import { FanInTargetHandles } from './FanInTargetHandles'
 import {
     type BaseNodeData,
@@ -126,6 +126,11 @@ export const CLINode: React.FC<BaseNodeProps> = ({ id, data, selected }) => {
                         data.title ??
                         (((data as any).mode ?? 'command') === 'script' ? 'Edit Script' : 'Edit Command')
                     }
+                    onSwitchToResults={() => {
+                        window.dispatchEvent(
+                            new CustomEvent('nebula-open-result-editor', { detail: { id } })
+                        )
+                    }}
                 />
             </div>
             <Handle type="source" position={Position.Bottom} />

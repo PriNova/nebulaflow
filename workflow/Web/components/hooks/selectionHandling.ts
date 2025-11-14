@@ -1,6 +1,6 @@
+import type { WorkflowNodes } from '@nodes/Nodes'
 import { useOnSelectionChange } from '@xyflow/react'
 import { useCallback } from 'react'
-import type { WorkflowNodes } from '../nodes/Nodes'
 
 export interface SelectionSummary {
     selectedNodeId: string | null
@@ -77,17 +77,10 @@ export const useInteractionHandling = (
 
     const handleBackgroundClick = useCallback(
         (event: React.MouseEvent | React.KeyboardEvent) => {
-            if (event.type === 'click') {
-                const mouseEvent = event as React.MouseEvent
-                if (mouseEvent.target !== mouseEvent.currentTarget) return
-                if (!mouseEvent.shiftKey) {
-                    setSelectedNodes([])
-                    setActiveNode(null)
-                }
-                return
-            }
-
-            if ((event as React.KeyboardEvent).key === 'Enter') {
+            if (
+                (event.type === 'click' && !(event as React.MouseEvent).shiftKey) ||
+                (event as React.KeyboardEvent).key === 'Enter'
+            ) {
                 setSelectedNodes([])
                 setActiveNode(null)
             }

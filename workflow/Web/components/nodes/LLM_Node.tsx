@@ -1,11 +1,11 @@
+import { TextEditorModal } from '@modals/TextEditorModal'
+import RunFromHereButton from '@shared/RunFromHereButton'
+import RunOnlyThisButton from '@shared/RunOnlyThisButton'
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react'
 import type React from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import nebulaMark from '../../assets/nebula-mark.svg'
 import type { Model } from '../../services/Protocol'
-import RunFromHereButton from '../RunFromHereButton'
-import RunOnlyThisButton from '../RunOnlyThisButton'
-import { TextEditorModal } from '../TextEditorModal'
 import { FanInTargetHandles } from './FanInTargetHandles'
 import {
     type BaseNodeData,
@@ -135,6 +135,11 @@ export const LLMNode: React.FC<BaseNodeProps> = ({ id, data, selected }) => {
                     onConfirm={handleCommit}
                     onCancel={handleCancel}
                     title={data.title ?? 'Edit Agent Prompt'}
+                    onSwitchToResults={() => {
+                        window.dispatchEvent(
+                            new CustomEvent('nebula-open-result-editor', { detail: { id } })
+                        )
+                    }}
                 />
             </div>
             <Handle type="source" position={Position.Bottom} />

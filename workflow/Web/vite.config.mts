@@ -6,6 +6,15 @@ export default defineConfig(({ mode }) => ({
     root: __dirname,
     base: './',
     plugins: [react()],
+    resolve: {
+        alias: {
+            '@graph': resolve(__dirname, 'components/graph'),
+            '@sidebar': resolve(__dirname, 'components/sidebar'),
+            '@modals': resolve(__dirname, 'components/modals'),
+            '@nodes': resolve(__dirname, 'components/nodes'),
+            '@shared': resolve(__dirname, 'components/shared'),
+        },
+    },
     build: {
         assetsDir: '.',
         watch:

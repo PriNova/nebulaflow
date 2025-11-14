@@ -1,8 +1,8 @@
+import type { Edge as FlowEdge } from '@graph/CustomOrderedEdge'
+import { NodeType, type WorkflowNodes } from '@nodes/Nodes'
 import { useMemo } from 'react'
-import { processGraphComposition } from '../../../Core/engine/node-sorting'
 import type { Edge as ProtocolEdge } from '../../../Core/models'
-import type { Edge as FlowEdge } from '../CustomOrderedEdge'
-import { NodeType, type WorkflowNodes } from '../nodes/Nodes'
+import { processGraphComposition } from '../../../WorkflowExecution/Core/engine/node-sorting'
 
 function computeFanInPortCount(nodeId: string, edges: FlowEdge[]): number {
     const toNode = edges.filter(e => e.target === nodeId)
