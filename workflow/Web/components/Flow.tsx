@@ -507,6 +507,14 @@ export const Flow: React.FC<{
     useSubflowState(activeSubflowId, setNodes, setNodeResults)
     useSaveSubflow(nodes, vscodeAPI, notify, setNodes, setPendingSubflowRename)
 
+    useEffect(() => {
+        if (!pendingApprovalNodeId || !rightCollapsed) return
+        const node = nodes.find(n => n.id === pendingApprovalNodeId)
+        if (node && node.type === NodeType.CLI) {
+            setRightCollapsed(false)
+        }
+    }, [pendingApprovalNodeId, rightCollapsed, nodes])
+
     // Listen for subflow library updates
     useEffect(() => {
         const handler = (e: any) => {

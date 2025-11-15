@@ -1,87 +1,79 @@
 ## High-level summary  
-The patch is a type-system & data-plumbing update that gives the CLI workflow node first-class support all the way from the shared `Core` model to the web-view serializer:
+Two small but coordinated UI changes were introduced:
 
-1. `workflow/Core/models.ts`  
-   • Adds a rich `CLINodeConfig` description object.  
-   • Introduces `CLINode` interface that narrows `WorkflowNode` to `type: NodeType.CLI`.
+1. `Flow.tsx` – when a “pending approval” CLI node appears while the right sidebar is collapsed, the sidebar is programmatically expanded.
+2. `RightSidebar.tsx` – while such a pending-approval node exists, the user cannot manually collapse the sidebar (the collapse/expand button is disabled).
 
-2. `workflow/Web/components/hooks/workflowActions.ts`  
-   • Refactors the “save workflow” action to build a strictly typed `WorkflowPayloadDTO`, converting every node via the new `toWorkflowNodeDTO` helper.
+Together they guarantee that any approval-requiring CLI step always has its details visible to the user and cannot be hidden.
 
-3. `workflow/Web/components/nodes/CLI_Node.tsx`  
-   • Local helper type no longer contains the ad-hoc `shouldAbort` flag, aligning it with the new model.
+## Tour of changes (recommended review order)  
+Start with `Flow.tsx`. The new `useEffect` explains the feature intention (“auto-expand sidebar when a pending CLI approval enters the scene”). Once that behaviour is understood, proceed to `RightSidebar.tsx` where the second half of the feature (“prevent manual collapse”) is enforced. Reviewing in this order clarifies how the two components cooperate and avoids reading the prop-level plumbing backwards.
 
-4. A new SDK tarball is committed (`vendor/amp-sdk/amp-sdk.tgz`), and the Markdown review file is updated.  
-   No runtime behaviour changes are introduced; all edits are compile-time or serialization-time only.
+## File level review
 
-## Tour of changes  
-Begin with `workflow/Core/models.ts`.  
-Understanding the new `CLINodeConfig` and `CLINode` contracts clarifies every downstream edit: the web serializer (`workflowActions.ts`) merely adapts code to those contracts, and the React component’s type tweak (`CLI_Node.tsx`) removes a now-invalid field.
+### `workflow/Web/components/Flow.tsx`
 
-## File level review  
+Change  
+```tsx
+useEffect(() => {
+    if (!pendingApprovalNodeId || !rightCollapsed) return
+    const node = nodes.find(n => n.id === pendingApprovalNodeId)
+    if (node && node.type === NodeType.CLI) {
+        setRightCollapsed(false)
+    }
+}, [pendingApprovalNodeId, rightCollapsed, nodes])
+```
 
-### `workflow/Core/models.ts`  
-Changes  
-• Adds `CLINodeConfig` (fully optional, ~30 fields).  
-• Adds `CLINode` that extends `WorkflowNode` and uses the config.  
+Correctness & behaviour  
+• Early–exit guards avoid unnecessary work and eliminate infinite loops: once `setRightCollapsed(false)` runs, `rightCollapsed` becomes `false`, so the effect immediately stops triggering.  
+• `nodes.find` is O(N); acceptable given typical workflow sizes.  
+• Effect runs whenever `nodes` array reference changes, which may be frequent. This is safe but could fire more often than needed. A lightweight optimisation:
 
-Review  
-1. Optional-everything – A completely empty CLI node now type-checks. If the backend requires at least a `mode` or `shell`, make those fields mandatory or supply defaults during execution.  
-2. Better discrimination – `stdin.parentIndex` is only valid when `source === 'parent-index'`. A discriminated union would prevent illegal combinations:  
-   ```ts
-   stdin:
-     | { source: 'none' }
-     | { source: 'parent-index'; parentIndex: number }
-     | { source: 'literal'; literal: string; stripCodeFences?: boolean }
-     | …
-   ```  
-3. Enum alignment – Verify that `NodeType.CLI` already exists in the shared enum; otherwise the new interface will not compile.  
-4. Platform-specific flags – `executionPolicyBypass` is PowerShell-only, while `pipefail` is bash/zsh-only. Consider comments or sub-objects to keep the intent clear.  
-5. Solidity of `CLINode` – If `WorkflowNode` is a discriminated union elsewhere, remember to add `CLINode` to that union so switch statements stay exhaustive.
+```tsx
+// optional optimisation
+const cliPending = useMemo(
+  () => pendingApprovalNodeId
+      ? nodes.find(n => n.id === pendingApprovalNodeId && n.type === NodeType.CLI)
+      : undefined,
+  [pendingApprovalNodeId, nodes]
+);
+useEffect(() => {
+  if (cliPending && rightCollapsed) setRightCollapsed(false);
+}, [cliPending, rightCollapsed]);
+```
 
-### `workflow/Web/components/hooks/workflowActions.ts`  
-Changes  
-• Imports the DTO types and `toWorkflowNodeDTO`.  
-• Builds `workflowData` with explicit typing and maps nodes/edges to serialisable DTOs.  
+Security  
+No user-supplied data used; no risks introduced.
 
-Review  
-1. Correctness – Mapping of edges is faithful. The `?? undefined` conversions are redundant because `JSON.stringify` ignores `undefined`, but they do no harm.  
-2. Performance – Added O(n) mapping per save; negligible for typical graph sizes.  
-3. Type safety – The new explicit `WorkflowPayloadDTO` cast will flag mistakes in `toWorkflowNodeDTO` at compile time. Good upgrade.  
-4. Dependency list – Hook memo still depends on `nodes, edges, nodeResults, ifElseDecisions, vscodeAPI` exactly as before. ✅  
-5. Availability – Ensure `toWorkflowNodeDTO` is exported from `../../utils/nodeDto`; otherwise compilation will break.
+Maintainability  
+Consider isolating “getNodeById” logic into a selector/helper used by both components to avoid knowledge duplication.
 
-### `workflow/Web/components/nodes/CLI_Node.tsx`  
-Changes  
-• Local helper type `CLINode` loses `data.shouldAbort`.  
+### `workflow/Web/components/sidebar/RightSidebar.tsx`
 
-Review  
-1. Repository-wide search – If any code still reads or writes `node.data.shouldAbort`, it will now be `undefined` at runtime and a compile error (good early warning). Remove dead usages.  
-2. Alignment – The new local type matches `Core`’s definition, reducing drift.  
-3. No functional UI changes – Rendering logic is untouched, so runtime is stable.
+Change  
+```tsx
+<Button
+  ...
+  onClick={onToggleCollapse}
+  disabled={!!pendingApprovalNodeId}
+  aria-label="Toggle Right Sidebar"
+  ...
+/>
+```
 
-### `vendor/amp-sdk/amp-sdk.tgz`  
-Binary updated; without the tarball diff we cannot inspect. Make sure the package-lock / yarn.lock stays in sync and that the bump is intentional.
+Correctness  
+• `disabled` correctly prevents both click and keyboard activation.  
+• `!!pendingApprovalNodeId` is a clear boolean coercion.
 
-### `amp-review.md`  
-Only documentation-level edits; no runtime impact.
+Accessibility  
+Because the element is now disabled, screen-reader users lose the ability to collapse but receive no explanation. Consider adding `title="Cannot collapse while approval is pending"` or `aria-describedby` to clarify why the control is disabled.
 
-## Recommendations  
+Potential UX edge case  
+If another sidebar action relies on collapsing (e.g., saving space), users may be frustrated. Confirm with Product/UX that disabling is acceptable.
 
-1. Tighten `CLINodeConfig`  
-   • Make at least `mode` and `shell` required, or supply defaults when executing.  
-   • Use discriminated unions for mutually-exclusive fields (`stdin`, maybe `flags`).  
+Performance / security  
+No concerns.
 
-2. Confirm enum & union integration  
-   • `NodeType.CLI` must be in the enum.  
-   • Add `CLINode` to any `WorkflowNodes` / `WorkflowNodeUnion` definitions.  
+---
 
-3. Clean up serializer  
-   • Drop the `?? undefined` noise in edge mapping (cosmetic).  
-
-4. Purge `shouldAbort` references  
-   • Run a project-wide search to delete or refactor callers.
-
-5. (Optional) Document platform-specific options in `flags` to avoid confusion.
-
-With these small refinements, the type-level addition should be robust and future-proof.
+Overall the change set is small, well-scoped and consistent. The only actionable feedback is an optional dependency optimisation in `Flow.tsx` and a minor accessibility message for the disabled button.

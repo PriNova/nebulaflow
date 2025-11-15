@@ -197,6 +197,22 @@ Recommended improvements and optimizations for future implementation.
 
 ### Sidebar Collapse Controls – Accessibility and UX Polish
 
+### CLI Approval Sidebar Auto-Expand – Dependency and Contract Polish
+
+- Goal: Tighten the auto-expand effect and document the `pending_approval` contract for Shell (CLI) nodes.
+- What:
+  - Narrow the `useEffect` dependency surface in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx) that auto-expands the Right Sidebar on CLI `pending_approval` so it reacts only to the minimal state required (e.g., `pendingApprovalNodeId`, `rightCollapsed`, and the specific node type), avoiding unnecessary renders.
+  - Capture the `pending_approval` status contract and expectations (who emits it, when it clears, and what UI it drives) in a small vertical-slice note or inline docs so future changes to execution events keep Shell approval behavior aligned.
+- Why: Keeps the auto-expand behavior explicit and efficient while making the status contract discoverable for future engine or UI changes.
+
+### Playbox Toggle – Disabled State Messaging and Collapse Rules
+
+- Goal: Improve accessibility and consistency for the Playbox toggle while approvals are pending.
+- What:
+  - Add a short `aria-disabled`-friendly message or tooltip to the disabled Playbox burger in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx) that explains it cannot be collapsed during Shell approval (e.g., "Sidebar locked while a Shell approval is pending").
+  - Centralize the rules that determine when the Right Sidebar may collapse (e.g., no pending approvals, no blocking dialogs) into a small helper so toggle behavior stays consistent as new approval surfaces or safety flows are added.
+- Why: Makes the disabled state understandable for keyboard and screen reader users and reduces the risk of drift in collapse behavior as the Playbox evolves.
+
 - Goal: Refine sidebar toggle behavior and discoverability beyond the minimal collapse/expand implementation
 - What:
   - Disable or ignore drag resizing while a sidebar is collapsed, or store/restore the last expanded width when re-expanding to avoid surprising size jumps

@@ -971,6 +971,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                             variant="outline"
                             size="sm"
                             onClick={onToggleCollapse}
+                            disabled={!!pendingApprovalNodeId}
                             aria-label="Toggle Right Sidebar"
                             title="Toggle Right Sidebar"
                             aria-expanded={true}

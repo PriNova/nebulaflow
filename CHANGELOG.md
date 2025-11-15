@@ -232,6 +232,11 @@ Why: Aligns with Vertical Slice Architecture, reduces duplicate handling and dri
 
 ### Goal: Collapsible sidebars with pinned burger toggles (LeftSidebar and RightSidebar)
 
+### Goal: Shell Node Approvals – Keep Right Sidebar Visible During Pending Approval
+
+- What: When a Shell (CLI) node enters `pending_approval`, the Right Sidebar automatically expands from a collapsed state so the approval controls remain visible, and the Playbox burger toggle is temporarily disabled while approval is pending to avoid hiding the controls mid-decision.
+- Why: Keeps safety-critical shell approval UI in view and prevents accidental collapse while reviewing and confirming commands.
+
 ### Added
 - Explicit local UI state for sidebar visibility in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx): `leftCollapsed`, `rightCollapsed` and a shared `COLLAPSED_WIDTH` constant to control collapsed width.
 - Burger toggle buttons using shadcn `Button` and `lucide-react` `Menu` icon in both sidebars:
