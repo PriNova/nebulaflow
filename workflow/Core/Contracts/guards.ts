@@ -245,6 +245,10 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
                 isString(msg.data.nodeId) &&
                 (msg.data.reason === undefined || isString(msg.data.reason))
             )
+        case 'copy_selection':
+            return isWorkflowPayloadDTO(msg.data)
+        case 'paste_selection':
+            return true
         case 'reset_results':
             return true
         default:
@@ -401,6 +405,8 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
                 isString((d as any).newId)
             )
         }
+        case 'clipboard_paste':
+            return msg.data === undefined || isWorkflowPayloadDTO(msg.data)
         default:
             return false
     }

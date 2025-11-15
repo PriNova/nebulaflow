@@ -6,7 +6,9 @@ import { NebulaSpinningLogo } from '@shared/NebulaSpinningLogo'
 import { useReactFlow } from '@xyflow/react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ExtensionToWorkflow, WorkflowToExtension } from '../services/Protocol'
+import { v4 as uuidv4 } from 'uuid'
+import type { ExtensionToWorkflow, WorkflowPayloadDTO, WorkflowToExtension } from '../services/Protocol'
+import { toWorkflowNodeDTO } from '../utils/nodeDto'
 import { pruneEdgesForMissingNodes } from '../utils/pruneEdges'
 import type { GenericVSCodeWrapper } from '../utils/vscode'
 import { FlowCanvas } from './canvas/FlowCanvas'
@@ -34,6 +36,114 @@ import { useSubflowState } from './subflows/useSubflowState'
 
 const MIN_HANDLE_GAP = 8 // px gap to prevent handle overlap
 
+interface NodeContextMenuProps {
+    position: { x: number; y: number } | null
+    hasSelection: boolean
+    onCopySelection: () => void
+    onPasteAt: (position: { x: number; y: number }) => void
+    onClose: () => void
+}
+
+const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
+    position,
+    hasSelection,
+    onCopySelection,
+    onPasteAt,
+    onClose,
+}) => {
+    if (!position) return null
+
+    const handleCopyClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+        event.stopPropagation()
+        onCopySelection()
+        onClose()
+    }
+
+    const handlePasteClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+        event.stopPropagation()
+        onPasteAt(position)
+        onClose()
+    }
+
+    return (
+        <div
+            className="tw-fixed tw-z-[50] tw-bg-[var(--vscode-editor-background)] tw-border tw-border-[var(--vscode-panel-border)] tw-shadow-lg tw-rounded tw-min-w-[160px]"
+            style={{ top: position.y, left: position.x }}
+            tabIndex={-1}
+            onClick={event => event.stopPropagation()}
+            onKeyDown={event => {
+                if (event.key === 'Escape') {
+                    event.stopPropagation()
+                    onClose()
+                }
+            }}
+        >
+            {hasSelection && (
+                <button
+                    type="button"
+                    className="tw-block tw-w-full tw-text-left tw-px-3 tw-py-1 hover:tw-bg-[var(--vscode-list-hoverBackground)]"
+                    onClick={handleCopyClick}
+                >
+                    Copy selection
+                </button>
+            )}
+            <button
+                type="button"
+                className="tw-block tw-w-full tw-text-left tw-px-3 tw-py-1 hover:tw-bg-[var(--vscode-list-hoverBackground)]"
+                onClick={handlePasteClick}
+            >
+                Paste
+            </button>
+        </div>
+    )
+}
+
+function buildClipboardGraphFromPayload(payload: WorkflowPayloadDTO): {
+    nodes: WorkflowNodes[]
+    edges: Edge[]
+} {
+    const clipboardNodes = Array.isArray(payload.nodes) ? payload.nodes : []
+    const clipboardEdges = Array.isArray(payload.edges) ? payload.edges : []
+
+    if (clipboardNodes.length === 0) {
+        return { nodes: [], edges: [] }
+    }
+
+    const idMap = new Map<string, string>()
+    for (const node of clipboardNodes) {
+        idMap.set(node.id, uuidv4())
+    }
+
+    const newNodes: WorkflowNodes[] = clipboardNodes.map(node => ({
+        id: idMap.get(node.id) as string,
+        type: node.type as any,
+        data: node.data as any,
+        position: {
+            x: node.position.x + 40,
+            y: node.position.y + 40,
+        },
+    }))
+
+    const newEdges: Edge[] = clipboardEdges
+        .map(edge => {
+            const newSource = idMap.get(edge.source)
+            const newTarget = idMap.get(edge.target)
+            if (!newSource || !newTarget) {
+                return null
+            }
+            return {
+                id: uuidv4(),
+                source: newSource,
+                target: newTarget,
+                sourceHandle: edge.sourceHandle,
+                targetHandle: edge.targetHandle,
+            } as Edge
+        })
+        .filter((edge): edge is Edge => edge !== null)
+
+    return { nodes: newNodes, edges: newEdges }
+}
+
 export const Flow: React.FC<{
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>
 }> = ({ vscodeAPI }) => {
@@ -56,7 +166,6 @@ export const Flow: React.FC<{
         basePath?: string
     } | null>(null)
     const [isTogglingScope, setIsTogglingScope] = useState(false)
-
     // Subflow view stack
     const [viewStack, setViewStack] = useState<Array<{ nodes: WorkflowNodes[]; edges: Edge[] }>>([])
     const [activeSubflowId, setActiveSubflowId] = useState<string | null>(null)
@@ -76,6 +185,12 @@ export const Flow: React.FC<{
         id: string
         newTitle: string
     } | null>(null)
+
+    const [contextMenuPosition, setContextMenuPosition] = useState<{
+        x: number
+        y: number
+    } | null>(null)
+    const lastPasteScreenPositionRef = useRef<{ x: number; y: number } | null>(null)
 
     // Cache of disabled output handles per subflow definition id
     const [disabledOutputsBySubflowId, setDisabledOutputsBySubflowId] = useState<
@@ -326,6 +441,81 @@ export const Flow: React.FC<{
         ifElseDecisions
     )
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: setter functions are stable and payload is handled via message handler
+    const applyClipboardPayload = useCallback(
+        (payload: WorkflowPayloadDTO) => {
+            const nodesFromClipboard = Array.isArray(payload.nodes) ? payload.nodes : []
+            const edgesFromClipboard = Array.isArray(payload.edges) ? payload.edges : []
+            console.log('[Flow] applyClipboardPayload', {
+                incomingNodeCount: nodesFromClipboard.length,
+                incomingEdgeCount: edgesFromClipboard.length,
+                anchor: lastPasteScreenPositionRef.current,
+            })
+            if (nodesFromClipboard.length === 0) return
+
+            const anchor = lastPasteScreenPositionRef.current
+            let minX = Number.POSITIVE_INFINITY
+            let minY = Number.POSITIVE_INFINITY
+            for (const node of nodesFromClipboard) {
+                minX = Math.min(minX, node.position.x)
+                minY = Math.min(minY, node.position.y)
+            }
+            if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+                minX = 0
+                minY = 0
+            }
+
+            let offsetX = 40
+            let offsetY = 40
+            if (anchor) {
+                offsetX = anchor.x - minX
+                offsetY = anchor.y - minY
+            }
+
+            const idMap = new Map<string, string>()
+            for (const node of nodesFromClipboard) {
+                idMap.set(node.id, uuidv4())
+            }
+
+            const newNodes: WorkflowNodes[] = nodesFromClipboard.map(node => ({
+                id: idMap.get(node.id) ?? uuidv4(),
+                type: node.type as any,
+                data: node.data as any,
+                position: {
+                    x: node.position.x + offsetX,
+                    y: node.position.y + offsetY,
+                },
+            }))
+
+            const newEdges: Edge[] = edgesFromClipboard
+                .map(edge => {
+                    const newSource = idMap.get(edge.source)
+                    const newTarget = idMap.get(edge.target)
+                    if (!newSource || !newTarget) return null
+                    return {
+                        id: uuidv4(),
+                        source: newSource,
+                        target: newTarget,
+                        sourceHandle: edge.sourceHandle,
+                        targetHandle: edge.targetHandle,
+                    } as Edge
+                })
+                .filter((edge): edge is Edge => edge !== null)
+
+            console.log('[Flow] applyClipboardPayload result', {
+                newNodeCount: newNodes.length,
+                newEdgeCount: newEdges.length,
+                newNodeIds: newNodes.map(n => n.id),
+            })
+
+            setNodes(prev => [...prev, ...newNodes])
+            setEdges(prev => [...prev, ...newEdges])
+            setSelectedNodes(newNodes)
+            setActiveNode(newNodes[newNodes.length - 1] ?? null)
+        },
+        [setNodes, setEdges, setSelectedNodes, setActiveNode]
+    )
+
     useMessageHandler(
         nodes,
         setNodes,
@@ -352,7 +542,8 @@ export const Flow: React.FC<{
         requestFitOnNextRender,
         setCompletedThisRun,
         setStorageScope,
-        activeSubflowIdRef
+        activeSubflowIdRef,
+        applyClipboardPayload
     )
 
     useEffect(() => {
@@ -376,6 +567,87 @@ export const Flow: React.FC<{
     )
 
     const reactFlowInstance = useReactFlow()
+
+    const handleCenterPaneClick = useCallback(
+        (event: React.MouseEvent<HTMLDivElement>) => {
+            if (contextMenuPosition) {
+                setContextMenuPosition(null)
+            }
+            handleBackgroundClick(event)
+        },
+        [contextMenuPosition, handleBackgroundClick]
+    )
+
+    // biome-ignore lint/correctness/useExhaustiveDependencies: node selection handler only depends on latest nodes array
+    const handleNodeContextMenu = useCallback(
+        (event: React.MouseEvent, node: any) => {
+            event.preventDefault()
+            event.stopPropagation()
+            const canonical = nodes.find(n => n.id === node.id) ?? null
+            if (canonical) {
+                setSelectedNodes(prev => {
+                    const alreadySelected = prev.some(n => n.id === canonical.id)
+                    if (alreadySelected) return prev
+                    return [canonical]
+                })
+                setActiveNode(canonical)
+            }
+            setContextMenuPosition({ x: event.clientX, y: event.clientY })
+        },
+        [nodes, setSelectedNodes, setActiveNode]
+    )
+
+    const handlePaneContextMenu = useCallback((event: React.MouseEvent) => {
+        event.preventDefault()
+        event.stopPropagation()
+        setContextMenuPosition({ x: event.clientX, y: event.clientY })
+    }, [])
+
+    const handleCopySelection = useCallback(() => {
+        if (selectedNodes.length === 0) return
+        const selectedIds = new Set(selectedNodes.map(node => node.id))
+        const nodeDTOs = selectedNodes.map(node => toWorkflowNodeDTO(node))
+        const edgeDTOs = edges
+            .filter(edge => selectedIds.has(edge.source) && selectedIds.has(edge.target))
+            .map(edge => ({
+                id: edge.id,
+                source: edge.source,
+                target: edge.target,
+                sourceHandle: (edge as any).sourceHandle,
+                targetHandle: (edge as any).targetHandle,
+            }))
+        const payload: WorkflowPayloadDTO = {
+            nodes: nodeDTOs as any,
+            edges: edgeDTOs as any,
+        }
+        console.log('[Flow] copy_selection payload', {
+            nodeCount: payload.nodes?.length ?? 0,
+            edgeCount: payload.edges?.length ?? 0,
+            nodeIds: payload.nodes?.map(n => n.id) ?? [],
+        })
+        try {
+            vscodeAPI.postMessage({ type: 'copy_selection', data: payload } as any)
+        } catch (err) {
+            console.error('[Flow] Failed to post copy_selection message', err)
+        }
+    }, [selectedNodes, edges, vscodeAPI])
+
+    const handleRequestPasteAtPosition = useCallback(
+        (position: { x: number; y: number }) => {
+            const flowPoint = reactFlowInstance.screenToFlowPosition(position)
+            lastPasteScreenPositionRef.current = flowPoint
+            console.log('[Flow] paste_selection requested', {
+                screenPosition: position,
+                flowPosition: flowPoint,
+            })
+            try {
+                vscodeAPI.postMessage({ type: 'paste_selection' } as any)
+            } catch (err) {
+                console.error('[Flow] Failed to post paste_selection message', err)
+            }
+        },
+        [reactFlowInstance, vscodeAPI]
+    )
 
     const isValidConnection = useCallback(
         (conn: any) => isValidEdgeConnection(conn, edges, nodes),
@@ -585,7 +857,7 @@ export const Flow: React.FC<{
             />
             <div
                 className="tw-flex-1 tw-bg-[var(--vscode-editor-background)] tw-shadow-inner tw-h-full tw-overflow-hidden"
-                onClick={handleBackgroundClick}
+                onClick={handleCenterPaneClick}
                 onKeyDown={handleBackgroundKeyDown}
                 role="button"
                 tabIndex={0}
@@ -596,6 +868,7 @@ export const Flow: React.FC<{
                         className="tw-relative tw-flex-1 tw-bg-[var(--vscode-editor-background)] tw-h-full tw-min-w-0"
                         onDragOver={handleCanvasDragOver}
                         onDrop={handleCanvasDrop}
+                        onContextMenu={handlePaneContextMenu}
                     >
                         {banner && (
                             <div
@@ -636,6 +909,14 @@ export const Flow: React.FC<{
                             setSelectedNodes={setSelectedNodes}
                         />
 
+                        <NodeContextMenu
+                            position={contextMenuPosition}
+                            hasSelection={selectedNodes.length > 0}
+                            onCopySelection={handleCopySelection}
+                            onPasteAt={handleRequestPasteAtPosition}
+                            onClose={() => setContextMenuPosition(null)}
+                        />
+
                         {/* Background: NebulaFlow spinner */}
                         {centerSize.w > 0 && centerSize.h > 0 ? (
                             <NebulaSpinningLogo
@@ -671,6 +952,8 @@ export const Flow: React.FC<{
                             onConnect={onConnect}
                             onNodeClick={onNodeClick}
                             onNodeDragStart={onNodeDragStart}
+                            onNodeContextMenu={handleNodeContextMenu}
+                            onPaneContextMenu={handlePaneContextMenu}
                             isValidConnection={isValidConnection}
                             requestFitOnNextRender={requestFitOnNextRender}
                         />

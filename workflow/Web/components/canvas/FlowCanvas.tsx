@@ -74,6 +74,8 @@ interface FlowCanvasProps {
     onNodeDragStart: (event: any, node: any) => void
     isValidConnection: (conn: any) => boolean
     requestFitOnNextRender: () => void
+    onNodeContextMenu: (event: any, node: any) => void
+    onPaneContextMenu: (event: any) => void
 }
 
 /**
@@ -104,6 +106,8 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     onNodeDragStart,
     isValidConnection,
     requestFitOnNextRender,
+    onNodeContextMenu,
+    onPaneContextMenu,
 }) => {
     return (
         <div className="tw-absolute tw-inset-0 tw-z-[1]">
@@ -116,6 +120,8 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
                 onConnect={onConnect}
                 onNodeClick={onNodeClick}
                 onNodeDragStart={onNodeDragStart}
+                onNodeContextMenu={onNodeContextMenu}
+                onPaneContextMenu={onPaneContextMenu}
                 deleteKeyCode={['Backspace', 'Delete']}
                 nodeTypes={nodeTypes}
                 selectionMode={SelectionMode.Partial}

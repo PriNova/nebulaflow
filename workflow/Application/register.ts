@@ -1,6 +1,7 @@
 import * as path from 'node:path'
 import * as vscode from 'vscode'
-import { isWorkflowToExtension } from '../Core/Contracts/guards'
+import type { WorkflowPayloadDTO } from '../Core/Contracts/Protocol'
+import { isWorkflowPayloadDTO, isWorkflowToExtension } from '../Core/Contracts/guards'
 import type { ApprovalResult, ExtensionToWorkflow } from '../Core/models'
 import { getCustomNodes } from '../DataAccess/fs'
 import { registerHandlers as registerLLMHandlers } from '../LLMIntegration/Application/register'
@@ -26,6 +27,8 @@ interface ExecutionContext {
 
 const panelExecutionRegistry = new WeakMap<vscode.Webview, ExecutionContext>()
 const activeAbortControllers = new Set<AbortController>()
+
+let inMemoryClipboard: WorkflowPayloadDTO | null = null
 
 function formatPanelTitle(uri?: vscode.Uri): string {
     if (!uri) {
@@ -352,6 +355,81 @@ export function activate(context: vscode.ExtensionContext): void {
                             } as ExtensionToWorkflow,
                             { strict: isDev }
                         )
+                        break
+                    }
+                    case 'copy_selection': {
+                        const payload = (message as any).data
+                        if (payload && isWorkflowPayloadDTO(payload)) {
+                            inMemoryClipboard = payload
+                            if (isDev) {
+                                console.log('[NebulaFlow] copy_selection received', {
+                                    nodeCount: payload.nodes?.length ?? 0,
+                                    edgeCount: payload.edges?.length ?? 0,
+                                })
+                            }
+                            try {
+                                const serialized = JSON.stringify(payload)
+                                await vscode.env.clipboard.writeText(serialized)
+                            } catch (err) {
+                                if (isDev) {
+                                    console.error(
+                                        '[NebulaFlow] Failed to write workflow selection to clipboard',
+                                        err
+                                    )
+                                }
+                            }
+                        } else if (isDev) {
+                            console.warn('[NebulaFlow] copy_selection received invalid payload')
+                        }
+                        break
+                    }
+                    case 'paste_selection': {
+                        let payload: unknown = inMemoryClipboard
+                        try {
+                            const text = await vscode.env.clipboard.readText()
+                            if (text) {
+                                try {
+                                    const parsed = JSON.parse(text)
+                                    if (isWorkflowPayloadDTO(parsed)) {
+                                        payload = parsed
+                                        inMemoryClipboard = parsed
+                                    }
+                                } catch {
+                                    if (isDev) {
+                                        console.warn(
+                                            '[NebulaFlow] paste_selection clipboard text was not valid JSON payload'
+                                        )
+                                    }
+                                    // Ignore parse errors from non-NebulaFlow clipboard content
+                                }
+                            }
+                        } catch (err) {
+                            if (isDev) {
+                                console.warn('[NebulaFlow] Failed to read from system clipboard', err)
+                            }
+                            // Ignore clipboard read errors; fall back to in-memory clipboard
+                        }
+                        if (payload && isWorkflowPayloadDTO(payload)) {
+                            const typed = payload as WorkflowPayloadDTO
+                            if (isDev) {
+                                console.log('[NebulaFlow] paste_selection sending clipboard_paste', {
+                                    nodeCount: typed.nodes?.length ?? 0,
+                                    edgeCount: typed.edges?.length ?? 0,
+                                })
+                            }
+                            await safePost(
+                                webview,
+                                { type: 'clipboard_paste', data: typed } as ExtensionToWorkflow,
+                                { strict: isDev }
+                            )
+                        } else {
+                            if (isDev) {
+                                console.log('[NebulaFlow] paste_selection had no valid payload to paste')
+                            }
+                            await safePost(webview, { type: 'clipboard_paste' } as ExtensionToWorkflow, {
+                                strict: isDev,
+                            })
+                        }
                         break
                     }
                     case 'node_approved': {

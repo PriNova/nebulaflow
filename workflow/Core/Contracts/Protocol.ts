@@ -297,6 +297,22 @@ interface ExecuteNodeCommand extends BaseWorkflowMessage {
     }
 }
 
+// Clipboard commands
+interface CopySelectionCommand extends BaseWorkflowMessage {
+    type: 'copy_selection'
+    data: WorkflowPayloadDTO
+}
+
+interface PasteSelectionCommand extends BaseWorkflowMessage {
+    type: 'paste_selection'
+}
+
+// Clipboard events
+interface ClipboardPasteEvent extends BaseWorkflowMessage {
+    type: 'clipboard_paste'
+    data?: WorkflowPayloadDTO
+}
+
 export type WorkflowToExtension =
     | OpenExternalLink
     | GetModelsCommand
@@ -320,6 +336,8 @@ export type WorkflowToExtension =
     | GetSubflowCommand
     | GetSubflowsCommand
     | DuplicateSubflowCommand
+    | CopySelectionCommand
+    | PasteSelectionCommand
 
 export type ExtensionToWorkflow =
     | ModelsLoadedEvent
@@ -340,3 +358,4 @@ export type ExtensionToWorkflow =
     | ProvideSubflowEvent
     | ProvideSubflowsEvent
     | SubflowCopiedEvent
+    | ClipboardPasteEvent

@@ -189,6 +189,16 @@ Recommended improvements and optimizations for future implementation.
 - What: Store the `setTimeout` handle in [CopyToClipboardButton.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/CopyToClipboardButton.tsx) and clear it in a `useEffect` cleanup to prevent `setCopied(false)` from firing after unmount
 - Why: React may warn about state updates on unmounted components; cleaning up the timer removes a subtle footgun and improves component hygiene
 
+### Workflow Clipboard and Copy/Paste – Follow-ups
+
+- Goal: Refine the workflow clipboard protocol, selection DTOs, and context menu UX beyond the initial implementation.
+- What:
+-  - Preserve and round-trip any additional edge metadata in the `WorkflowPayloadDTO` (such as labels or ordering hints) when copying and pasting selections so future edge features are not lost during clipboard operations.
+-  - Consolidate the clipboard graph cloning logic into a single helper that remaps node/edge IDs and applies offsets, and reuse it across webview clipboard handlers to avoid drift between different copy/paste paths.
+-  - Clarify and, if needed, extend clipboard precedence semantics so users have predictable behavior when the system clipboard contains non-NebulaFlow content (e.g., explicit rules for when in-memory vs system clipboard wins).
+-  - Add small dev-only logging and optional visual hints around context-menu copy/paste actions to aid debugging without increasing noise in normal usage.
+- Why: Keeps the clipboard flow data-oriented and robust as the protocol evolves, reduces duplication in cloning helpers, makes behavior predictable across panels, and leaves room for UX polish without complicating the core implementation.
+
 ### Right Sidebar Min-Width Flexibility
 
 - Goal: Make the RightSidebar minimum width user-friendly and adaptable across displays

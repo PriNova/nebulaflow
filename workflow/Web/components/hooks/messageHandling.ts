@@ -1,7 +1,11 @@
 import type { Edge } from '@graph/CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '@nodes/Nodes'
 import { useCallback, useEffect, useRef } from 'react'
-import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
+import type {
+    ExtensionToWorkflow,
+    WorkflowPayloadDTO,
+    WorkflowToExtension,
+} from '../../services/Protocol'
 import type { GenericVSCodeWrapper } from '../../utils/vscode'
 
 const getDownstreamPreviewNodes = (
@@ -144,7 +148,8 @@ export const useMessageHandler = (
     setStorageScope?: React.Dispatch<
         React.SetStateAction<{ scope: 'workspace' | 'user'; basePath?: string } | null>
     >,
-    activeSubflowIdRef?: React.MutableRefObject<string | null>
+    activeSubflowIdRef?: React.MutableRefObject<string | null>,
+    onClipboardPaste?: (payload: WorkflowPayloadDTO) => void
 ) => {
     const lastExecutedNodeIdRef = useRef<string | null>(null)
     const batchUpdateNodeResults = useCallback(
@@ -437,7 +442,25 @@ export const useMessageHandler = (
                     }
                     break
                 }
-                // fall through
+                case 'clipboard_paste': {
+                    const payload = (event.data as any)?.data as WorkflowPayloadDTO | undefined
+                    console.log('[messageHandling] clipboard_paste received', {
+                        hasPayload: !!payload,
+                        nodeCount: payload?.nodes?.length ?? 0,
+                        edgeCount: payload?.edges?.length ?? 0,
+                    })
+                    if (payload && Array.isArray(payload.nodes) && payload.nodes.length > 0) {
+                        try {
+                            onClipboardPaste?.(payload)
+                        } catch (err) {
+                            console.error(
+                                '[messageHandling] Failed to apply clipboard_paste payload',
+                                err
+                            )
+                        }
+                    }
+                    break
+                }
             }
         }
         const off = vscodeAPI.onMessage(messageHandler as any)
@@ -471,5 +494,6 @@ export const useMessageHandler = (
         nodeResults,
         requestFitOnNextRender,
         setStorageScope,
+        onClipboardPaste,
     ])
 }
