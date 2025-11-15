@@ -1,52 +1,87 @@
 ## High-level summary  
-A single functional change was made to `RightSidebar.tsx`.
+The patch is a type-system & data-plumbing update that gives the CLI workflow node first-class support all the way from the shared `Core` model to the web-view serializer:
 
-1. A new component `RunOnlyThisButton` is imported.  
-2. The sidebar now renders this button for a subset of node types (LLM, CLI, INPUT, VARIABLE, IF_ELSE, SUBFLOW).  
-3. The button is disabled while the workflow is paused, while other nodes are executing, or (for SUBFLOW) when the target sub-flow is missing.
+1. `workflow/Core/models.ts`  
+   • Adds a rich `CLINodeConfig` description object.  
+   • Introduces `CLINode` interface that narrows `WorkflowNode` to `type: NodeType.CLI`.
 
-No deletions or structural refactors are present.
+2. `workflow/Web/components/hooks/workflowActions.ts`  
+   • Refactors the “save workflow” action to build a strictly typed `WorkflowPayloadDTO`, converting every node via the new `toWorkflowNodeDTO` helper.
+
+3. `workflow/Web/components/nodes/CLI_Node.tsx`  
+   • Local helper type no longer contains the ad-hoc `shouldAbort` flag, aligning it with the new model.
+
+4. A new SDK tarball is committed (`vendor/amp-sdk/amp-sdk.tgz`), and the Markdown review file is updated.  
+   No runtime behaviour changes are introduced; all edits are compile-time or serialization-time only.
 
 ## Tour of changes  
-Begin the review at the JSX block that starts around line 660 (immediately after the progress-bar span). That is where the new `RunOnlyThisButton` is conditionally rendered and where the enabling/disabling logic resides; every other diff hunk is either the import statement for the new component or context lines. Understanding this block clarifies the intent (a “run only this node” feature) and its interaction with existing execution-control logic.
+Begin with `workflow/Core/models.ts`.  
+Understanding the new `CLINodeConfig` and `CLINode` contracts clarifies every downstream edit: the web serializer (`workflowActions.ts`) merely adapts code to those contracts, and the React component’s type tweak (`CLI_Node.tsx`) removes a now-invalid field.
 
-## File level review
+## File level review  
 
-### `workflow/Web/components/sidebar/RightSidebar.tsx`
-
-Changes made  
-• Added `import RunOnlyThisButton from '@shared/RunOnlyThisButton'`.  
-• Inserted conditional JSX that renders `<RunOnlyThisButton>` for six node types, with a `disabled` prop derived from sidebar/execution state.  
+### `workflow/Core/models.ts`  
+Changes  
+• Adds `CLINodeConfig` (fully optional, ~30 fields).  
+• Adds `CLINode` that extends `WorkflowNode` and uses the config.  
 
 Review  
+1. Optional-everything – A completely empty CLI node now type-checks. If the backend requires at least a `mode` or `shell`, make those fields mandatory or supply defaults during execution.  
+2. Better discrimination – `stdin.parentIndex` is only valid when `source === 'parent-index'`. A discriminated union would prevent illegal combinations:  
+   ```ts
+   stdin:
+     | { source: 'none' }
+     | { source: 'parent-index'; parentIndex: number }
+     | { source: 'literal'; literal: string; stripCodeFences?: boolean }
+     | …
+   ```  
+3. Enum alignment – Verify that `NodeType.CLI` already exists in the shared enum; otherwise the new interface will not compile.  
+4. Platform-specific flags – `executionPolicyBypass` is PowerShell-only, while `pipefail` is bash/zsh-only. Consider comments or sub-objects to keep the intent clear.  
+5. Solidity of `CLINode` – If `WorkflowNode` is a discriminated union elsewhere, remember to add `CLINode` to that union so switch statements stay exhaustive.
 
-Correctness / logic  
-✓ Conditional inclusion of the button for sensible node types.  
-✓ Disables when:
-  • `isPaused` – matches existing “Run from here” button logic.  
-  • `executingNodeIds.size > 0` – prevents concurrent run conflicts.  
-  • SUBFLOW nodes without `subflowId` – avoids runtime failure.
+### `workflow/Web/components/hooks/workflowActions.ts`  
+Changes  
+• Imports the DTO types and `toWorkflowNodeDTO`.  
+• Builds `workflowData` with explicit typing and maps nodes/edges to serialisable DTOs.  
 
-Potential issues / suggestions  
-1. Type-safety: `(node as any).data?.subflowId` circumvents TypeScript guarantees.  
-   • Consider refining `WorkflowNodes[NodeType.SUBFLOW]` to include `data: { subflowId?: string }` and using a type-guard instead of `as any`.  
-2. Node-type coverage:  
-   • ACTION or other executable node types (e.g., HTTP, CODE) are omitted. Verify that the omission is intentional; inconsistencies will confuse users.  
-3. UI stacking order:  
-   • The new button is rendered before `<RunFromHereButton>`. Confirm that the design (icon order, spacing) is acceptable; otherwise add margin or reorder.  
-4. Key prop:  
-   • If this block is inside a `.map()` over nodes (appears likely), React will complain if adjacent siblings added dynamically have no `key`. Ensure that the surrounding element still has a stable key or wrap the buttons in a fragment with explicit keys.  
-5. Accessibility:  
-   • Confirm that `RunOnlyThisButton` adds an aria-label; otherwise provide one here.  
-6. Test updates:  
-   • Add unit/integration tests verifying (a) visibility for allowed node types, (b) disabled state conditions, and (c) hidden state for disallowed types or SUBFLOW without id.  
+Review  
+1. Correctness – Mapping of edges is faithful. The `?? undefined` conversions are redundant because `JSON.stringify` ignores `undefined`, but they do no harm.  
+2. Performance – Added O(n) mapping per save; negligible for typical graph sizes.  
+3. Type safety – The new explicit `WorkflowPayloadDTO` cast will flag mistakes in `toWorkflowNodeDTO` at compile time. Good upgrade.  
+4. Dependency list – Hook memo still depends on `nodes, edges, nodeResults, ifElseDecisions, vscodeAPI` exactly as before. ✅  
+5. Availability – Ensure `toWorkflowNodeDTO` is exported from `../../utils/nodeDto`; otherwise compilation will break.
 
-Performance  
-Negligible impact; the conditional is cheap.
+### `workflow/Web/components/nodes/CLI_Node.tsx`  
+Changes  
+• Local helper type `CLINode` loses `data.shouldAbort`.  
 
-Security  
-No new I/O or user-supplied data is introduced; no additional risk.
+Review  
+1. Repository-wide search – If any code still reads or writes `node.data.shouldAbort`, it will now be `undefined` at runtime and a compile error (good early warning). Remove dead usages.  
+2. Alignment – The new local type matches `Core`’s definition, reducing drift.  
+3. No functional UI changes – Rendering logic is untouched, so runtime is stable.
 
----
+### `vendor/amp-sdk/amp-sdk.tgz`  
+Binary updated; without the tarball diff we cannot inspect. Make sure the package-lock / yarn.lock stays in sync and that the bump is intentional.
 
-Overall the change is straightforward and looks correct, but tightening type safety and covering additional node types (if appropriate) would improve robustness.
+### `amp-review.md`  
+Only documentation-level edits; no runtime impact.
+
+## Recommendations  
+
+1. Tighten `CLINodeConfig`  
+   • Make at least `mode` and `shell` required, or supply defaults when executing.  
+   • Use discriminated unions for mutually-exclusive fields (`stdin`, maybe `flags`).  
+
+2. Confirm enum & union integration  
+   • `NodeType.CLI` must be in the enum.  
+   • Add `CLINode` to any `WorkflowNodes` / `WorkflowNodeUnion` definitions.  
+
+3. Clean up serializer  
+   • Drop the `?? undefined` noise in edge mapping (cosmetic).  
+
+4. Purge `shouldAbort` references  
+   • Run a project-wide search to delete or refactor callers.
+
+5. (Optional) Document platform-specific options in `flags` to avoid confusion.
+
+With these small refinements, the type-level addition should be robust and future-proof.

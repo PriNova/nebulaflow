@@ -286,6 +286,15 @@ Recommended improvements and optimizations for future implementation.
 - **Status**: Not included in pause feature release; deferred for future enhancement
 +
 +### RunOnlyThis – Type Safety, Coverage, and Guard Consolidation
+
+### CLI Node Typing and Save Path – Follow-ups
+
+- Goal: Tighten CLI node typing across core and webview and remove minor DTO nits without changing behaviour.
+- What:
+  - Extend the core `WorkflowNodes` union to include `CLINode` so helpers that switch on `node.type` get the richer CLI-specific data shape by default.
+  - Remove the redundant `?? undefined` on `sourceHandle`/`targetHandle` when building edge DTOs in [workflowActions.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/workflowActions.ts) since JSON serialisation already drops `undefined`.
+  - Audit and, if needed, clean up any remaining direct `shouldAbort` assumptions on CLI node `data` to rely on the shared `BaseNodeData.shouldAbort?` contract instead.
+- Why: Completes the type-level integration of CLI nodes in the core model, keeps DTO shapes minimal and explicit, and avoids future drift around CLI abort semantics while preserving the current runtime behaviour.
 +
 +- **Goal**: Tighten typing and guard behavior for the `RunOnlyThis` affordance in the RightSidebar while keeping execution semantics simple.
 +- **What**:

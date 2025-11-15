@@ -1,7 +1,12 @@
 import type { Edge } from '@graph/CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '@nodes/Nodes'
 import { useCallback } from 'react'
-import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
+import type {
+    ExtensionToWorkflow,
+    WorkflowPayloadDTO,
+    WorkflowToExtension,
+} from '../../services/Protocol'
+import { toWorkflowNodeDTO } from '../../utils/nodeDto'
 import type { GenericVSCodeWrapper } from '../../utils/vscode'
 
 export const useWorkflowActions = (
@@ -28,7 +33,17 @@ export const useWorkflowActions = (
                           ifElseDecisions.size > 0 ? Object.fromEntries(ifElseDecisions) : undefined,
                   }
                 : undefined
-        const workflowData = { nodes, edges, state }
+        const workflowData: WorkflowPayloadDTO = {
+            nodes: nodes.map(node => toWorkflowNodeDTO(node)),
+            edges: edges.map(edge => ({
+                id: edge.id,
+                source: edge.source,
+                target: edge.target,
+                sourceHandle: edge.sourceHandle ?? undefined,
+                targetHandle: edge.targetHandle ?? undefined,
+            })),
+            state,
+        }
         vscodeAPI.postMessage({ type: 'save_workflow', data: workflowData } as any)
     }, [nodes, edges, nodeResults, ifElseDecisions, vscodeAPI])
 

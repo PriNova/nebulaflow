@@ -66,6 +66,38 @@ export interface WorkflowNode {
     selected?: boolean
 }
 
+export interface CLINodeConfig {
+    mode?: 'command' | 'script'
+    shell?: 'bash' | 'sh' | 'zsh' | 'pwsh' | 'cmd'
+    safetyLevel?: 'safe' | 'advanced'
+    streamOutput?: boolean
+    stdin?: {
+        source?: 'none' | 'parents-all' | 'parent-index' | 'literal'
+        parentIndex?: number
+        literal?: string
+        stripCodeFences?: boolean
+        normalizeCRLF?: boolean
+    }
+    env?: {
+        exposeParents?: boolean
+        names?: string[]
+        static?: Record<string, string>
+    }
+    flags?: {
+        exitOnError?: boolean
+        unsetVars?: boolean
+        pipefail?: boolean
+        noProfile?: boolean
+        nonInteractive?: boolean
+        executionPolicyBypass?: boolean
+    }
+}
+
+export interface CLINode extends WorkflowNode {
+    type: NodeType.CLI
+    data: BaseNodeData & CLINodeConfig
+}
+
 import type { AssistantContentItem, EdgeDTO, Model, WorkflowNodeDTO } from './Contracts/Protocol'
 
 export type { AssistantContentItem }

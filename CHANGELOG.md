@@ -127,6 +127,11 @@ Why: Aligns with Vertical Slice Architecture, reduces duplicate handling and dri
 
 ### Goal: Align Loader Spinner Color With Success Checkmark in RightSidebar
 
+### Goal: Persist CLI Node Modes and Switches in Workflow and Custom Node Saves
+
+- What: Introduced a dedicated `CLINodeConfig` and `CLINode` model in the core ([models.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/models.ts)), refactored the webview save path to send a typed `WorkflowPayloadDTO` built via `toWorkflowNodeDTO` so CLI configuration is serialized as plain JSON, and aligned the CLI node component typing with `BaseNodeData` so `shouldAbort` and other flags flow through the shared data contract.
+- Why: Ensures all CLI shell modes, safety levels, stdin/env options, and execution flags are preserved when saving workflows and custom shell nodes, keeping the editor, protocol, and persistence layers in sync.
+
 - Changed: Loader spinner color for tool execution in the RightSidebar now uses the VS Code success token to match the green check icon after completion. Replaced hard-coded `#33ffcc` with `var(--vscode-testing-iconPassed)` in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L461-L469) and [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L624-L631) so the Loader2Icon matches the check mark color theme-consistently.
 
 ### Goal: RunOnlyThis in RightSidebar Playbox
