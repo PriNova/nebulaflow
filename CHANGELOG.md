@@ -8,6 +8,13 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Goal: Reopen Last NebulaFlow Workflow Editor
+
+- Added: Persist the URI of the last successfully saved or loaded workflow in a small metadata file `.nebulaflow/last-workflow.json` via new helpers in [fs.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/fs.ts); the metadata is constrained to workspace files when using workspace storage to respect the trust boundary.
+- Added: On webview mount, the `useMessageHandler` hook now posts a `load_last_workflow` command once, wired through the protocol union and guards in [Protocol.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/Contracts/Protocol.ts) and [guards.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/Contracts/guards.ts).
+- Added: The WorkflowPersistence router handles `load_last_workflow` by resolving and loading the last workflow DTO (reusing the shared `readWorkflowFromUri` path), updating the active URI/title, and posting `workflow_loaded` back to hydrate the graph in [register.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowPersistence/Application/register.ts) and [messageHandling.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/messageHandling.ts).
+- Why: When you open the NebulaFlow Workflow Editor, the last used workflow is automatically restored when available—failing safely when there is no last workflow—so you can resume work with minimal friction while keeping I/O and validation at the slice boundaries.
+
 ### Goal: Align NebulaFlow Tool Catalog with Amp SDK
 
 - Changed: Updated the webview tool catalog in [toolNames.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/services/toolNames.ts) to defer to the canonical tool-name tables and helpers exported by `@prinova/amp-sdk`, re-exporting `BUILTIN_TOOL_NAMES` and delegating `getAllToolNames`/`resolveToolName` to the SDK.

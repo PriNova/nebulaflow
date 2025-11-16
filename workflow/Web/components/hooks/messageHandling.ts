@@ -152,6 +152,7 @@ export const useMessageHandler = (
     onClipboardPaste?: (payload: WorkflowPayloadDTO) => void
 ) => {
     const lastExecutedNodeIdRef = useRef<string | null>(null)
+    const hasRequestedLastWorkflowRef = useRef(false)
     const batchUpdateNodeResults = useCallback(
         (updates: Map<string, string>) => {
             setNodeResults(prev => new Map([...prev, ...updates]))
@@ -466,6 +467,12 @@ export const useMessageHandler = (
         const off = vscodeAPI.onMessage(messageHandler as any)
         // Request storage scope after listener is active to avoid race conditions
         vscodeAPI.postMessage({ type: 'get_storage_scope' } as any)
+
+        if (!hasRequestedLastWorkflowRef.current) {
+            hasRequestedLastWorkflowRef.current = true
+            vscodeAPI.postMessage({ type: 'load_last_workflow' } as any)
+        }
+
         return () => off()
     }, [
         nodes,

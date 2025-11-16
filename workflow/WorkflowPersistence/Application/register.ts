@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import type { ExtensionToWorkflow } from '../../Core/models'
-import { loadWorkflow, saveWorkflow } from '../../DataAccess/fs'
+import { loadLastWorkflow, loadWorkflow, saveWorkflow } from '../../DataAccess/fs'
 import { safePost } from '../../Shared/Infrastructure/messaging/safePost'
 import { setActiveWorkflowUri } from '../../Shared/Infrastructure/workspace'
 
@@ -78,6 +78,19 @@ export function registerHandlers(router: Router): void {
                 strict: env.isDev,
             })
         }
+    })
+
+    // load_last_workflow
+    router.set('load_last_workflow', async (_message, env) => {
+        const result = await loadLastWorkflow()
+        if (!result) return
+
+        const { uri, dto } = result
+        setActiveWorkflowUri(uri)
+        env.updatePanelTitle(uri)
+        await safePost(env.webview, { type: 'workflow_loaded', data: dto } as ExtensionToWorkflow, {
+            strict: env.isDev,
+        })
     })
 
     // open_external_link

@@ -10,6 +10,7 @@ const LEGACY_PERSISTENCE_ROOT = '.sourcegraph'
 const WORKFLOWS_DIR = `${PERSISTENCE_ROOT}/workflows`
 const NODES_DIR = `${PERSISTENCE_ROOT}/nodes`
 const SUBFLOWS_DIR = `${PERSISTENCE_ROOT}/subflows`
+const LAST_WORKFLOW_META = `${PERSISTENCE_ROOT}/last-workflow.json`
 
 const LEGACY_WORKFLOWS_DIR = `${LEGACY_PERSISTENCE_ROOT}/workflows`
 const LEGACY_NODES_DIR = `${LEGACY_PERSISTENCE_ROOT}/nodes`
@@ -221,6 +222,93 @@ function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): WorkflowPayloadDTO
     }
 }
 
+type LastWorkflowMeta = {
+    uri: string
+}
+
+async function setLastWorkflowUri(uri: vscode.Uri): Promise<void> {
+    try {
+        const { root } = getRootForScope()
+        if (!root) return
+
+        const metaDir = vscode.Uri.joinPath(root, PERSISTENCE_ROOT)
+        const metaUri = vscode.Uri.joinPath(root, LAST_WORKFLOW_META)
+
+        try {
+            await vscode.workspace.fs.createDirectory(metaDir)
+        } catch {}
+
+        const payload: LastWorkflowMeta = { uri: uri.toString() }
+        const content = Buffer.from(JSON.stringify(payload, null, 2), 'utf-8')
+        await vscode.workspace.fs.writeFile(metaUri, content)
+    } catch {
+        // Best-effort only; ignore failures
+    }
+}
+
+async function getLastWorkflowUri(): Promise<vscode.Uri | null> {
+    try {
+        const { scope, root } = getRootForScope()
+        if (!root) return null
+
+        const metaUri = vscode.Uri.joinPath(root, LAST_WORKFLOW_META)
+        const bytes = await vscode.workspace.fs.readFile(metaUri)
+        const parsed = JSON.parse(bytes.toString()) as Partial<LastWorkflowMeta>
+
+        if (!parsed.uri || typeof parsed.uri !== 'string') {
+            return null
+        }
+
+        const uri = vscode.Uri.parse(parsed.uri)
+
+        if (scope === 'workspace') {
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri)
+            if (!workspaceFolder) {
+                return null
+            }
+        }
+
+        // Ensure the referenced workflow still exists
+        await vscode.workspace.fs.stat(uri)
+        return uri
+    } catch {
+        return null
+    }
+}
+
+async function readWorkflowFromUri(
+    uri: vscode.Uri,
+    opts: { interactive: boolean }
+): Promise<WorkflowPayloadDTO | null> {
+    try {
+        const content = await vscode.workspace.fs.readFile(uri)
+        const data = JSON.parse(content.toString())
+
+        if (!isSupportedVersion((data as any).version)) {
+            if (opts.interactive) {
+                void vscode.window.showErrorMessage('Unsupported workflow file version')
+            }
+            return null
+        }
+
+        const { version, ...payloadData } = data as any
+        if (!isWorkflowPayloadDTO(payloadData)) {
+            if (opts.interactive) {
+                void vscode.window.showErrorMessage('Invalid workflow schema')
+            }
+            return null
+        }
+
+        return normalizeModelsInWorkflow({ ...payloadData, state: (payloadData as any).state })
+    } catch (error) {
+        if (opts.interactive) {
+            const errorMsg = error instanceof Error ? error.message : String(error)
+            void vscode.window.showErrorMessage(`Failed to load workflow: ${errorMsg}`)
+        }
+        return null
+    }
+}
+
 export async function saveWorkflow(
     data: WorkflowPayloadDTO
 ): Promise<{ uri: vscode.Uri } | { error: string } | null> {
@@ -252,6 +340,7 @@ export async function saveWorkflow(
             const content = Buffer.from(JSON.stringify({ ...normalized, version }, null, 2), 'utf-8')
             await vscode.workspace.fs.writeFile(result, content)
             void vscode.window.showInformationMessage('Workflow saved successfully!')
+            await setLastWorkflowUri(result)
             return { uri: result }
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error)
@@ -290,32 +379,26 @@ export async function loadWorkflow(): Promise<{ dto: WorkflowPayloadDTO; uri: vs
     })
 
     if (result?.[0]) {
-        try {
-            const content = await vscode.workspace.fs.readFile(result[0])
-            const data = JSON.parse(content.toString())
-
-            // Validate version (lenient)
-            if (!isSupportedVersion(data.version)) {
-                void vscode.window.showErrorMessage('Unsupported workflow file version')
-                return null
-            }
-
-            // Validate minimal schema and preserve state if present
-            const { version, ...payloadData } = data
-            if (!isWorkflowPayloadDTO(payloadData)) {
-                void vscode.window.showErrorMessage('Invalid workflow schema')
-                return null
-            }
-
-            void vscode.window.showInformationMessage('Workflow loaded successfully!')
-            const dto = normalizeModelsInWorkflow({ ...payloadData, state: payloadData.state })
-            return { dto, uri: result[0] }
-        } catch (error) {
-            void vscode.window.showErrorMessage(`Failed to load workflow: ${error}`)
+        const dto = await readWorkflowFromUri(result[0], { interactive: true })
+        if (!dto) {
             return null
         }
+
+        void vscode.window.showInformationMessage('Workflow loaded successfully!')
+        await setLastWorkflowUri(result[0])
+        return { dto, uri: result[0] }
     }
     return null
+}
+
+export async function loadLastWorkflow(): Promise<{ dto: WorkflowPayloadDTO; uri: vscode.Uri } | null> {
+    const uri = await getLastWorkflowUri()
+    if (!uri) return null
+
+    const dto = await readWorkflowFromUri(uri, { interactive: false })
+    if (!dto) return null
+
+    return { dto, uri }
 }
 
 export async function getCustomNodes(): Promise<WorkflowNodes[]> {

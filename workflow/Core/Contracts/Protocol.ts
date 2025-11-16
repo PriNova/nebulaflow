@@ -112,6 +112,10 @@ interface LoadWorkflowCommand extends BaseWorkflowMessage {
     type: 'load_workflow'
 }
 
+interface LoadLastWorkflowCommand extends BaseWorkflowMessage {
+    type: 'load_last_workflow'
+}
+
 interface ExecuteWorkflowCommand extends BaseWorkflowMessage {
     type: 'execute_workflow'
     data: WorkflowPayloadDTO
@@ -318,6 +322,7 @@ export type WorkflowToExtension =
     | GetModelsCommand
     | SaveWorkflowCommand
     | LoadWorkflowCommand
+    | LoadLastWorkflowCommand
     | ExecuteWorkflowCommand
     | ExecuteNodeCommand
     | AbortWorkflowCommand

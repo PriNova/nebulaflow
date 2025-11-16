@@ -332,6 +332,17 @@ Recommended improvements and optimizations for future implementation.
 
 ### Pause Workflow - Resume After Brief Pause Race Condition
 
+### Reopen Last Workflow – Follow-ups
+
+- Goal: Polish the last-workflow auto-load behavior and supporting utilities without changing core UX.
+- What:
+  - Decide whether multiple open NebulaFlow panels should each auto-load the last workflow or if only the first panel should do so; if the latter, promote the per-hook `hasRequestedLastWorkflowRef` guard in [messageHandling.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/messageHandling.ts) to a shared/module-level flag or store.
+  - In dev builds, add lightweight diagnostics when `.nebulaflow/last-workflow.json` is malformed or unreadable in [fs.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/fs.ts) so silent best-effort behavior remains in production but issues are easier to debug during development.
+  - Consider small naming/structure cleanups in the last-workflow helpers (e.g., clarifying directory vs file naming and simplifying `readWorkflowFromUri` state spreading) to keep the data-access slice easy to read.
+  - When/if tests are added for this slice, cover `setLastWorkflowUri`/`getLastWorkflowUri` round-trips and `loadLastWorkflow` behavior for missing/invalid/unsupported files.
+- Why: Keeps the auto-restore feature predictable, debuggable, and maintainable while staying aligned with the existing data-access and messaging patterns.
+
+
 - **Goal**: Prevent race condition when user rapidly alternates pause/resume during active execution
 - **What**: Debounce or disable the Resume button briefly after pause is requested, preventing immediate resume while extension still has active task inflight
   - Affects [SidebarActionsBar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/SidebarActionsBar.tsx#L85-L101) pause button state logic

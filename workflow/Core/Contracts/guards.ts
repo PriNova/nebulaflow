@@ -157,6 +157,8 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
             return isWorkflowPayloadDTO(msg.data)
         case 'load_workflow':
             return true
+        case 'load_last_workflow':
+            return true
         case 'execute_workflow':
             return isWorkflowPayloadDTO(msg.data)
         case 'abort_workflow':
