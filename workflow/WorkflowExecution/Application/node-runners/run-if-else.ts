@@ -32,8 +32,8 @@ export async function executeIfElseNode(
         const condition = node.data.content
             ? replaceIndexedInputs(node.data.content, inputs, context)
             : ''
-        const [leftSide, operator, rightSide] = condition.trim().split(/\s+(===|!==)\s+/)
-        hasResult = operator === '===' ? leftSide === rightSide : leftSide !== rightSide
+        const [leftSide, operator, rightSide] = condition.trim().split(/\s+(==|!=)\s+/)
+        hasResult = operator === '==' ? leftSide === rightSide : leftSide !== rightSide
         result = hasResult ? 'true' : 'false'
     }
 
