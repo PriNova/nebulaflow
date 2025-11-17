@@ -150,9 +150,14 @@ async function executeSingleLLMNode(
     const { settings: llmSettings, debug: llmDebug } = computeLLMAmpSettings(node)
     const autoApprove = Boolean((llmSettings as any)['amp.dangerouslyAllowAll'])
 
+    const rawSystemPrompt = ((node as any).data?.systemPromptTemplate ?? '').toString()
+    const trimmedSystemPrompt = rawSystemPrompt.trim()
+    const systemPromptTemplate = trimmedSystemPrompt.length > 0 ? rawSystemPrompt : undefined
+
     const amp = await createAmp({
         apiKey,
         workspaceRoots,
+        systemPromptTemplate,
         settings: {
             'internal.primaryModel': selectedKey ?? defaultModelKey,
             ...llmSettings,

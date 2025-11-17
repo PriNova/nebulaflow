@@ -130,6 +130,7 @@ export interface LLMNode extends WorkflowNode {
         timeoutSec?: number
         dangerouslyAllowAll?: boolean
         reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
+        systemPromptTemplate?: string
     }
 }
 

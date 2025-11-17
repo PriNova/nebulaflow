@@ -2,6 +2,18 @@
 
 ### Tool Catalog Alignment – Alias and UI Polish
 
+### LLM System Prompt Override – Follow-ups
+
+- Goal: Tighten SDK contract assumptions, typing, and reuse around the new per-node `systemPromptTemplate` feature.
+- What:
+  - Adjust the `createAmp(...)` call sites in [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Application/handlers/ExecuteSingleNode.ts) and [run-llm.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Application/node-runners/run-llm.ts) so `systemPromptTemplate` is only included in the options object when defined, avoiding reliance on the SDK treating a present-but-`undefined` property as "no override".
+  - Narrow LLM execution branches to the typed `LLMNode` shape (or its `data` subset) instead of using `(node as any).data.systemPromptTemplate`, so accesses to `systemPromptTemplate` and other LLM-specific fields are type-safe and resilient to future refactors; update both single-node and workflow runners.
+  - Extract a small shared helper on the extension side (e.g., `normalizeSystemPrompt(template: unknown): string | undefined`) to centralize trimming/"empty means no override" behavior used when wiring `systemPromptTemplate` into `createAmp(...)`, and mirror or intentionally duplicate minimal logic on the webview side as needed.
+  - Remove the unnecessary `as any` cast on the `onUpdate` call for `systemPromptTemplate` in [LLMProperties.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/properties/LLMProperties.tsx) so the properties panel relies on the existing `Partial<LLMNode['data']>` typing.
+  - Optionally enrich the "System prompt override" UX by showing a short first-line summary of the override in the sidebar and/or a subtle indicator on the LLM node card when a custom system prompt is active, keeping the behavior simple but more discoverable.
+- Why: Ensures the per-node system prompt override remains robust against SDK contract changes, improves type safety and maintainability in core execution paths, and provides a clear foundation for future UX polish without introducing complexity.
+
+
 - Goal: Refine alias behavior and webview tool listing now that tool-name metadata is sourced from the Amp SDK.
 - What:
   - Clarify or adjust alias precedence between SDK and NebulaFlow-local aliases in [toolNames.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/services/toolNames.ts), documenting that SDK resolution wins when both define the same alias (e.g., `GitDiff`).

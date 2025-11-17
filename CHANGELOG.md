@@ -17,6 +17,15 @@ All notable changes to this project will be documented in this file.
 
 ### Goal: Align NebulaFlow Tool Catalog with Amp SDK
 
+### Goal: Per-node System Prompt Override for LLM Nodes
+
+- Added: Extended LLM node data models in both extension and webview layers to include an optional `systemPromptTemplate?: string`, enabling each Agent node to define a full custom system prompt without affecting other node types. See [models.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/models.ts) and [LLM_Node.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/nodes/LLM_Node.tsx).
+- Added: New "System prompt override" section in the LLM Properties sidebar that surfaces the override status, opens a dedicated `TextEditorModal` for editing, and treats empty/whitespace-only values as "no override" so the node falls back to Amp’s default system prompt. See [LLMProperties.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/properties/LLMProperties.tsx).
+- Changed: Single-node and workflow LLM execution now read `systemPromptTemplate` from the node data, normalize it, and pass a non-empty value through to `createAmp({ systemPromptTemplate, ... })`, preserving existing behavior when the field is unset. See [ExecuteSingleNode.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Application/handlers/ExecuteSingleNode.ts) and [run-llm.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowExecution/Application/node-runners/run-llm.ts).
+- Changed: Refreshed the vendored Amp SDK bundle in [amp-sdk.tgz](file:///home/prinova/CodeProjects/nebulaflow/vendor/amp-sdk/amp-sdk.tgz) so NebulaFlow ships with the SDK version that understands the new `systemPromptTemplate` contract and updated system-prompt behavior.
+- Why: Allows template authors and workflow designers to perform node-level system-prompt engineering with a simple, explicit override UX while retaining Amp’s default system prompt when no override is set.
+
+
 - Changed: Updated the webview tool catalog in [toolNames.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/services/toolNames.ts) to defer to the canonical tool-name tables and helpers exported by `@prinova/amp-sdk`, re-exporting `BUILTIN_TOOL_NAMES` and delegating `getAllToolNames`/`resolveToolName` to the SDK.
 - Changed: Preserved NebulaFlow-specific convenience aliases via a small local `LOCAL_ALIASES` map that is merged with the SDK `TOOL_NAME_ALIASES`, keeping existing UX shortcuts (e.g., `read`, `edit`, `GitDiff`) without diverging from SDK behavior.
 - Changed: Refreshed the vendored SDK bundle in [amp-sdk.tgz](file:///home/prinova/CodeProjects/nebulaflow/vendor/amp-sdk/amp-sdk.tgz) so the extension consumes the SDK version that exposes the shared tool-name helpers used by the webview wrapper.

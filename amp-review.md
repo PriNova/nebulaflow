@@ -1,82 +1,79 @@
 ## High-level summary
-A new “load last workflow” feature is introduced.  
-Key points  
+This patch adds first-class support for overriding the “system prompt” on a per-LLM node basis.
 
-• Protocol extended with `load_last_workflow` command.  
-• Runtime guard updated.  
-• `fs.ts` now persists the URI of the most recently saved / manually loaded workflow in `.sg/last-workflow.json`, exposes helpers `loadLastWorkflow`, `setLastWorkflowUri`, `getLastWorkflowUri`, and refactors common load logic into `readWorkflowFromUri`.  
-• The web-view requests the last workflow automatically on first mount.  
-• The extension router handles the new command and posts the loaded workflow back to the web-view.
+Major touch points  
+• Data model: new optional `systemPromptTemplate` property added to the `LLMNode` interface (backend and frontend).  
+• UI: a new editor modal in `LLMProperties.tsx` allows users to enter or clear a custom system prompt.  
+• Execution: both single-step execution (`ExecuteSingleNode.ts`) and full workflow execution (`run-llm.ts`) now extract the property and pass it to `createAmp`.  
+• Dependencies: `vendor/amp-sdk/amp-sdk.tgz` is updated, presumably to accept the new `systemPromptTemplate` argument.  
+• A new—currently empty—`.amp/system-prompt/system-prompt.md` file is staged (likely to document the default prompt in the future).
 
 ## Tour of changes
-Start with `workflow/DataAccess/fs.ts`.  
-This file contains 90 % of the new behaviour: persistence of the last workflow metadata, common read helper, and the public `loadLastWorkflow` API. Once this is understood, the smaller protocol / UI wiring changes become obvious.
+The clearest way to understand the feature is to:
+1. Start with `workflow/Core/models.ts` to see the schema change.  
+2. Then open `workflow/Web/components/sidebar/properties/LLMProperties.tsx` to see how the property is surfaced and edited.  
+3. Finally review the execution paths (`ExecuteSingleNode.ts` and `run-llm.ts`) to verify the new field is honoured at runtime.
 
 ## File level review
 
-### `workflow/Core/Contracts/Protocol.ts`
-+ Adds `LoadLastWorkflowCommand`.  
-+ Union updated.  
-✔️ Looks correct; no fields beyond `type` required.
+### `.amp/system-prompt/system-prompt.md`
+New empty file. If this is meant for documentation, commit a stub with at least a heading or remove it until populated to avoid noise.
 
-### `workflow/Core/Contracts/guards.ts`
-+ Accepts `'load_last_workflow'`.  
-✔️ Safe since the command carries no payload, just returns `true`.
+### `vendor/amp-sdk/amp-sdk.tgz`
+Binary upgraded. Verify in a separate diff that:
+• It introduces the `systemPromptTemplate` option to `createAmp`.  
+• No breaking changes were introduced.
 
-### `workflow/DataAccess/fs.ts`
-New constants  
-+ `LAST_WORKFLOW_META = '${PERSISTENCE_ROOT}/last-workflow.json'`
+### `workflow/Core/models.ts`
+```ts
++ systemPromptTemplate?: string
+```
+Looks correct. Optional, so no migrations needed. No further comments.
 
-Helpers  
-1. `setLastWorkflowUri`  
-   • Creates `.sg` dir best-effort, then writes `{ uri }`.  
-   • Swallows all errors – acceptable (non-critical metadata), but consider logging in dev mode.
+### `workflow/Web/components/nodes/LLM_Node.tsx`
+Same single-line addition as above—keeps frontend node definition in sync with backend. ✔️
 
-2. `getLastWorkflowUri`  
-   • Reads JSON, validates `uri` prop, `stat`s the workflow to ensure it still exists.  
-   • Returns `null` on any failure.  
-   • Security: URI can point outside the workspace. You later read the file without sandboxing. That is still within extension’s permissions, but consider restricting to workspace folder or trusted schemes.
+### `workflow/Web/components/sidebar/properties/LLMProperties.tsx`
+New UI for editing the override.
 
-3. `readWorkflowFromUri`  
-   • Consolidates duplicate logic formerly in `loadWorkflow`.  
-   • Checks version / schema, shows interactive errors conditionally.  
-   • Minor duplication: you spread `payloadData` then again add `state`; this is effectively a no-op because `state` is already in `payloadData`. Could be simplified.
+Correctness & UX  
+• Modal state and draft handling mirror the existing prompt editor—good.  
+• Empty or whitespace-only input clears the override, preserving default behaviour.  
+• Uses `node.id` in the dependency array to reset modal states—👍.
 
-Public API  
-+ `saveWorkflow` now calls `setLastWorkflowUri` on success.  
-+ `loadWorkflow` rewired to the helper, then calls `setLastWorkflowUri`.  
-+ `loadLastWorkflow` ties everything together (non-interactive).  
-✔️ All promises are awaited; race conditions unlikely.
+Minor suggestions  
+1. Duplicate trimming logic exists here and in execution. Consider a shared util (`normalizeSystemPrompt(template: string): string | undefined`) to avoid divergence.  
+2. The explanatory `<p>` element hard-codes two messages. If localisation is in use elsewhere, extract to i18n.  
+3. While casting with `as any` works, you could extend the `LLMNode['data']` type so `systemPromptTemplate` is accepted without a cast.
 
-Nit / suggestions  
-• `LAST_WORKFLOW_META` is a file, yet `metaDir` is built from `PERSISTENCE_ROOT`; this is fine but the intent would be clearer if `metaFile` instead of `metaDir`.  
-• Consider using `JSON.stringify(payload)` without prettifying to save a few bytes; not a big deal.  
-• Potential concurrency: Two concurrent saves could overwrite `last-workflow.json` – acceptable.  
-• Failure to parse JSON in `getLastWorkflowUri` returns `null` silently; good but maybe reset the file to prevent future parse cost.
+Accessibility  
+• The “Edit system prompt…” button lacks an `aria-label`. Optional but easy win.
 
-### `workflow/Web/components/hooks/messageHandling.ts`
-+ Introduces `hasRequestedLastWorkflowRef` so the last-workflow request is sent exactly once per hook instance.  
-✔️ Correct usage of `useRef`.
+### `workflow/WorkflowExecution/Application/handlers/ExecuteSingleNode.ts`
+Key additions:
+```ts
+const rawSystemPrompt = ((node as any).data?.systemPromptTemplate ?? '').toString()
+const trimmedSystemPrompt = rawSystemPrompt.trim()
+const systemPromptTemplate = trimmedSystemPrompt.length > 0 ? rawSystemPrompt : undefined
+...
+createAmp({ apiKey, workspaceRoots, systemPromptTemplate, settings: { ... } })
+```
 
-Potential issue  
-• If multiple editors / panels mount separate hook instances, each will send a request, but the guard is per instance. If that is undesirable, store the flag in a broader scope (e.g., module-level). Not critical.
+Good practice  
+• Trimming to decide emptiness is correct, yet the **untrimmed** version is forwarded to `createAmp`. That preserves user formatting (newlines/indent). 👍  
+• Defensive `toString()` protects against non-string values.
 
-### `workflow/WorkflowPersistence/Application/register.ts`
-+ Registers router handler `load_last_workflow`.  
-+ Uses `loadLastWorkflow`, updates panel title, posts `workflow_loaded`.
+Possible improvement  
+`(node as any).data` bypasses the strong typing you just updated. Prefer `const { systemPromptTemplate } = node.data as LLMNode['data']`.
 
-✔️ Happy path only – if parsing fails nothing is posted, which is acceptable. Consider explicit “nothing loaded” response if the web-view should differentiate between “no last workflow” and “still loading”.
+### `workflow/WorkflowExecution/Application/node-runners/run-llm.ts`
+Mirrors the logic above—consistency ✔️.
 
-### Miscellaneous
-No unit tests added – would be nice to cover:
-• `setLastWorkflowUri` & `getLastWorkflowUri` round-trip  
-• Loading of outdated / invalid version returns `null`.
+### Common runtime concerns
+1. Security: Nothing here changes permissioning or shell access; no new vulnerabilities observed.  
+2. Performance: String trimming is negligible.  
+3. Backward compatibility: Optional fields default to undefined so old workflows run unchanged.  
+4. Validation: A very long system prompt could blow token limits. Consider length validation or a warning in UI.
 
-## Overall
-Implementation is sound, provides a seamless UX enhancement with limited surface area. Main things to consider:
-
-1. Restricting `getLastWorkflowUri` to workspace-local paths to avoid unexpected file reads.  
-2. Simplifying small duplications and adding dev-mode logging.  
-3. Evaluate whether duplicate load requests across multiple panels matter.
-
-Otherwise LGTM.
+## Overall assessment
+A well-scoped feature with clean schema, UI, and runtime integration. Minor polish items involve type-safety, shared utility functions, and documentation.

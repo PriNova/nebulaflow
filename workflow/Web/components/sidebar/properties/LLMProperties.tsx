@@ -29,6 +29,8 @@ export const LLMProperties: React.FC<LLMPropertiesProps> = ({
 }) => {
     const [isPromptEditorOpen, setIsPromptEditorOpen] = useState(false)
     const [promptDraft, setPromptDraft] = useState('')
+    const [isSystemPromptEditorOpen, setIsSystemPromptEditorOpen] = useState(false)
+    const [systemPromptDraft, setSystemPromptDraft] = useState('')
 
     useEffect(() => {
         if (node.data.reasoningEffort === undefined) {
@@ -40,6 +42,7 @@ export const LLMProperties: React.FC<LLMPropertiesProps> = ({
     // biome-ignore lint/correctness/useExhaustiveDependencies: Only need to track node.id, not entire node object
     useEffect(() => {
         setIsPromptEditorOpen(false)
+        setIsSystemPromptEditorOpen(false)
     }, [node.id])
 
     return (
@@ -144,6 +147,39 @@ export const LLMProperties: React.FC<LLMPropertiesProps> = ({
                 <Label htmlFor={`llm-timeout-sec-${node.id}`}>Timeout (seconds)</Label>
                 <LLMTimeoutField key={node.id} node={node} onUpdate={onUpdate} />
                 <p className="tw-text-xs tw-text-gray-500 tw-mt-1">0 = no timeout; use Stop to abort</p>
+            </div>
+            <div className="tw-mt-3 tw-flex tw-flex-col tw-gap-1">
+                <Label>System prompt override</Label>
+                <p className="tw-text-xs tw-text-gray-500">
+                    {node.data.systemPromptTemplate && node.data.systemPromptTemplate.trim().length > 0
+                        ? 'Custom system prompt set for this node.'
+                        : 'Using Amp default system prompt for this node.'}
+                </p>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                        setSystemPromptDraft(node.data.systemPromptTemplate || '')
+                        setIsSystemPromptEditorOpen(true)
+                    }}
+                >
+                    Edit system prompt...
+                </Button>
+                <TextEditorModal
+                    isOpen={isSystemPromptEditorOpen}
+                    value={systemPromptDraft}
+                    onChange={setSystemPromptDraft}
+                    onConfirm={() => {
+                        const trimmed = systemPromptDraft.trim()
+                        onUpdate(node.id, {
+                            systemPromptTemplate: trimmed.length > 0 ? systemPromptDraft : undefined,
+                        } as any)
+                        setIsSystemPromptEditorOpen(false)
+                    }}
+                    onCancel={() => setIsSystemPromptEditorOpen(false)}
+                    title={node.data.title ?? 'Edit System Prompt Override'}
+                />
             </div>
         </div>
     )
