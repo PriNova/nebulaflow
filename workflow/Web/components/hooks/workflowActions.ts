@@ -20,14 +20,18 @@ export const useWorkflowActions = (
     ifElseDecisions: Map<string, 'true' | 'false'>
 ) => {
     const onSave = useCallback(() => {
+        const nodeIds = new Set(nodes.map(n => n.id))
+        const hasNodes = nodeIds.size > 0
         const state =
-            nodeResults.size > 0 || ifElseDecisions.size > 0
+            hasNodes && (nodeResults.size > 0 || ifElseDecisions.size > 0)
                 ? {
                       nodeResults: Object.fromEntries(
-                          Array.from(nodeResults.entries()).map(([nodeId, output]) => [
-                              nodeId,
-                              { status: 'completed' as const, output },
-                          ])
+                          Array.from(nodeResults.entries())
+                              .filter(([nodeId]) => nodeIds.has(nodeId))
+                              .map(([nodeId, output]) => [
+                                  nodeId,
+                                  { status: 'completed' as const, output },
+                              ])
                       ),
                       ifElseDecisions:
                           ifElseDecisions.size > 0 ? Object.fromEntries(ifElseDecisions) : undefined,

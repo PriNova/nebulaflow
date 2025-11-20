@@ -156,9 +156,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             }
         })
 
-        // Build ordered list by stepIndex
+        // Build ordered list by stepIndex while assigning contiguous parallel group indices
         const ordered: Array<
-            | { type: 'parallel'; stepIndex: number; nodeIds: string[]; nodes: WorkflowNodes[] }
+            | {
+                  type: 'parallel'
+                  stepIndex: number
+                  parallelGroupIndex: number
+                  nodeIds: string[]
+                  nodes: WorkflowNodes[]
+              }
             | { type: 'sequential'; stepIndex: number; node: WorkflowNodes }
         > = []
         let pIdx = 0
@@ -171,6 +177,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 ordered.push({
                     type: 'parallel',
                     stepIndex: parallel[pIdx].stepIndex,
+                    parallelGroupIndex: pIdx,
                     nodeIds: parallel[pIdx].nodeIds,
                     nodes: parallel[pIdx].nodes,
                 })
@@ -205,10 +212,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         return 'tw-border-transparent'
     }
 
-    const getStepLabel = (stepIndex: number, visibleNodeCount: number): string | null => {
+    const getStepLabel = (groupIndex: number, visibleNodeCount: number): string | null => {
         if (visibleNodeCount <= 1) return null
-        if (stepIndex === -1) return 'Unsupported (Loop)'
-        return `Parallel Step ${stepIndex + 1} (${visibleNodeCount})`
+        if (groupIndex === -1) return 'Unsupported (Loop)'
+        return `Parallel Step ${groupIndex + 1} (${visibleNodeCount})`
     }
 
     const getStepBranchSuffix = (nodeIds: string[]): string => {
@@ -233,9 +240,16 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         return ''
     }
     const [openItemId, setOpenItemId] = useState<string | undefined>(undefined)
+    const [autoFollowActiveNode, setAutoFollowActiveNode] = useState<boolean>(true)
     const [modifiedCommands, setModifiedCommands] = useState<Map<string, string>>(new Map())
     const [expandedJsonItems, setExpandedJsonItems] = useState<Set<string>>(new Set())
     const [previewNodeId, setPreviewNodeId] = useState<string | null>(null)
+
+    const singleActiveNodeId = useMemo(() => {
+        if (executingNodeIds.size !== 1) return null
+        for (const id of executingNodeIds) return id
+        return null
+    }, [executingNodeIds])
 
     // Open results editor when nodes request it (from input editor modal)
     useEffect(() => {
@@ -599,6 +613,16 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             setOpenItemId(pendingApprovalNodeId)
         }
     }, [pendingApprovalNodeId])
+
+    useEffect(() => {
+        if (!autoFollowActiveNode) return
+        if (pendingApprovalNodeId) return
+        if (!singleActiveNodeId) return
+        if (openItemId !== singleActiveNodeId) {
+            setOpenItemId(singleActiveNodeId)
+        }
+    }, [autoFollowActiveNode, pendingApprovalNodeId, singleActiveNodeId, openItemId])
+
     useEffect(() => {
         if (executingNodeIds.size > 0) {
             setModifiedCommands(new Map())
@@ -613,6 +637,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     useEffect(() => {
         if (executionRunId > 0) {
             setOpenItemId(undefined)
+            setAutoFollowActiveNode(true)
             setModifiedCommands(new Map())
             setExpandedJsonItems(new Set())
             setPausedAutoScroll(new Set())
@@ -632,7 +657,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 type="single"
                 collapsible
                 value={openItemId}
-                onValueChange={value => setOpenItemId(value || '')}
+                onValueChange={value => {
+                    const nextId = value || undefined
+                    setOpenItemId(nextId)
+                    if (!singleActiveNodeId) {
+                        setAutoFollowActiveNode(false)
+                        return
+                    }
+                    if (nextId === singleActiveNodeId) {
+                        setAutoFollowActiveNode(true)
+                    } else {
+                        setAutoFollowActiveNode(false)
+                    }
+                }}
             >
                 <AccordionItem value={node.id}>
                     <AccordionTrigger className="tw-w-full tw-text-sm tw-h-6 tw-py-[.1rem]">
@@ -994,7 +1031,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     {hasParallelAnalysis && parallelGroups.length > 0
                         ? allItemsInOrder.map(item => {
                               if (item.type === 'parallel') {
-                                  const stepLabel = getStepLabel(item.stepIndex, item.nodes.length)
+                                  const stepLabel = getStepLabel(
+                                      item.parallelGroupIndex,
+                                      item.nodes.length
+                                  )
                                   return (
                                       <div
                                           key={`step-${item.stepIndex}`}

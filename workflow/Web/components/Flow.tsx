@@ -797,8 +797,7 @@ export const Flow: React.FC<{
         return () => window.removeEventListener('nebula-subflows-provide' as any, handler as any)
     }, [])
 
-    // biome-ignore lint/correctness/useExhaustiveDependencies: setters are always stable
-    const onResetResults = useCallback(() => {
+    const resetResultsState = useCallback(() => {
         setNodeResults(new Map())
         setNodeAssistantContent(new Map())
         setNodeErrors(new Map())
@@ -813,7 +812,16 @@ export const Flow: React.FC<{
         try {
             vscodeAPI.postMessage({ type: 'reset_results' } as any)
         } catch {}
-    }, [])
+    }, [setNodeAssistantContent, setNodeErrors, vscodeAPI])
+
+    const clearWorkflow = useCallback(() => {
+        resetResultsState()
+        resetExecutionState()
+    }, [resetResultsState, resetExecutionState])
+
+    const onResetResults = useCallback(() => {
+        resetResultsState()
+    }, [resetResultsState])
 
     // Request subflow list on mount and when storage scope changes
     useEffect(() => {
@@ -844,7 +852,7 @@ export const Flow: React.FC<{
                 onSave={onSave}
                 onLoad={onLoad}
                 onExecute={onExecute}
-                resetExecutionState={resetExecutionState}
+                resetExecutionState={clearWorkflow}
                 onResetResults={onResetResults}
                 onAbort={onAbort}
                 onPauseToggle={onPauseToggle}

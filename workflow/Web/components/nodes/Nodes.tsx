@@ -1,6 +1,7 @@
 import type { Edge } from '@graph/CustomOrderedEdge'
 import type { Node as ReactFlowNode } from '@xyflow/react'
 import { v4 as uuidv4 } from 'uuid'
+import { DEFAULT_LLM_MODEL_ID, DEFAULT_LLM_MODEL_TITLE } from '../../../Shared/LLM/default-model'
 import { AccumulatorNode } from './Accumulator_Node'
 import { CLINode } from './CLI_Node'
 import { IfElseNode } from './IfElse_Node'
@@ -51,8 +52,7 @@ export const formatNodeTitle = (type: NodeType, title?: string | null): string =
 }
 
 export const DEFAULT_LLM_REASONING_EFFORT = 'medium' as const
-export const DEFAULT_LLM_MODEL_ID = 'anthropic/claude-sonnet-4-5-20250929' as const
-export const DEFAULT_LLM_MODEL_TITLE = 'Sonnet 4.5' as const
+export { DEFAULT_LLM_MODEL_ID, DEFAULT_LLM_MODEL_TITLE }
 
 export interface BaseNodeProps {
     id: string

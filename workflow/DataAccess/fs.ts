@@ -4,6 +4,7 @@ import * as vscode from 'vscode'
 import type { WorkflowPayloadDTO } from '../Core/Contracts/Protocol'
 import { isWorkflowPayloadDTO } from '../Core/Contracts/guards'
 import { NodeType, type WorkflowNodes } from '../Core/models'
+import { DEFAULT_LLM_MODEL_ID, DEFAULT_LLM_MODEL_TITLE } from '../Shared/LLM/default-model'
 
 const PERSISTENCE_ROOT = '.nebulaflow'
 const LEGACY_PERSISTENCE_ROOT = '.sourcegraph'
@@ -173,9 +174,6 @@ function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): WorkflowPayloadDTO
             | ((args: { key: string } | { displayName: string; provider?: unknown }) => { key: string })
             | undefined = sdk?.resolveModel
 
-        const DEFAULT_MODEL_ID = 'anthropic/claude-sonnet-4-5-20250929'
-        const DEFAULT_MODEL_TITLE = 'Sonnet 4.5'
-
         const nodes = (data.nodes ?? []).map(node => {
             if (!node || typeof node !== 'object' || (node as any).type !== 'llm') return node
             const n: any = node
@@ -183,7 +181,7 @@ function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): WorkflowPayloadDTO
 
             // Migrate legacy LLM nodes without model
             if (!model) {
-                model = { id: DEFAULT_MODEL_ID, title: DEFAULT_MODEL_TITLE }
+                model = { id: DEFAULT_LLM_MODEL_ID, title: DEFAULT_LLM_MODEL_TITLE }
             }
 
             const id = model?.id
@@ -191,7 +189,10 @@ function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): WorkflowPayloadDTO
                 // Ensure model is set even if missing ID
                 return {
                     ...node,
-                    data: { ...n.data, model: { id: DEFAULT_MODEL_ID, title: DEFAULT_MODEL_TITLE } },
+                    data: {
+                        ...n.data,
+                        model: { id: DEFAULT_LLM_MODEL_ID, title: DEFAULT_LLM_MODEL_TITLE },
+                    },
                 }
             }
 

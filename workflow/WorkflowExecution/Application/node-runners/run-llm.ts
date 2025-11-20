@@ -8,6 +8,7 @@ import {
 } from '../../../Core/models'
 import { computeLLMAmpSettings } from '../../../LLMIntegration/Application/llm-settings'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
+import { DEFAULT_LLM_MODEL_ID } from '../../../Shared/LLM/default-model'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
 import { replaceIndexedInputs } from '../../Core/execution/inputs'
 import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
@@ -47,7 +48,7 @@ export async function executeLLMNode(
     console.debug('executeLLMNode: ', JSON.stringify(workspaceRoots, null, 2))
 
     // Determine model key from node selection, validating with SDK when available
-    const defaultModelKey = 'anthropic/claude-sonnet-4-5-20250929'
+    const defaultModelKey = DEFAULT_LLM_MODEL_ID
     const modelId = (node as any)?.data?.model?.id as string | undefined
     let selectedKey: string | undefined
     if (modelId) {

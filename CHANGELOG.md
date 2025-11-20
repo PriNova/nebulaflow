@@ -8,6 +8,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Goal: Default LLM Model Switched to GPT-5.1 (OpenAI)
+
+- Changed: Centralized the default LLM model ID and title for NebulaFlow LLM nodes to the shared GPT-5.1 constants in [default-model.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Shared/LLM/default-model.ts), and updated webview UI defaults, workflow normalization/migration, and both single-node and workflow execution fallbacks to consume them.
+- Why: Ensures a single, explicit source of truth for the default LLM model across UI, persistence, and execution, reducing drift risk for future default changes while keeping the GPT-5.1 migration consistent for new and legacy workflows.
+ 
 ### Goal: Reopen Last NebulaFlow Workflow Editor
 
 - Added: Persist the URI of the last successfully saved or loaded workflow in a small metadata file `.nebulaflow/last-workflow.json` via new helpers in [fs.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/fs.ts); the metadata is constrained to workspace files when using workspace storage to respect the trust boundary.
@@ -30,6 +35,13 @@ All notable changes to this project will be documented in this file.
 - Changed: Preserved NebulaFlow-specific convenience aliases via a small local `LOCAL_ALIASES` map that is merged with the SDK `TOOL_NAME_ALIASES`, keeping existing UX shortcuts (e.g., `read`, `edit`, `GitDiff`) without diverging from SDK behavior.
 - Changed: Refreshed the vendored SDK bundle in [amp-sdk.tgz](file:///home/prinova/CodeProjects/nebulaflow/vendor/amp-sdk/amp-sdk.tgz) so the extension consumes the SDK version that exposes the shared tool-name helpers used by the webview wrapper.
 - Why: Centralizes tool metadata and resolution in the SDK so NebulaFlow automatically adopts new tools (such as `apply_patch`) in the LLM Tools selector without UI changes, and keeps tool-name normalization consistent between the webview and extension host.
+
+### Goal: Clear/Delete Workflow Resets Results and Prevents Stale Node State
+
+- Fixed: Clearing or deleting a workflow now uses a shared `resetResultsState` helper in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx) to clear node results, assistant content, node errors, and preview node content/token counts, and to notify the extension via `reset_results`.
+- Fixed: The Clear/Delete action is now wired through a combined `clearWorkflow` helper in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx) that resets both execution state (nodes/edges and internals) and all stored results, so no stale execution state survives a clear.
+- Fixed: Workflow saves in [workflowActions.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/workflowActions.ts) now only persist state when there is at least one node, and they filter `nodeResults` to existing node IDs, preventing results from deleted or non-existent nodes from being written.
+- Why: Ensures that clearing/deleting a workflow truly resets execution state end-to-end so subsequent saves never contain stale node results, while keeping the workflow state DTO contracts unchanged.
 
 ### Changed
 
@@ -159,6 +171,24 @@ Why: Aligns with Vertical Slice Architecture, reduces duplicate handling and dri
 
 - What: Introduced a workflow clipboard protocol and in-memory clipboard in the extension to handle `copy_selection`/`paste_selection` messages, mirror valid selections into `vscode.env.clipboard`, and emit `clipboard_paste` events back to the originating panel. On the webview canvas, added a right-click context menu for nodes and the pane that exposes "Copy selection"/"Paste", serializes selected nodes and internal edges to a `WorkflowPayloadDTO`, and rehydrates pasted nodes/edges with fresh UUIDs and an offset position so duplicates never collide with existing graph state. See [register.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/register.ts), [Protocol.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/Contracts/Protocol.ts), [guards.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/Contracts/guards.ts), [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx), [FlowCanvas.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/canvas/FlowCanvas.tsx), and [messageHandling.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/messageHandling.ts).
 - Why: Provides a simple, explicit, and panel-aware copy/paste experience for single and multi-node selections that works across NebulaFlow panels while preserving graph integrity through ID remapping and protocol-validated clipboard payloads.
+
+### Goal: Normalize Parallel Group Numbering in RightSidebar
+
+- What: Updated the RightSidebar Playbox parallel execution view to derive `parallelGroups` and `sequentialItems` from `parallelSteps`, then label only true parallel waves using a contiguous `parallelGroupIndex` so sequential-only steps no longer increment the displayed parallel step number. See [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx).
+- Changed: Merged parallel and sequential items into an `allItemsInOrder` list ordered by `stepIndex`, while keeping parallel-group numbering contiguous across the run and rendering step headers only for `type === 'parallel'` items in the Playbox.
+- Changed: Refreshed the vendored Amp SDK bundle in [amp-sdk.tgz](file:///home/prinova/CodeProjects/nebulaflow/vendor/amp-sdk/amp-sdk.tgz) to stay aligned with the upstream Amp SDK used by NebulaFlow for this behavior.
+- Why: Ensures the Playbox "Parallel Step N" headers reflect actual waves of concurrent execution without gaps caused by purely sequential steps, improving the mental mapping between the visual graph and runtime behavior.
+
+### Goal: Shell Node – Consolidated Advanced Sidebar Section
+
+- What: Grouped all CLI advanced options (shell flags, stdin preprocessors, env mapping extras, and the Spawn (buffered) toggle) into a single "Show Advanced" section at the bottom of the Shell node properties panel, separated from basic settings by a horizontal divider, while preserving the existing `CLINodeConfig` wiring and execution behavior. See [CLIProperties.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/properties/CLIProperties.tsx).
+- Why: Makes Shell advanced behavior easier to discover and scan by collecting expert-only controls in one clearly marked area, while keeping the main CLI sidebar focused on core mode, command/script, stdin source, env mapping, and safety toggles.
+
+### Goal: Auto-follow Active Node in RightSidebar
+
+- What: Updated the RightSidebar node accordion to automatically expand and keep in view the single currently executing node when `autoFollowActiveNode` is true, while preserving pending-approval focus and allowing users to override the open panel manually; auto-follow is reset for each new `executionRunId`. See [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx).
+- What: Refreshed the vendored Amp SDK bundle in [amp-sdk.tgz](file:///home/prinova/CodeProjects/nebulaflow/vendor/amp-sdk/amp-sdk.tgz) so NebulaFlow picks up the latest SDK behavior (including recent tool-layer improvements) without changing the existing NebulaFlow API surface.
+- Why: Keeps the sidebar aligned with the engine’s current focus during execution runs for easier inspection, while giving users an opt-out via manual accordion interaction and keeping the SDK dependency current.
 
 ## [NebulaFlow 0.2.13]
 

@@ -10,3 +10,4 @@ vendor/amp-sdk/amp-sdk.tgz
 dist-tests/subflows.spec.cjs
 .dev-notes.md
 scripts/check-sdk-version.mjs
+.amp/

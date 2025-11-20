@@ -23,6 +23,17 @@
 
 Recommended improvements and optimizations for future implementation.
 
+### Default LLM Model – Migration Semantics and Provider Validation
+
+- Goal: Clarify and harden behavior around the default GPT-5.1 model for legacy workflows and provider-specific behavior.
+- What:
+-   - Define and document explicit upgrade semantics for workflows that lack an LLM `model` (e.g., always migrate to the current default GPT-5.1 while preserving explicit legacy IDs) near `normalizeModelsInWorkflow` in [fs.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/fs.ts) and/or slice-level docs.
+-   - Consider a small compatibility map (e.g., mapping `anthropic/claude-sonnet-4-5-20250929` to `openai/gpt-5.1` where appropriate) if product direction calls for automatic migration from legacy Anthropic defaults to GPT-5.1.
+-   - Add lightweight tests or assertions to ensure all execution paths use the shared default model constants from [default-model.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Shared/LLM/default-model.ts) rather than hard-coded literals, preventing drift when the default changes.
+-   - Validate GPT-5.1 behavior under the existing `computeLLMAmpSettings` configuration (token limits, reasoning effort mapping, etc.) and adjust settings only if provider-specific differences require it.
+-   - Confirm that telemetry, cost estimation, and any model-related configuration or documentation reflect the switch from Anthropic Sonnet to OpenAI GPT-5.1.
+- Why: Makes the GPT-5.1 default behavior explicit for both new and legacy workflows, keeps all call sites aligned on a single source of truth, and reduces risk from provider-specific differences or future default changes.
+
 ## Pending Enhancements
 
 ### VSA Refactor – Follow-ups
@@ -65,6 +76,15 @@ Recommended improvements and optimizations for future implementation.
   - Normalize `safePost` usage with minimal error handling for symmetry across slices (log or user warning on failure where appropriate).
   - Consider dropping explicit ".js" extensions in TS import specifiers in slice files to reduce bundling brittleness across tooling; verify current bundler settings resolve extensionless paths reliably.
 - Why: Prevents drift between legacy and slice paths, reduces boilerplate across slices, and keeps error handling and module resolution consistent.
+
+### Shell Node Advanced Sidebar – Grouping and UX Polish
+
+- Goal: Keep the Shell (CLI) advanced sidebar section maintainable and improve small UX/a11y details without changing behavior.
+- What:
+-   - Optionally factor the advanced area in [CLIProperties.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/properties/CLIProperties.tsx) into small presentational subcomponents (Shell flags, Stdin advanced, Env advanced, Safety advanced) to reduce the size and complexity of the main CLI properties component.
+-   - Add a small "Advanced options" heading above the grouped advanced controls and/or wrap them in a labeled group (fieldset/legend or ARIA region) so screen readers and sighted users see a clear section boundary.
+-   - Surface lightweight validation feedback for the "Static env (JSON object)" editor instead of silently ignoring invalid JSON (for example, an inline error state while the last parse failed), keeping behavior simple.
+- Why: Improves readability and long-term maintainability of the Shell node properties panel while making the advanced section clearer and more accessible, without altering the underlying `CLINodeConfig` contract.
 
 ### Shell Node Modal Editing – Minor Polish
 
@@ -220,6 +240,18 @@ Recommended improvements and optimizations for future implementation.
 ### Sidebar Collapse Controls – Accessibility and UX Polish
 
 ### CLI Approval Sidebar Auto-Expand – Dependency and Contract Polish
+
+### RightSidebar Auto-Follow – Behavior, Tests, and UX Follow-ups
+
+- Goal: Make the auto-follow active-node behavior explicit, test-backed, and aligned with the broader tool/SDK surface without changing current semantics.
+- What:
+  - Document the immutability expectation for `executingNodeIds` (always replace with a new `Set` when membership changes) wherever that state is produced, so the `singleActiveNodeId` memo in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx) remains reliable.
+  - Add focused tests around the auto-follow lifecycle to lock in behavior: manual accordion interaction disables auto-follow for the rest of the run, new `executionRunId` re-enables it, and `pendingApprovalNodeId` always wins over auto-follow when present.
+  - Clarify or, if needed, refine how the "primary" executing node is chosen when there are multiple executing nodes (e.g., engine-level tracking vs. relying on `Set` insertion order) and document that contract where `executingNodeIds` is derived.
+  - When ready to surface the SDK `Grep` `contextLines` enhancement in the NebulaFlow UI, extend `TOOL_KEYS.grep` in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx) to include `contextLines` so traces show when ripgrep is run with match context.
+  - Consider adding a small, explicit "Auto-follow" toggle in the RightSidebar header that reflects `autoFollowActiveNode` state and lets users re-enable it mid-run, keeping the current implicit behavior as the default.
+  - Treat vendored `amp-sdk.tgz` bumps as explicit SDK upgrades: ensure versioning/changelog notes remain in sync and run the usual dependency/security checks (e.g., `npm audit`) after updates.
+- Why: Encodes the new auto-follow behavior in tests and documentation, keeps the Grep tool display aligned with the upstream SDK contract, and makes auto-follow and SDK dependency behavior more discoverable and robust over time.
 
 - Goal: Tighten the auto-expand effect and document the `pending_approval` contract for Shell (CLI) nodes.
 - What:
@@ -432,6 +464,15 @@ Recommended improvements and optimizations for future implementation.
 - **Why**: Silent reset may go unnoticed if the user clicks quickly and navigates away. Visual feedback confirms the action completed successfully.
 - **Priority**: P2 (UX; nice-to-have improvement based on user feedback)
 
+### Clear/Delete Workflow – Naming and UX Polish
+
+- Goal: Align prop naming and UI labels with the broadened Clear/Delete behavior and keep reset helpers easy to maintain.
+- What:
+  - Rename the `resetExecutionState` prop at the container boundary to something like `clearWorkflow`/`onClearWorkflow` and thread that name through [LeftSidebarContainer.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/layout/LeftSidebarContainer.tsx), [LeftSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/LeftSidebar.tsx), and [SidebarActionsBar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/SidebarActionsBar.tsx) so it clearly represents "Clear graph + results".
+  - Optionally make the Clear button text more explicit (e.g., "Clear Workflow" or "Delete Workflow & Results") if user feedback suggests the distinction from "Reset Results" is still unclear.
+  - Consider either including `setNodeResults`/`setNodes` in the `resetResultsState` dependency array in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx) for symmetry, or briefly documenting that setters are intentionally omitted because they are stable.
+- Why: Reduces conceptual mismatch between prop names and behavior, keeps the Reset vs Clear distinction obvious in the UI, and makes the reset helper’s dependency choices clearer for future maintainers.
+
 ### Reset Button - Data Shape Safety During Reset
 
 - **Goal**: Improve robustness when custom nodes extend BaseNodeData
@@ -543,6 +584,27 @@ Recommended improvements and optimizations for future implementation.
 - **What**: Add `aria-level` or semantic heading level attribute to "Parallel Step N" headers in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/RightSidebar.tsx#L473-L481) to provide correct navigation context for assistive technology
 - **Why**: Screen reader users benefit from proper heading hierarchy. Currently the step headers may be treated as plain text, reducing navigability.
 - **Priority**: P2 (accessibility; improves screen reader experience for complex workflows)
+
+### RightSidebar Parallel Numbering - Loop Label Handling
+
+- **Goal**: Clarify how loop nodes are represented in parallel step labels in the RightSidebar Playbox.
+- **What**: `getStepLabel` in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx#L215-L219) still contains a `groupIndex === -1` branch that returns "Unsupported (Loop)", but `parallelGroupIndex` for items in `allItemsInOrder` is always non-negative. Decide whether to remove this dead branch or explicitly propagate a `-1` sentinel from the parallel analysis when loop groups are present, keeping behavior consistent with [parallel-analysis.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/engine/parallel-analysis.ts).
+- **Why**: Avoids misleading dead code and ensures any future loop-aware UI in the Playbox has an explicit, documented contract.
+- **Priority**: P2 (code clarity; current loop behavior remains unchanged).
+
+### RightSidebar Parallel Numbering - Keys and Test Coverage
+
+- **Goal**: Harden the Playbox parallel grouping UI and guard the new numbering behavior.
+- **What**: Update the parallel group container key in [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx#L1003-L1012) to include `parallelGroupIndex` (for example, ``key={`step-${item.stepIndex}-${item.parallelGroupIndex}`}``) and add focused tests that verify: (1) contiguous parallel numbering when sequential-only steps are interleaved, (2) correct label strings such as "Parallel Step 1 (3)", and (3) fallback behavior when `parallelSteps` analysis is unavailable.
+- **Why**: Ensures React list keys remain unique if grouping semantics evolve and prevents regressions in the clarified parallel numbering behavior.
+- **Priority**: P2 (robustness; nice-to-have hardening).
+
+### Vendored Amp SDK Bump - Release Validation
+
+- **Goal**: Make refreshes of the vendored Amp SDK bundle low-risk and repeatable.
+- **What**: When [amp-sdk.tgz](file:///home/prinova/CodeProjects/nebulaflow/vendor/amp-sdk/amp-sdk.tgz) is updated, document and automate a minimal validation checklist (for example, `npm run check`, a smoke test of representative workflows, and verification of tool catalog wiring) so SDK bumps are consistently exercised before release.
+- **Why**: The vendored SDK is opaque in this repo; a small, explicit validation step reduces the chance of runtime or type-level regressions entering NebulaFlow via SDK upgrades.
+- **Priority**: P1 (release robustness; medium risk if skipped).
 
 ### RightSidebar Node Selection - Type Narrowing and Multi-Select Semantics
 

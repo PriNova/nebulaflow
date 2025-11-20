@@ -7,6 +7,7 @@ import type { WorkflowNodes } from '../../../Core/models'
 import { NodeType } from '../../../Core/models'
 import { loadSubflow } from '../../../DataAccess/fs'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
+import { DEFAULT_LLM_MODEL_ID } from '../../../Shared/LLM/default-model'
 import { type ParallelCallbacks, executeWorkflowParallel } from '../../Core/engine/parallel-scheduler'
 import { replaceIndexedInputs } from '../../Core/execution/inputs'
 import { commandsNotAllowed, sanitizeForShell } from '../../Core/execution/sanitize'
@@ -128,7 +129,7 @@ async function executeSingleLLMNode(
     const workspaceRoots = getActiveWorkspaceRoots()
     console.debug('executeSingleLLMNode: ', JSON.stringify(workspaceRoots, null, 2))
 
-    const defaultModelKey = 'anthropic/claude-sonnet-4-5-20250929'
+    const defaultModelKey = DEFAULT_LLM_MODEL_ID
     const modelId = (node as any)?.data?.model?.id as string | undefined
     let selectedKey: string | undefined
     if (modelId) {
