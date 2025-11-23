@@ -1,4 +1,3 @@
-import * as vscode from 'vscode'
 import {
     AbortedError,
     type ApprovalResult,
@@ -11,6 +10,7 @@ import {
     executeCommandSpawn as shellExecuteCommandSpawn,
     executeScript as shellExecuteScript,
 } from '../../../DataAccess/shell.js'
+import type { IHostEnvironment, IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
 import { replaceIndexedInputs } from '../../Core/execution/inputs'
@@ -20,7 +20,8 @@ import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
 export async function executeCLINode(
     node: WorkflowNodes,
     abortSignal: AbortSignal,
-    webview: vscode.Webview,
+    port: IMessagePort,
+    host: IHostEnvironment,
     approvalHandler: (nodeId: string) => Promise<ApprovalResult>,
     context?: IndexedExecutionContext
 ): Promise<string> {
@@ -39,16 +40,16 @@ export async function executeCLINode(
     }
     let effective = base
 
-    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    const cwd = host.workspace.workspaceFolders?.[0]
     if (!cwd) {
-        void vscode.window.showInformationMessage(
+        void host.window.showInformationMessage(
             'No workspace folder found. CLI command will run in the extension process directory.'
         )
     }
 
     // Approval path (show script/command text)
     if ((node as any).data?.needsUserApproval) {
-        await safePost(webview, {
+        await safePost(port, {
             type: 'node_execution_status',
             data: { nodeId: node.id, status: 'pending_approval', result: `${base}` },
         } as ExtensionToWorkflow)
@@ -166,7 +167,7 @@ export async function executeCLINode(
 
     if (safety !== 'advanced') {
         if (commandsNotAllowed.some(cmd => sanitizeForShell(filteredCommand).startsWith(cmd))) {
-            void vscode.window.showErrorMessage('Command cannot be executed')
+            void host.window.showErrorMessage('Command cannot be executed')
             throw new Error('Command cannot be executed')
         }
     }

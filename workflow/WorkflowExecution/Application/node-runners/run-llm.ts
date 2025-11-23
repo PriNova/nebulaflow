@@ -1,4 +1,3 @@
-import type * as vscode from 'vscode'
 import {
     AbortedError,
     type ApprovalResult,
@@ -7,6 +6,7 @@ import {
     type WorkflowNodes,
 } from '../../../Core/models'
 import { computeLLMAmpSettings } from '../../../LLMIntegration/Application/llm-settings'
+import type { IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
 import { DEFAULT_LLM_MODEL_ID } from '../../../Shared/LLM/default-model'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
@@ -19,7 +19,7 @@ export async function executeLLMNode(
     node: WorkflowNodes,
     context: IndexedExecutionContext,
     abortSignal: AbortSignal,
-    webview: vscode.Webview,
+    port: IMessagePort,
     approvalHandler: (nodeId: string) => Promise<ApprovalResult>
 ): Promise<string> {
     const inputs = combineParentOutputsByConnectionOrder(node.id, context)
@@ -33,9 +33,12 @@ export async function executeLLMNode(
 
     let createAmp: any
     try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         ;({ createAmp } = require('@prinova/amp-sdk'))
-    } catch {
-        throw new Error('Amp SDK not available')
+    } catch (error) {
+        throw new Error(
+            `Amp SDK not available: ${error instanceof Error ? error.message : String(error)}`
+        )
     }
 
     const apiKey = process.env.AMP_API_KEY
@@ -53,6 +56,7 @@ export async function executeLLMNode(
     let selectedKey: string | undefined
     if (modelId) {
         try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
             const sdk = require('@prinova/amp-sdk') as any
             const resolveModel:
                 | ((args: { key: string } | { displayName: string; provider?: any }) => { key: string })
@@ -111,7 +115,7 @@ export async function executeLLMNode(
                 if (event.type === 'messages') {
                     const thread = event.thread as any
                     const items = extractAssistantTimeline(thread)
-                    await safePost(webview, {
+                    await safePost(port, {
                         type: 'node_assistant_content',
                         data: {
                             nodeId: node.id,
@@ -178,7 +182,7 @@ export async function executeLLMNode(
                             }
                             const display = summaryLines.join('\n') || 'Approval required'
 
-                            await safePost(webview, {
+                            await safePost(port, {
                                 type: 'node_execution_status',
                                 data: { nodeId: node.id, status: 'pending_approval', result: display },
                             } as ExtensionToWorkflow)

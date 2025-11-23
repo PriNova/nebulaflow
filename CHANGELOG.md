@@ -8,6 +8,21 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Goal: Dual Host Support – VS Code Extension + Electron App
+
+- Added: Introduced a shared host abstraction (`IHostEnvironment` and `IMessagePort`) and refactored key slices (filesystem, workspace, workflow execution/persistence) to depend on this interface via dependency injection so core logic runs unchanged in both VS Code and Electron.
+- Added: Implemented `VSCodeHost` and `ElectronHost` adapters that map the shared host API onto the VS Code extension API and Electron main/preload layers respectively, keeping platform-specific concerns at the boundaries.
+- Added: Scaffolded an Electron entrypoint (main process, preload script, window creation) that loads the existing webview React app, wires it to the shared workflow protocol, and mirrors the extension’s messaging semantics.
+- Added: Extended the build system with Electron-specific TypeScript config and npm scripts (`build:electron`, `start:electron`, `pack:electron`) plus `electron-builder` configuration so NebulaFlow can be packaged as a desktop app alongside the VS Code extension.
+- Why: Enables NebulaFlow to ship as a dual-target application (VS Code extension and Electron desktop app) while keeping ~90% of the workflow engine, UI, and persistence logic shared, reducing duplication and easing future maintenance.
+
+### Goal: Electron Workspace Folder & Storage Scope Integration (Electron Host)
+
+- Added: Persisted Electron workspace folder selection via `ElectronWorkspace` backed by a small `config.json` under the app `userData` directory, defaulting to the user home when no folder has been chosen; `workspaceFolders` now reflects this root for storage and workflow resolution in the Electron host.
+- Added: Top-level Electron application menu (File/Edit/View) with **File ▸ Open Folder…** that lets users pick a workspace folder, updates the window title accordingly, and notifies the renderer via `storage_scope` plus a `refresh_custom_nodes` signal so storage scope and custom nodes can react to the new root.
+- Changed: WorkflowPersistence now always emits a `storage_scope` message after toggling the `nebulaFlow.storageScope` setting so Electron (which lacks VS Code’s configuration-change events) keeps the webview’s storage scope state in sync without relying on editor-specific hooks; VS Code behavior remains backwards compatible.
+- Changed: Refreshed the vendored Amp SDK bundle in `vendor/amp-sdk/amp-sdk.tgz` to stay aligned with the upstream SDK used by NebulaFlow for workflow execution and tooling.
+
 ### Goal: Default LLM Model Switched to GPT-5.1 (OpenAI)
 
 - Changed: Centralized the default LLM model ID and title for NebulaFlow LLM nodes to the shared GPT-5.1 constants in [default-model.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Shared/LLM/default-model.ts), and updated webview UI defaults, workflow normalization/migration, and both single-node and workflow execution fallbacks to consume them.
@@ -185,6 +200,12 @@ Why: Aligns with Vertical Slice Architecture, reduces duplicate handling and dri
 - Why: Makes Shell advanced behavior easier to discover and scan by collecting expert-only controls in one clearly marked area, while keeping the main CLI sidebar focused on core mode, command/script, stdin source, env mapping, and safety toggles.
 
 ### Goal: Auto-follow Active Node in RightSidebar
+
+### Goal: LLM Node Right Sidebar Assistant UX Refinement
+
+- Changed: Updated the RightSidebar LLM assistant renderer so assistant `text` content streams in-place as Markdown blocks styled like the Result box, instead of being hidden inside accordions, while preserving temporal ordering of thinking/tool/tool_result items.
+- Changed: Introduced a node-level fullscreen mode for the Playbox execution panel that lets LLM nodes expand vertically, adjusting scroll/overflow behavior so assistant content and results remain readable without affecting existing parallel/sequence grouping.
+- Changed: Minor formatting cleanup in the Electron `createWindow` title-update logic for workspace folders and refreshed the vendored `@prinova/amp-sdk` tarball to stay aligned with the upstream SDK used by workflow execution.
 
 - What: Updated the RightSidebar node accordion to automatically expand and keep in view the single currently executing node when `autoFollowActiveNode` is true, while preserving pending-approval focus and allowing users to override the open panel manually; auto-follow is reset for each new `executionRunId`. See [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx).
 - What: Refreshed the vendored Amp SDK bundle in [amp-sdk.tgz](file:///home/prinova/CodeProjects/nebulaflow/vendor/amp-sdk/amp-sdk.tgz) so NebulaFlow picks up the latest SDK behavior (including recent tool-layer improvements) without changing the existing NebulaFlow API surface.

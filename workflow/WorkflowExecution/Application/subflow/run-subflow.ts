@@ -1,7 +1,7 @@
-import type * as vscode from 'vscode'
 import { fromProtocolPayload } from '../../../Application/messaging/converters'
 import { NodeType, type WorkflowNodes } from '../../../Core/models'
 import { loadSubflow } from '../../../DataAccess/fs'
+import type { IHostEnvironment, IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
 import { type ParallelCallbacks, executeWorkflowParallel } from '../../Core/engine/parallel-scheduler'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
@@ -18,7 +18,8 @@ export async function runSubflowWrapper(
     wrapperNode: WorkflowNodes,
     outerCtx: IndexedExecutionContext,
     abortSignal: AbortSignal,
-    webview: vscode.Webview,
+    port: IMessagePort,
+    host: IHostEnvironment,
     subflowCache?: Map<string, Record<string, string>>
 ): Promise<string[]> {
     const subflowId = (wrapperNode as any)?.data?.subflowId as string | undefined
@@ -36,11 +37,11 @@ export async function runSubflowWrapper(
     const seeds: Record<string, string> = {}
     // Prefer def.inputs order; expect SubflowInput nodes with data.portId matching inputs[].id
     for (let i = 0; i < def.inputs.length; i++) {
-        const port = def.inputs[i]
+        const portDef = def.inputs[i]
         const val = inputs[i] ?? ''
         // Find SubflowInput node with matching port id
         const match = inner.nodes.find(
-            n => (n as any).type === NodeType.SUBFLOW_INPUT && (n as any).data?.portId === port.id
+            n => (n as any).type === NodeType.SUBFLOW_INPUT && (n as any).data?.portId === portDef.id
         )
         if (match) seeds[match.id] = val
     }
@@ -122,7 +123,7 @@ export async function runSubflowWrapper(
     const totalInner = eligibleInnerIds.size
     let completedInner = 0
     if (totalInner > 0) {
-        await safePost(webview, {
+        await safePost(port, {
             type: 'node_execution_status',
             data: {
                 nodeId: wrapperNode.id,
@@ -136,16 +137,16 @@ export async function runSubflowWrapper(
     const lastOutputs = new Map<string, string>()
 
     // Proxy inner node events to subflow-scoped events for the outer webview
-    const subflowWebviewProxy = {
+    const subflowWebviewProxy: IMessagePort = {
         postMessage: async (innerMsg: any) => {
             try {
                 if (innerMsg?.type === 'node_execution_status' && innerMsg?.data) {
-                    await safePost(webview, {
+                    await safePost(port, {
                         type: 'subflow_node_execution_status',
                         data: { subflowId, payload: innerMsg.data },
                     } as any)
                 } else if (innerMsg?.type === 'node_assistant_content' && innerMsg?.data) {
-                    await safePost(webview, {
+                    await safePost(port, {
                         type: 'subflow_node_assistant_content',
                         data: {
                             subflowId,
@@ -161,7 +162,10 @@ export async function runSubflowWrapper(
             }
             return true
         },
-    } as unknown as vscode.Webview
+        onDidReceiveMessage: () => {
+            return { dispose: () => {} }
+        },
+    }
 
     const callbacks: ParallelCallbacks = {
         runNode: async (node, pctx, signal) => {
@@ -172,6 +176,7 @@ export async function runSubflowWrapper(
                         node,
                         signal,
                         subflowWebviewProxy,
+                        host,
                         async () => ({ type: 'approved' }),
                         ctx
                     ),
@@ -221,7 +226,7 @@ export async function runSubflowWrapper(
         },
         onStatus: payload => {
             // Forward inner node status while subflow view is open
-            void safePost(webview, {
+            void safePost(port, {
                 type: 'subflow_node_execution_status',
                 data: { subflowId, payload },
             } as any)
@@ -243,7 +248,7 @@ export async function runSubflowWrapper(
                 completedInner += 1
                 // Emit wrapper-only aggregate progress
                 if (totalInner > 0) {
-                    void safePost(webview, {
+                    void safePost(port, {
                         type: 'node_execution_status',
                         data: {
                             nodeId: wrapperNode.id,

@@ -25,6 +25,30 @@ Recommended improvements and optimizations for future implementation.
 
 ### Default LLM Model – Migration Semantics and Provider Validation
 
+### Electron Workspace & Storage Scope – Follow-ups
+
+- Goal: Tighten robustness and semantics around the Electron workspace folder feature and storage-scope signaling without changing current behavior.
+- What:
+  - Wire a consumer for the `refresh_custom_nodes` message (or remove the unused event) so Electron’s **Open Folder…** action either triggers a real custom-node refresh or avoids sending no-op signals.
+  - Add lightweight error logging around `ElectronWorkspace` config load/save (`loadConfig`/`saveConfig`) while still falling back to safe defaults, making corrupted or unwritable config states diagnosable.
+  - Centralize storage-scope + base-path computation in a shared helper so `storage_scope` events always expose the resolved filesystem root instead of a raw, potentially invalid `nebulaFlow.globalStoragePath` string.
+  - Optionally validate and await `setWorkspaceFolder` writes (existence, directory check, and serialized `saveConfig` calls) to avoid persisting bad paths or interleaving config writes.
+  - Consider clarifying Electron’s default workspace semantics (home directory vs. “no workspace”) and deduplicating window-title update logic and `os.homedir()` calls behind a tiny helper to keep title behavior consistent.
+- Why: Ensures the new Electron workspace behavior is transparent and diagnosable, avoids drift between backend storage roots and UI `storage_scope` state, and keeps the host abstraction clean as the Electron flavor evolves.
+
+### Link Handling, Custom Nodes, and Resume Logic – Safety & Maintainability
+
+- Goal: Restore conservative safety posture and reduce duplication around link handling, custom node operations, IPC lifetime, and resume subgraph computation.
+- What:
+  - Tighten `open_external_link` behavior so VS Code returns early with a clear warning when links resolve outside the active workspace, and optionally align Electron with a workspace-only policy (or document a deliberate exception) to avoid silently opening arbitrary local files.
+  - Reintroduce confirmations for custom-node overwrite, delete, and rename operations by extending the host window abstraction with a warning/confirmation API, keeping accidental destructive actions harder in both VS Code and Electron.
+  - Ensure Electron IPC listeners created by `IMessagePort` are disposed alongside session cleanup so repeated window open/close cycles do not accumulate `ipcMain` handlers; track and call the returned disposable during `cleanupSession`.
+  - Refine `ElectronWindow.showOpenDialog` to build its `properties` array from the supplied options (`canSelectFiles`, `canSelectFolders`, `canSelectMany`) so future callers can request folder-only or multi-select dialogs without unexpected file-picker behavior.
+  - Decide and document whether Electron workspace configuration remains flat string-keyed or should normalize into a nested object tree to better mirror VS Code’s `getConfiguration` semantics, avoiding surprises for future settings callers.
+  - Gate or remove debug logging around workspace roots in LLM runners so production logs stay quiet unless explicitly running in a development context, while still allowing targeted diagnostics when needed.
+  - Extract the resume pruning and seed-filtering logic into a shared pure helper (e.g., `computeResumeSubgraph`) reused by `workflow-session` and any other runners that manipulate seeds to keep resume behavior consistent and easier to evolve.
+- Why: Brings link and file operations back in line with previous safety expectations, prevents subtle resource leaks in Electron, and centralizes shared algorithms so future behavior changes remain consistent across hosts and execution paths.
+
 - Goal: Clarify and harden behavior around the default GPT-5.1 model for legacy workflows and provider-specific behavior.
 - What:
 -   - Define and document explicit upgrade semantics for workflows that lack an LLM `model` (e.g., always migrate to the current default GPT-5.1 while preserving explicit legacy IDs) near `normalizeModelsInWorkflow` in [fs.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/DataAccess/fs.ts) and/or slice-level docs.
@@ -242,6 +266,18 @@ Recommended improvements and optimizations for future implementation.
 ### CLI Approval Sidebar Auto-Expand – Dependency and Contract Polish
 
 ### RightSidebar Auto-Follow – Behavior, Tests, and UX Follow-ups
+
+### LLM Right Sidebar Assistant UX – Follow-ups
+
+- Goal: Capture medium/low-priority polish items for the new LLM assistant UX and related SDK/Electron changes.
+- What:
+-   - Treat future `vendor/amp-sdk/amp-sdk.tgz` updates as explicit SDK upgrades by tying them to a known upstream version/CHANGELOG entry and running the usual checks (e.g., `npm audit`, smoke tests) so binary bumps remain transparent and verifiable.
+-   - Guard `fullscreenNodeId` with a small effect that clears the fullscreen state when the referenced node is removed from `sortedNodes`, preventing a blank fullscreen panel when graphs are mutated while fullscreen is active.
+-   - Extract the LLM assistant `displayItems` → `segments` construction (including `pairedMap`, `pendingNonText`, and `flushNonTextAccordion`) into a pure helper or dedicated test target so temporal ordering, de-duplication, and grouping behavior can be unit tested and evolved safely.
+-   - Simplify `renderAssistantAccordionItem` by either removing or repurposing the now-unused `text` branch, and align any future text rendering there with the Markdown-based styling used for streamed assistant messages.
+-   - Add an explicit `aria-label` to the LLM fullscreen toggle button in the RightSidebar so the icon-only control is fully accessible and consistent with other Playbox toggle buttons.
+-   - Optionally add a brief comment or small tests documenting the `filterLastTextMatchingResult` behavior that de-duplicates the final assistant `text` item against `nodeResults`, including whitespace-only edge cases.
+- Why: Keeps the new LLM assistant UX maintainable and accessible, makes SDK upgrades auditable, and reduces regression risk around the more complex assistant segmentation logic without changing current behavior.
 
 - Goal: Make the auto-follow active-node behavior explicit, test-backed, and aligned with the broader tool/SDK surface without changing current semantics.
 - What:

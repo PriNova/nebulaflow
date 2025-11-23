@@ -1,7 +1,13 @@
 import type { ExtensionToWorkflow } from '../../Core/models'
+import type { IHostEnvironment, IMessagePort } from '../../Shared/Host/index'
 import { safePost } from '../../Shared/Infrastructure/messaging/safePost'
 
-export type SliceEnv = { webview: import('vscode').Webview; isDev: boolean }
+export type SliceEnv = {
+    port: IMessagePort
+    host: IHostEnvironment
+    isDev: boolean
+    updatePanelTitle: (uri?: string) => void
+}
 export type Router = Map<string, (message: any, env: SliceEnv) => Promise<void> | void>
 
 export function registerHandlers(router: Router): void {
@@ -16,11 +22,11 @@ export function registerHandlers(router: Router): void {
                 typeof listModels === 'function'
                     ? listModels().map((m: any) => ({ id: m.key, title: m.displayName }))
                     : []
-            await safePost(env.webview, { type: 'models_loaded', data: models } as ExtensionToWorkflow, {
+            await safePost(env.port, { type: 'models_loaded', data: models } as ExtensionToWorkflow, {
                 strict: env.isDev,
             })
         } catch {
-            await safePost(env.webview, { type: 'models_loaded', data: [] } as ExtensionToWorkflow, {
+            await safePost(env.port, { type: 'models_loaded', data: [] } as ExtensionToWorkflow, {
                 strict: env.isDev,
             })
         }

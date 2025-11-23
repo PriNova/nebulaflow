@@ -107,6 +107,46 @@ If you see a message about missing webview assets, run `npm run build` or start 
   - Lint: `npm run lint`
   - Auto-fix: `npm run biome` (also aliased as `npm run format`)
 
+## Electron Build (Standalone App)
+
+NebulaFlow can also be built as a standalone Electron application.
+
+### Development
+
+Run the Electron app in development mode (with hot reload for the webview):
+
+```bash
+npm run start:electron
+```
+
+### Building
+
+To build the Electron main process:
+
+```bash
+npm run build:electron
+```
+
+### Packaging
+
+To package the application for distribution (creates an executable in `dist/release`):
+
+**Linux (AppImage):**
+```bash
+npm run pack:electron -- --linux
+```
+
+**Windows (Zip):**
+```bash
+npm run zip:win
+```
+(This builds an unpacked win32-x64 application and zips it, bypassing the need for Wine on Linux)
+
+**macOS (DMG):**
+```bash
+npm run pack:electron -- --mac
+```
+
 ## Scripts
 
 ```jsonc

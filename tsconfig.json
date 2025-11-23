@@ -1,5 +1,5 @@
 {
-    "extends": "@sourcegraph/tsconfig",
+    "extends": "./node_modules/@sourcegraph/tsconfig/tsconfig.json",
     "compilerOptions": {
         "target": "ES2022",
         "module": "Node16",

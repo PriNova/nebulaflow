@@ -1,4 +1,3 @@
-import * as vscode from 'vscode'
 import { fromProtocolPayload } from '../../../Application/messaging/converters'
 import type { ExtensionToWorkflow, WorkflowNodeDTO } from '../../../Core/Contracts/Protocol'
 import type { ApprovalResult } from '../../../Core/models'
@@ -6,6 +5,7 @@ import { AbortedError } from '../../../Core/models'
 import type { WorkflowNodes } from '../../../Core/models'
 import { NodeType } from '../../../Core/models'
 import { loadSubflow } from '../../../DataAccess/fs'
+import type { IHostEnvironment, IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
 import { DEFAULT_LLM_MODEL_ID } from '../../../Shared/LLM/default-model'
 import { type ParallelCallbacks, executeWorkflowParallel } from '../../Core/engine/parallel-scheduler'
@@ -25,7 +25,8 @@ export interface ExecuteNodePayload {
 
 export async function executeSingleNode(
     payload: ExecuteNodePayload,
-    webview: vscode.Webview,
+    port: IMessagePort,
+    host: IHostEnvironment,
     abortSignal: AbortSignal,
     approvalHandler: (nodeId: string) => Promise<ApprovalResult>
 ): Promise<void> {
@@ -34,7 +35,7 @@ export async function executeSingleNode(
     const { nodes } = fromProtocolPayload({ nodes: [nodeDTO], edges: [] })
     const node = nodes[0] as WorkflowNodes
 
-    await safePost(webview, {
+    await safePost(port, {
         type: 'node_execution_status',
         data: { nodeId: node.id, status: 'running' },
     })
@@ -42,21 +43,22 @@ export async function executeSingleNode(
     try {
         const result = await routeNodeExecution(node, 'single-node', {
             runCLI: (..._args: any[]) =>
-                executeSingleCLINode(node, inputs, abortSignal, webview, approvalHandler, variables),
+                executeSingleCLINode(node, inputs, abortSignal, port, host, approvalHandler, variables),
             runLLM: (..._args: any[]) =>
-                executeSingleLLMNode(node, inputs, abortSignal, webview, approvalHandler, variables),
-            runPreview: (..._args: any[]) => executeSinglePreviewNode(node, inputs, webview, variables),
+                executeSingleLLMNode(node, inputs, abortSignal, port, approvalHandler, variables),
+            runPreview: (..._args: any[]) => executeSinglePreviewNode(node, inputs, port, variables),
             runInput: (..._args: any[]) => executeSingleInputNode(node, inputs, variables),
             runVariable: (..._args: any[]) => executeSingleVariableNode(node, inputs, variables),
             runIfElse: (..._args: any[]) => executeSingleIfElseNode(node, inputs, variables),
             runAccumulator: undefined,
             runLoopStart: undefined,
             runLoopEnd: undefined,
-            runSubflow: async (..._args: any[]) => runSingleSubflow(node, inputs, abortSignal, webview),
+            runSubflow: async (..._args: any[]) =>
+                runSingleSubflow(node, inputs, abortSignal, port, host),
         })
 
         const safeResult = Array.isArray(result) ? result.join('\n') : String(result)
-        await safePost(webview, {
+        await safePost(port, {
             type: 'node_execution_status',
             data: { nodeId: node.id, status: 'completed', result: safeResult },
         })
@@ -64,10 +66,10 @@ export async function executeSingleNode(
             type: 'execution_completed',
             stoppedAtNodeId: node.id,
         }
-        await safePost(webview, completedEvent)
+        await safePost(port, completedEvent)
     } catch (error) {
         if (abortSignal.aborted || error instanceof AbortedError) {
-            await safePost(webview, {
+            await safePost(port, {
                 type: 'node_execution_status',
                 data: { nodeId: nodeDTO.id, status: 'interrupted' },
             })
@@ -75,12 +77,12 @@ export async function executeSingleNode(
                 type: 'execution_completed',
                 stoppedAtNodeId: nodeDTO.id,
             }
-            await safePost(webview, interruptedEvent)
+            await safePost(port, interruptedEvent)
             return
         }
         const msg = error instanceof Error ? error.message : String(error)
-        void vscode.window.showErrorMessage(`Node Error: ${msg}`)
-        await safePost(webview, {
+        void host.window.showErrorMessage(`Node Error: ${msg}`)
+        await safePost(port, {
             type: 'node_execution_status',
             data: { nodeId: nodeDTO.id, status: 'error', result: msg },
         })
@@ -88,7 +90,7 @@ export async function executeSingleNode(
             type: 'execution_completed',
             stoppedAtNodeId: nodeDTO.id,
         }
-        await safePost(webview, errorEvent)
+        await safePost(port, errorEvent)
     }
 }
 
@@ -96,7 +98,7 @@ async function executeSingleLLMNode(
     node: WorkflowNodes,
     inputs: string[],
     abortSignal: AbortSignal,
-    webview: vscode.Webview,
+    port: IMessagePort,
     approvalHandler: (nodeId: string) => Promise<ApprovalResult>,
     variables?: Record<string, string>
 ): Promise<string> {
@@ -115,9 +117,12 @@ async function executeSingleLLMNode(
 
     let createAmp: any
     try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         ;({ createAmp } = require('@prinova/amp-sdk'))
-    } catch {
-        throw new Error('Amp SDK not available')
+    } catch (error) {
+        throw new Error(
+            `Amp SDK not available: ${error instanceof Error ? error.message : String(error)}`
+        )
     }
 
     const apiKey = process.env.AMP_API_KEY
@@ -134,6 +139,7 @@ async function executeSingleLLMNode(
     let selectedKey: string | undefined
     if (modelId) {
         try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
             const sdk = require('@prinova/amp-sdk') as any
             const resolveModel:
                 | ((args: { key: string } | { displayName: string; provider?: any }) => { key: string })
@@ -189,7 +195,7 @@ async function executeSingleLLMNode(
 
                     // 1) Stream assistant timeline to webview so RightSidebar updates in real-time
                     const items = extractAssistantTimelineSingle(thread)
-                    await safePost(webview, {
+                    await safePost(port, {
                         type: 'node_assistant_content',
                         data: { nodeId: node.id, threadID: thread.id, content: items },
                     })
@@ -245,7 +251,7 @@ async function executeSingleLLMNode(
                             }
                             const display = summaryLines.join('\n') || 'Approval required'
 
-                            await safePost(webview, {
+                            await safePost(port, {
                                 type: 'node_execution_status',
                                 data: { nodeId: node.id, status: 'pending_approval', result: display },
                             })
@@ -373,7 +379,8 @@ async function executeSingleCLINode(
     node: WorkflowNodes,
     inputs: string[],
     abortSignal: AbortSignal,
-    webview: vscode.Webview,
+    port: IMessagePort,
+    host: IHostEnvironment,
     approvalHandler: (nodeId: string) => Promise<ApprovalResult>,
     variables?: Record<string, string>
 ): Promise<string> {
@@ -396,7 +403,7 @@ async function executeSingleCLINode(
 
     // Minimal approval path for single node execution: reuse existing hook
     if ((node as any).data?.needsUserApproval) {
-        await safePost(webview, {
+        await safePost(port, {
             type: 'node_execution_status',
             data: { nodeId: node.id, status: 'pending_approval', result: `${base}` },
         })
@@ -409,7 +416,7 @@ async function executeSingleCLINode(
         }
     }
 
-    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    const cwd = host.workspace.workspaceFolders?.[0]
     try {
         const {
             expandHome,
@@ -508,7 +515,7 @@ async function executeSingleCLINode(
             ((node as any).data?.safetyLevel as any) === 'advanced' ? 'advanced' : 'safe'
         if (safety !== 'advanced') {
             if (commandsNotAllowed.some(cmd => sanitizeForShell(filteredCommand).startsWith(cmd))) {
-                void vscode.window.showErrorMessage('Command cannot be executed')
+                void host.window.showErrorMessage('Command cannot be executed')
                 throw new Error('Command cannot be executed')
             }
         }
@@ -534,7 +541,7 @@ async function executeSingleCLINode(
 async function executeSinglePreviewNode(
     node: WorkflowNodes,
     inputs: string[],
-    webview: vscode.Webview,
+    port: IMessagePort,
     variables?: Record<string, string>
 ): Promise<string> {
     const inputJoined = (inputs || []).join('\n')
@@ -544,7 +551,7 @@ async function executeSinglePreviewNode(
     const processed = replaceIndexedInputs(inputJoined, inputs, ctx as any)
     const trimmed = processed.trim()
     const tokenCount = trimmed.length
-    await safePost(webview, { type: 'token_count', data: { nodeId: node.id, count: tokenCount } })
+    await safePost(port, { type: 'token_count', data: { nodeId: node.id, count: tokenCount } })
     return trimmed
 }
 
@@ -598,7 +605,8 @@ async function runSingleSubflow(
     wrapperNode: WorkflowNodes,
     inputs: string[],
     abortSignal: AbortSignal,
-    webview: vscode.Webview
+    port: IMessagePort,
+    host: IHostEnvironment
 ): Promise<string[]> {
     const subflowId = (wrapperNode as any)?.data?.subflowId as string | undefined
     if (!subflowId) throw new Error('Subflow node missing subflowId')
@@ -637,7 +645,7 @@ async function runSingleSubflow(
     const totalInner = eligibleInnerIds.size
     let completedInner = 0
     if (totalInner > 0) {
-        await safePost(webview, {
+        await safePost(port, {
             type: 'node_execution_status',
             data: {
                 nodeId: wrapperNode.id,
@@ -652,14 +660,14 @@ async function runSingleSubflow(
         runNode: async (node, _pctx, _signal) => {
             return await routeNodeExecution(node, 'single-node', {
                 runCLI: (..._args: any[]) =>
-                    executeSingleCLINode(node, [], abortSignal, {} as any, async () => ({
+                    executeSingleCLINode(node, [], abortSignal, port, host, async () => ({
                         type: 'approved',
                     })),
                 runLLM: (..._args: any[]) =>
-                    executeSingleLLMNode(node as any, [], abortSignal, {} as any, async () => ({
+                    executeSingleLLMNode(node as any, [], abortSignal, port, async () => ({
                         type: 'approved',
                     })),
-                runPreview: (..._args: any[]) => executeSinglePreviewNode(node as any, [], {} as any),
+                runPreview: (..._args: any[]) => executeSinglePreviewNode(node as any, [], port),
                 runInput: (..._args: any[]) => executeSingleInputNode(node as any, []),
                 runVariable: (..._args: any[]) => executeSingleVariableNode(node as any, []),
                 runIfElse: (..._args: any[]) => executeSingleIfElseNode(node as any, []),
@@ -686,7 +694,7 @@ async function runSingleSubflow(
             ) {
                 completedInner += 1
                 if (totalInner > 0) {
-                    void safePost(webview, {
+                    void safePost(port, {
                         type: 'node_execution_status',
                         data: {
                             nodeId: wrapperNode.id,

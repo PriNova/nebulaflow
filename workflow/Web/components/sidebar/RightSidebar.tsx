@@ -5,7 +5,16 @@ import { Markdown } from '@shared/Markdown'
 import RunFromHereButton from '@shared/RunFromHereButton'
 import RunOnlyThisButton from '@shared/RunOnlyThisButton'
 import clsx from 'clsx'
-import { CircleCheck, CircleX, Eye, Loader2Icon, Menu, RotateCcw } from 'lucide-react'
+import {
+    CircleCheck,
+    CircleX,
+    Eye,
+    Loader2Icon,
+    Maximize2,
+    Menu,
+    Minimize2,
+    RotateCcw,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AssistantContentItem } from '../../../Core/models'
 import { resolveToolName } from '../../services/toolNames'
@@ -244,6 +253,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     const [modifiedCommands, setModifiedCommands] = useState<Map<string, string>>(new Map())
     const [expandedJsonItems, setExpandedJsonItems] = useState<Set<string>>(new Set())
     const [previewNodeId, setPreviewNodeId] = useState<string | null>(null)
+    const [fullscreenNodeId, setFullscreenNodeId] = useState<string | null>(null)
 
     const singleActiveNodeId = useMemo(() => {
         if (executingNodeIds.size !== 1) return null
@@ -476,7 +486,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             <AccordionItem
                 key={key}
                 value={key}
-                className="tw-border tw-border-[var(--vscode-panel-border)] tw-rounded"
+                className={clsx(
+                    'tw-border tw-border-[var(--vscode-panel-border)] tw-rounded',
+                    item.type === 'thinking' ? 'tw-mt-3 tw-mb-0' : ''
+                )}
             >
                 <AccordionTrigger className="tw-w-full tw-text-xs tw-h-7 tw-py-1 tw-px-2 tw-bg-[var(--vscode-sideBar-background)] tw-rounded-t">
                     {(() => {
@@ -645,108 +658,154 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         }
     }, [executionRunId])
 
-    const renderNodeItem = (node: WorkflowNodes, isInParallelGroup = false) => (
-        <div
-            className={clsx(
-                'tw-flex tw-flex-col tw-gap-1 tw-px-2 tw-py-1 tw-rounded tw-bg-[var(--vscode-sideBar-dropBackground)]',
-                'tw-border tw-w-full',
-                getBorderColorClass(node.id)
-            )}
-        >
-            <Accordion
-                type="single"
-                collapsible
-                value={openItemId}
-                onValueChange={value => {
-                    const nextId = value || undefined
-                    setOpenItemId(nextId)
-                    if (!singleActiveNodeId) {
-                        setAutoFollowActiveNode(false)
-                        return
-                    }
-                    if (nextId === singleActiveNodeId) {
-                        setAutoFollowActiveNode(true)
-                    } else {
-                        setAutoFollowActiveNode(false)
-                    }
-                }}
+    const renderNodeItem = (node: WorkflowNodes, isInParallelGroup = false) => {
+        const isFullscreen = fullscreenNodeId === node.id
+        return (
+            <div
+                className={clsx(
+                    'tw-flex tw-flex-col tw-gap-1 tw-px-2 tw-py-1 tw-rounded tw-bg-[var(--vscode-sideBar-dropBackground)]',
+                    'tw-border tw-w-full',
+                    getBorderColorClass(node.id),
+                    isFullscreen ? 'tw-h-full' : ''
+                )}
             >
-                <AccordionItem value={node.id}>
-                    <AccordionTrigger className="tw-w-full tw-text-sm tw-h-6 tw-py-[.1rem]">
-                        <div className="tw-flex tw-items-center tw-w-full">
-                            <div className="tw-w-4 tw-mr-2">
-                                {executingNodeIds.has(node.id) && (
-                                    <Loader2Icon
-                                        stroke="var(--vscode-testing-iconPassed)"
-                                        strokeWidth={3}
-                                        size={24}
-                                        className="tw-h-4 tw-w-4 tw-animate-spin"
-                                    />
-                                )}
+                <Accordion
+                    type="single"
+                    collapsible
+                    value={openItemId}
+                    onValueChange={value => {
+                        const nextId = value || undefined
+                        setOpenItemId(nextId)
+                        if (!singleActiveNodeId) {
+                            setAutoFollowActiveNode(false)
+                            return
+                        }
+                        if (nextId === singleActiveNodeId) {
+                            setAutoFollowActiveNode(true)
+                        } else {
+                            setAutoFollowActiveNode(false)
+                        }
+                    }}
+                >
+                    <AccordionItem value={node.id}>
+                        <AccordionTrigger className="tw-w-full tw-text-sm tw-h-6 tw-py-[.1rem]">
+                            <div className="tw-flex tw-items-center tw-w-full">
+                                <div className="tw-w-4 tw-mr-2">
+                                    {executingNodeIds.has(node.id) && (
+                                        <Loader2Icon
+                                            stroke="var(--vscode-testing-iconPassed)"
+                                            strokeWidth={3}
+                                            size={24}
+                                            className="tw-h-4 tw-w-4 tw-animate-spin"
+                                        />
+                                    )}
+                                </div>
+                                <span className="tw-text-sm">
+                                    {formatNodeTitle(node.type as NodeType, node.data.title)}
+                                </span>
+                                {(() => {
+                                    const assistantItems = nodeAssistantContent.get(node.id) || []
+                                    const latestPercent =
+                                        node.type === NodeType.LLM
+                                            ? getLatestTokensPercent(assistantItems)
+                                            : null
+                                    return (
+                                        <div className="tw-ml-auto tw-flex tw-items-center tw-gap-2">
+                                            {node.type === NodeType.LLM && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="tw-w-[1.75rem] tw-h-[1.75rem] tw-p-0"
+                                                    onClick={e => {
+                                                        e.stopPropagation()
+                                                        const nextState =
+                                                            fullscreenNodeId === node.id ? null : node.id
+                                                        setFullscreenNodeId(nextState)
+                                                        if (nextState) {
+                                                            setOpenItemId(node.id)
+                                                            setAutoFollowActiveNode(false)
+                                                        }
+                                                    }}
+                                                    title={
+                                                        fullscreenNodeId === node.id
+                                                            ? 'Exit Fullscreen'
+                                                            : 'Fullscreen'
+                                                    }
+                                                >
+                                                    {fullscreenNodeId === node.id ? (
+                                                        <Minimize2 className="tw-h-4 tw-w-4" />
+                                                    ) : (
+                                                        <Maximize2 className="tw-h-4 tw-w-4" />
+                                                    )}
+                                                </Button>
+                                            )}
+                                            {node.type === NodeType.LLM && latestPercent != null && (
+                                                <span className="tw-text-xs tw-tabular-nums tw-opacity-70">
+                                                    {formatPercentLabel(latestPercent)}
+                                                </span>
+                                            )}
+                                            {(node.type === NodeType.LLM ||
+                                                node.type === NodeType.CLI ||
+                                                node.type === NodeType.INPUT ||
+                                                node.type === NodeType.VARIABLE ||
+                                                node.type === NodeType.IF_ELSE ||
+                                                node.type === NodeType.SUBFLOW) && (
+                                                <RunOnlyThisButton
+                                                    nodeId={node.id}
+                                                    className="tw-w-[1.75rem] tw-h-[1.75rem]"
+                                                    disabled={
+                                                        isPaused ||
+                                                        executingNodeIds.size > 0 ||
+                                                        (node.type === NodeType.SUBFLOW &&
+                                                            !(node as any).data?.subflowId)
+                                                    }
+                                                />
+                                            )}
+                                            {onRunFromHere && (
+                                                <RunFromHereButton
+                                                    nodeId={node.id}
+                                                    className="tw-w-[1.75rem] tw-h-[1.75rem]"
+                                                    disabled={isPaused || executingNodeIds.size > 0}
+                                                    onClick={() => onRunFromHere(node.id)}
+                                                />
+                                            )}
+                                        </div>
+                                    )
+                                })()}
                             </div>
-                            <span className="tw-text-sm">
-                                {formatNodeTitle(node.type as NodeType, node.data.title)}
-                            </span>
-                            {(() => {
-                                const assistantItems = nodeAssistantContent.get(node.id) || []
-                                const latestPercent =
-                                    node.type === NodeType.LLM
-                                        ? getLatestTokensPercent(assistantItems)
-                                        : null
-                                return (
-                                    <div className="tw-ml-auto tw-flex tw-items-center tw-gap-2">
-                                        {node.type === NodeType.LLM && latestPercent != null && (
-                                            <span className="tw-text-xs tw-tabular-nums tw-opacity-70">
-                                                {formatPercentLabel(latestPercent)}
-                                            </span>
-                                        )}
-                                        {(node.type === NodeType.LLM ||
-                                            node.type === NodeType.CLI ||
-                                            node.type === NodeType.INPUT ||
-                                            node.type === NodeType.VARIABLE ||
-                                            node.type === NodeType.IF_ELSE ||
-                                            node.type === NodeType.SUBFLOW) && (
-                                            <RunOnlyThisButton
-                                                nodeId={node.id}
-                                                className="tw-w-[1.75rem] tw-h-[1.75rem]"
-                                                disabled={
-                                                    isPaused ||
-                                                    executingNodeIds.size > 0 ||
-                                                    (node.type === NodeType.SUBFLOW &&
-                                                        !(node as any).data?.subflowId)
+                        </AccordionTrigger>
+                        <AccordionContent
+                            className={clsx(
+                                isFullscreen ? 'tw-flex-1 tw-flex tw-flex-col tw-overflow-hidden' : ''
+                            )}
+                        >
+                            {(nodeResults.has(node.id) ||
+                                (node.type === NodeType.LLM && nodeAssistantContent.has(node.id))) && (
+                                <div
+                                    className={clsx(
+                                        'tw-mt-1 tw-space-y-4',
+                                        isFullscreen
+                                            ? 'tw-flex-1 tw-flex tw-flex-col tw-overflow-hidden'
+                                            : ''
+                                    )}
+                                >
+                                    {node.type === NodeType.LLM && nodeAssistantContent.has(node.id) && (
+                                        <div
+                                            className={clsx(
+                                                'tw-overflow-y-auto',
+                                                isFullscreen ? 'tw-flex-1' : 'tw-max-h-64'
+                                            )}
+                                            ref={el => {
+                                                if (el) {
+                                                    assistantScrollRefs.current.set(node.id, el)
+                                                } else {
+                                                    assistantScrollRefs.current.delete(node.id)
                                                 }
-                                            />
-                                        )}
-                                        {onRunFromHere && (
-                                            <RunFromHereButton
-                                                nodeId={node.id}
-                                                className="tw-w-[1.75rem] tw-h-[1.75rem]"
-                                                disabled={isPaused || executingNodeIds.size > 0}
-                                                onClick={() => onRunFromHere(node.id)}
-                                            />
-                                        )}
-                                    </div>
-                                )
-                            })()}
-                        </div>
-                    </AccordionTrigger>
-                    <AccordionContent>
-                        {(nodeResults.has(node.id) ||
-                            (node.type === NodeType.LLM && nodeAssistantContent.has(node.id))) && (
-                            <div className="tw-mt-1 tw-space-y-4">
-                                {node.type === NodeType.LLM && nodeAssistantContent.has(node.id) && (
-                                    <div
-                                        className="tw-max-h-64 tw-overflow-y-auto"
-                                        ref={el => {
-                                            if (el) {
-                                                assistantScrollRefs.current.set(node.id, el)
-                                            } else {
-                                                assistantScrollRefs.current.delete(node.id)
+                                            }}
+                                            onScroll={e =>
+                                                handleAssistantScroll(node.id, e.currentTarget)
                                             }
-                                        }}
-                                        onScroll={e => handleAssistantScroll(node.id, e.currentTarget)}
-                                    >
-                                        <Accordion type="multiple">
+                                        >
                                             {(() => {
                                                 const items = nodeAssistantContent.get(node.id) || []
 
@@ -783,205 +842,270 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                         pairedMap.set(it.toolUseID, it.resultJSON)
                                                     }
                                                 }
-                                                return displayItems
-                                                    .filter(it => it.type !== 'tool_result')
-                                                    .map((it, idx) =>
-                                                        renderAssistantAccordionItem(
-                                                            it,
-                                                            idx,
-                                                            node.id,
-                                                            executingNodeIds.has(node.id),
-                                                            it.type === 'tool_use'
-                                                                ? pairedMap.get(it.id)
-                                                                : undefined
-                                                        )
-                                                    )
-                                            })()}
-                                        </Accordion>
-                                    </div>
-                                )}
 
-                                <div className="tw-mt-1 tw-mb-1 tw-border-t tw-border-[var(--vscode-panel-border)]" />
-                                <div>
-                                    <div className="tw-flex tw-items-center tw-justify-between tw-mb-1">
-                                        <h4 className="tw-text-sm tw-font-semibold tw-text-[var(--vscode-foreground)]">
-                                            Result
-                                        </h4>
-                                        {node.id !== pendingApprovalNodeId && (
-                                            <div className="tw-flex tw-items-center tw-gap-1">
-                                                <CopyToClipboardButton
-                                                    text={nodeResults.get(node.id) || ''}
-                                                    className="tw-h-6 tw-px-2 tw-py-0"
-                                                    title="Copy Raw Result"
-                                                    size="sm"
-                                                    variant="secondary"
+                                                const segments: React.ReactNode[] = []
+                                                const pendingNonText: AssistantContentItem[] = []
+
+                                                const flushNonTextAccordion = () => {
+                                                    if (pendingNonText.length === 0) return
+                                                    const baseIndex = segments.length
+                                                    segments.push(
+                                                        <Accordion
+                                                            key={`${node.id}:accordion:${baseIndex}`}
+                                                            type="multiple"
+                                                        >
+                                                            {pendingNonText.map((it, idx) =>
+                                                                renderAssistantAccordionItem(
+                                                                    it,
+                                                                    idx,
+                                                                    node.id,
+                                                                    executingNodeIds.has(node.id),
+                                                                    it.type === 'tool_use'
+                                                                        ? pairedMap.get(it.id)
+                                                                        : undefined
+                                                                )
+                                                            )}
+                                                        </Accordion>
+                                                    )
+                                                    pendingNonText.length = 0
+                                                }
+
+                                                for (let i = 0; i < displayItems.length; i++) {
+                                                    const it = displayItems[i]
+                                                    if (it.type === 'text') {
+                                                        flushNonTextAccordion()
+                                                        const prev = i > 0 ? displayItems[i - 1] : null
+                                                        const assistantMarginTop =
+                                                            prev && prev.type === 'thinking'
+                                                                ? ''
+                                                                : 'tw-mt-2'
+                                                        segments.push(
+                                                            <div
+                                                                key={`${node.id}:text:${i}`}
+                                                                className={`tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] ${assistantMarginTop}`}
+                                                            >
+                                                                <Markdown
+                                                                    content={it.text}
+                                                                    className="tw-text-xs"
+                                                                />
+                                                            </div>
+                                                        )
+                                                    } else if (it.type !== 'tool_result') {
+                                                        pendingNonText.push(it)
+                                                    }
+                                                }
+
+                                                flushNonTextAccordion()
+
+                                                return <>{segments}</>
+                                            })()}
+                                        </div>
+                                    )}
+
+                                    <div className="tw-mt-1 tw-mb-1 tw-border-t tw-border-[var(--vscode-panel-border)]" />
+                                    <div>
+                                        <div className="tw-flex tw-items-center tw-justify-between tw-mb-1">
+                                            <h4 className="tw-text-sm tw-font-semibold tw-text-[var(--vscode-foreground)]">
+                                                Result
+                                            </h4>
+                                            {node.id !== pendingApprovalNodeId && (
+                                                <div className="tw-flex tw-items-center tw-gap-1">
+                                                    <CopyToClipboardButton
+                                                        text={nodeResults.get(node.id) || ''}
+                                                        className="tw-h-6 tw-px-2 tw-py-0"
+                                                        title="Copy Raw Result"
+                                                        size="sm"
+                                                        variant="secondary"
+                                                    />
+                                                    <Button
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        onClick={() => onResultUpdate(node.id, '')}
+                                                        className="tw-h-6 tw-px-2 tw-py-0 tw-gap-1"
+                                                        title="Reset Result"
+                                                    >
+                                                        <RotateCcw className="tw-h-4 tw-w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        onClick={() => setPreviewNodeId(node.id)}
+                                                        className="tw-h-6 tw-px-2 tw-py-0 tw-gap-1"
+                                                        title="Open Preview"
+                                                    >
+                                                        <Eye className="tw-h-4 tw-w-4" />
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {node.id === pendingApprovalNodeId ? (
+                                            <Textarea
+                                                value={
+                                                    modifiedCommands.get(node.id) ||
+                                                    nodeResults.get(node.id) ||
+                                                    ''
+                                                }
+                                                readOnly={
+                                                    !(
+                                                        node.type === NodeType.CLI &&
+                                                        node.id === pendingApprovalNodeId
+                                                    )
+                                                }
+                                                onChange={e =>
+                                                    handleCommandChange(node.id, e.target.value)
+                                                }
+                                            />
+                                        ) : (
+                                            <div
+                                                className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] tw-max-h-64 tw-overflow-auto tw-cursor-pointer"
+                                                onDoubleClick={() => {
+                                                    const content = nodeResults.get(node.id) || ''
+                                                    if (content.trim().length === 0) return
+                                                    setPreviewNodeId(node.id)
+                                                }}
+                                                role="button"
+                                                title="Open Preview"
+                                            >
+                                                <Markdown
+                                                    content={nodeResults.get(node.id) || ''}
+                                                    className="tw-text-xs"
                                                 />
-                                                <Button
-                                                    size="sm"
-                                                    variant="secondary"
-                                                    onClick={() => onResultUpdate(node.id, '')}
-                                                    className="tw-h-6 tw-px-2 tw-py-0 tw-gap-1"
-                                                    title="Reset Result"
-                                                >
-                                                    <RotateCcw className="tw-h-4 tw-w-4" />
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="secondary"
-                                                    onClick={() => setPreviewNodeId(node.id)}
-                                                    className="tw-h-6 tw-px-2 tw-py-0 tw-gap-1"
-                                                    title="Open Preview"
-                                                >
-                                                    <Eye className="tw-h-4 tw-w-4" />
-                                                </Button>
                                             </div>
                                         )}
                                     </div>
-                                    {node.id === pendingApprovalNodeId ? (
-                                        <Textarea
-                                            value={
-                                                modifiedCommands.get(node.id) ||
-                                                nodeResults.get(node.id) ||
-                                                ''
-                                            }
-                                            readOnly={
-                                                !(
-                                                    node.type === NodeType.CLI &&
-                                                    node.id === pendingApprovalNodeId
-                                                )
-                                            }
-                                            onChange={e => handleCommandChange(node.id, e.target.value)}
-                                        />
-                                    ) : (
-                                        <div
-                                            className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] tw-max-h-64 tw-overflow-auto tw-cursor-pointer"
-                                            onDoubleClick={() => {
-                                                const content = nodeResults.get(node.id) || ''
-                                                if (content.trim().length === 0) return
-                                                setPreviewNodeId(node.id)
-                                            }}
-                                            role="button"
-                                            title="Open Preview"
-                                        >
-                                            <Markdown
-                                                content={nodeResults.get(node.id) || ''}
-                                                className="tw-text-xs"
-                                            />
+
+                                    {node.id === pendingApprovalNodeId && node.type === NodeType.CLI && (
+                                        <div className="tw-mt-2 tw-space-y-2 tw-text-xs">
+                                            <div className="tw-grid tw-grid-cols-2 tw-gap-2">
+                                                <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
+                                                    <div className="tw-font-semibold">Mode</div>
+                                                    <div>
+                                                        {
+                                                            ((node as any).data?.mode ??
+                                                                'command') as string
+                                                        }
+                                                    </div>
+                                                </div>
+                                                <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
+                                                    <div className="tw-font-semibold">Shell</div>
+                                                    <div>
+                                                        {((node as any).data?.shell ?? 'bash') as string}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="tw-grid tw-grid-cols-2 tw-gap-2">
+                                                <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
+                                                    <div className="tw-font-semibold">Safety</div>
+                                                    <div>
+                                                        {
+                                                            ((node as any).data?.safetyLevel ??
+                                                                'safe') as string
+                                                        }
+                                                    </div>
+                                                </div>
+                                                <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
+                                                    <div className="tw-font-semibold">Stdin</div>
+                                                    <div>
+                                                        {
+                                                            ((node as any).data?.stdin?.source ??
+                                                                'none') as string
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
+                                                <div className="tw-font-semibold">Flags</div>
+                                                <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                                    {(() => {
+                                                        const d = (node as any).data?.flags || {}
+                                                        const enabled: string[] = []
+                                                        if (d.exitOnError) enabled.push('set -e')
+                                                        if (d.unsetVars) enabled.push('set -u')
+                                                        if (d.pipefail) enabled.push('set -o pipefail')
+                                                        if (
+                                                            d.noProfile !== false &&
+                                                            ((node as any).data?.shell ?? 'bash') ===
+                                                                'pwsh'
+                                                        )
+                                                            enabled.push('-NoProfile')
+                                                        if (
+                                                            d.nonInteractive !== false &&
+                                                            ((node as any).data?.shell ?? 'bash') ===
+                                                                'pwsh'
+                                                        )
+                                                            enabled.push('-NonInteractive')
+                                                        if (d.executionPolicyBypass)
+                                                            enabled.push('-ExecutionPolicy Bypass')
+                                                        return enabled.length > 0
+                                                            ? enabled.join(', ')
+                                                            : '—'
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {node.id === pendingApprovalNodeId && (
+                                        <div className="tw-flex tw-w-full tw-gap-2 tw-mt-2 tw-justify-center">
+                                            <Button
+                                                size="sm"
+                                                onClick={() =>
+                                                    onApprove(
+                                                        node.id,
+                                                        true,
+                                                        node.type === NodeType.CLI
+                                                            ? modifiedCommands.get(node.id)
+                                                            : undefined
+                                                    )
+                                                }
+                                                variant="secondary"
+                                                style={{
+                                                    backgroundColor: 'var(--vscode-testing-iconPassed)',
+                                                    color: 'var(--vscode-button-foreground)',
+                                                }}
+                                            >
+                                                Approve
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                onClick={() => onApprove(node.id, false)}
+                                                variant="secondary"
+                                                style={{
+                                                    backgroundColor: 'var(--vscode-charts-red)',
+                                                    color: 'var(--vscode-button-foreground)',
+                                                }}
+                                            >
+                                                Reject
+                                            </Button>
                                         </div>
                                     )}
                                 </div>
-
-                                {node.id === pendingApprovalNodeId && node.type === NodeType.CLI && (
-                                    <div className="tw-mt-2 tw-space-y-2 tw-text-xs">
-                                        <div className="tw-grid tw-grid-cols-2 tw-gap-2">
-                                            <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
-                                                <div className="tw-font-semibold">Mode</div>
-                                                <div>
-                                                    {((node as any).data?.mode ?? 'command') as string}
-                                                </div>
-                                            </div>
-                                            <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
-                                                <div className="tw-font-semibold">Shell</div>
-                                                <div>
-                                                    {((node as any).data?.shell ?? 'bash') as string}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="tw-grid tw-grid-cols-2 tw-gap-2">
-                                            <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
-                                                <div className="tw-font-semibold">Safety</div>
-                                                <div>
-                                                    {
-                                                        ((node as any).data?.safetyLevel ??
-                                                            'safe') as string
-                                                    }
-                                                </div>
-                                            </div>
-                                            <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
-                                                <div className="tw-font-semibold">Stdin</div>
-                                                <div>
-                                                    {
-                                                        ((node as any).data?.stdin?.source ??
-                                                            'none') as string
-                                                    }
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]">
-                                            <div className="tw-font-semibold">Flags</div>
-                                            <div className="tw-flex tw-flex-wrap tw-gap-2">
-                                                {(() => {
-                                                    const d = (node as any).data?.flags || {}
-                                                    const enabled: string[] = []
-                                                    if (d.exitOnError) enabled.push('set -e')
-                                                    if (d.unsetVars) enabled.push('set -u')
-                                                    if (d.pipefail) enabled.push('set -o pipefail')
-                                                    if (
-                                                        d.noProfile !== false &&
-                                                        ((node as any).data?.shell ?? 'bash') === 'pwsh'
-                                                    )
-                                                        enabled.push('-NoProfile')
-                                                    if (
-                                                        d.nonInteractive !== false &&
-                                                        ((node as any).data?.shell ?? 'bash') === 'pwsh'
-                                                    )
-                                                        enabled.push('-NonInteractive')
-                                                    if (d.executionPolicyBypass)
-                                                        enabled.push('-ExecutionPolicy Bypass')
-                                                    return enabled.length > 0 ? enabled.join(', ') : '—'
-                                                })()}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {node.id === pendingApprovalNodeId && (
-                                    <div className="tw-flex tw-w-full tw-gap-2 tw-mt-2 tw-justify-center">
-                                        <Button
-                                            size="sm"
-                                            onClick={() =>
-                                                onApprove(
-                                                    node.id,
-                                                    true,
-                                                    node.type === NodeType.CLI
-                                                        ? modifiedCommands.get(node.id)
-                                                        : undefined
-                                                )
-                                            }
-                                            variant="secondary"
-                                            style={{
-                                                backgroundColor: 'var(--vscode-testing-iconPassed)',
-                                                color: 'var(--vscode-button-foreground)',
-                                            }}
-                                        >
-                                            Approve
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            onClick={() => onApprove(node.id, false)}
-                                            variant="secondary"
-                                            style={{
-                                                backgroundColor: 'var(--vscode-charts-red)',
-                                                color: 'var(--vscode-button-foreground)',
-                                            }}
-                                        >
-                                            Reject
-                                        </Button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </AccordionContent>
-                </AccordionItem>
-            </Accordion>
-        </div>
-    )
+                            )}
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
+            </div>
+        )
+    }
 
     // Auto-scroll: on assistant content updates or when user resumes bottom, scroll to bottom for nodes not paused
     const assistantItemsTick = (() => {
         let count = 0
         for (const items of nodeAssistantContent.values()) {
-            count += Array.isArray(items) ? items.length : 0
+            if (!Array.isArray(items)) continue
+            for (const it of items as AssistantContentItem[]) {
+                switch (it.type) {
+                    case 'text':
+                        count += it.text.length
+                        break
+                    case 'thinking':
+                        count += it.thinking.length
+                        break
+                    default:
+                        count += 1
+                        break
+                }
+            }
         }
         return count
     })()
@@ -1027,40 +1151,50 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         </span>
                     )}
                 </div>
-                <div className="tw-space-y-2">
-                    {hasParallelAnalysis && parallelGroups.length > 0
-                        ? allItemsInOrder.map(item => {
-                              if (item.type === 'parallel') {
-                                  const stepLabel = getStepLabel(
-                                      item.parallelGroupIndex,
-                                      item.nodes.length
-                                  )
-                                  return (
-                                      <div
-                                          key={`step-${item.stepIndex}`}
-                                          className="tw-rounded tw-p-3 tw-space-y-2 tw-border tw-border-[var(--vscode-panel-border)]"
-                                      >
-                                          {stepLabel && (
-                                              <div className="tw-text-xs tw-text-[var(--vscode-sideBarTitle-foreground)] tw-font-medium tw-px-2 tw-py-1">
-                                                  {stepLabel}
-                                                  {getStepBranchSuffix(item.nodeIds)}
-                                              </div>
-                                          )}
-                                          {item.nodes.map(node => (
-                                              <div key={node.id}>{renderNodeItem(node, true)}</div>
-                                          ))}
-                                      </div>
-                                  )
-                              }
-                              return (
-                                  <div key={`node-${item.node.id}`}>
-                                      {renderNodeItem(item.node, false)}
-                                  </div>
-                              )
-                          })
-                        : filteredByActiveNodes.map(node => (
-                              <div key={node.id}>{renderNodeItem(node, false)}</div>
-                          ))}
+                <div
+                    className={clsx(
+                        'tw-space-y-2',
+                        fullscreenNodeId ? 'tw-h-full tw-flex tw-flex-col' : ''
+                    )}
+                >
+                    {fullscreenNodeId
+                        ? (() => {
+                              const node = sortedNodes.find(n => n.id === fullscreenNodeId)
+                              return node ? renderNodeItem(node, false) : null
+                          })()
+                        : hasParallelAnalysis && parallelGroups.length > 0
+                          ? allItemsInOrder.map(item => {
+                                if (item.type === 'parallel') {
+                                    const stepLabel = getStepLabel(
+                                        item.parallelGroupIndex,
+                                        item.nodes.length
+                                    )
+                                    return (
+                                        <div
+                                            key={`step-${item.stepIndex}`}
+                                            className="tw-rounded tw-p-3 tw-space-y-2 tw-border tw-border-[var(--vscode-panel-border)]"
+                                        >
+                                            {stepLabel && (
+                                                <div className="tw-text-xs tw-text-[var(--vscode-sideBarTitle-foreground)] tw-font-medium tw-px-2 tw-py-1">
+                                                    {stepLabel}
+                                                    {getStepBranchSuffix(item.nodeIds)}
+                                                </div>
+                                            )}
+                                            {item.nodes.map(node => (
+                                                <div key={node.id}>{renderNodeItem(node, true)}</div>
+                                            ))}
+                                        </div>
+                                    )
+                                }
+                                return (
+                                    <div key={`node-${item.node.id}`}>
+                                        {renderNodeItem(item.node, false)}
+                                    </div>
+                                )
+                            })
+                          : filteredByActiveNodes.map(node => (
+                                <div key={node.id}>{renderNodeItem(node, false)}</div>
+                            ))}
                 </div>
             </div>
             <CombinedPreviewEditorModal

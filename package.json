@@ -3,6 +3,7 @@
     "displayName": "NebulaFlow Workflow Editor",
     "version": "0.2.13",
     "publisher": "prinova",
+    "author": "prinova",
     "engines": {
         "vscode": ">=1.90.0"
     },
@@ -50,7 +51,38 @@
         "lint": "npm run biome",
         "build": "npm run -s typecheck && npm run -s build:webview && npm run -s build:ext",
         "package:vsix": "npm run -s build && rm -f dist/${npm_package_name}-${npm_package_version}.vsix && vsce package --out dist/${npm_package_name}-${npm_package_version}.vsix",
-        "test:subflows": "node tasks/integration/run-subflows-tests.mjs"
+        "test:subflows": "node tasks/integration/run-subflows-tests.mjs",
+        "build:electron": "tsc -p electron/tsconfig.json",
+        "start:electron": "npm run -s build:webview && npm run -s build:electron && electron dist/electron/electron/main/index.js",
+        "dev:electron": "tsc -p electron/tsconfig.json && electron dist/electron/electron/main/index.js",
+        "pack:electron": "npm run -s build:webview && npm run -s build:electron && electron-builder build",
+        "pack:win": "npm run -s build:webview && npm run -s build:electron && node scripts/pack-win.mjs",
+        "zip:win": "npm run pack:win && node scripts/zip-win.mjs"
+    },
+    "build": {
+        "appId": "com.prinova.nebulaflow",
+        "productName": "NebulaFlow",
+        "extraMetadata": {
+            "main": "dist/electron/electron/main/index.js"
+        },
+        "files": [
+            "dist/electron/**/*",
+            "dist/webviews/**/*",
+            "package.json",
+            "node_modules/@prinova/amp-sdk/**/*"
+        ],
+        "directories": {
+            "output": "dist/release"
+        },
+        "linux": {
+            "target": "AppImage"
+        },
+        "mac": {
+            "target": "dmg"
+        },
+        "win": {
+            "target": "nsis"
+        }
     },
     "dependencies": {
         "@prinova/amp-sdk": "file:vendor/amp-sdk/amp-sdk.tgz",
@@ -85,6 +117,10 @@
         "@types/vscode": "^1.90.0",
         "@vitejs/plugin-react": "^4.3.3",
         "@vscode/vsce": "^3.0.0",
+        "archiver": "^7.0.1",
+        "electron": "^39.2.3",
+        "electron-builder": "^26.0.12",
+        "electron-packager": "^17.1.2",
         "esbuild": "^0.21.5",
         "postcss": "^8.4.47",
         "postcss-nested": "^6.0.1",

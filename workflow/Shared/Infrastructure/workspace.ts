@@ -1,20 +1,29 @@
-import * as vscode from 'vscode'
+import type { IHostEnvironment } from '../Host/index'
 
-let activeWorkflowUri: vscode.Uri | undefined
+let activeWorkflowPath: string | undefined
+let host: IHostEnvironment | undefined
 
-export function setActiveWorkflowUri(uri: vscode.Uri | undefined): void {
-    activeWorkflowUri = uri
+export function initializeWorkspace(h: IHostEnvironment) {
+    host = h
+}
+
+export function setActiveWorkflowUri(uri: string | undefined): void {
+    activeWorkflowPath = uri
 }
 
 export function getActiveWorkspaceRoots(): string[] {
-    const allRoots = (vscode.workspace.workspaceFolders || []).map(f => f.uri.fsPath)
-    if (!activeWorkflowUri) {
+    if (!host) return []
+    const allRoots = [...host.workspace.workspaceFolders]
+    if (!activeWorkflowPath) {
         return allRoots
     }
-    const folder = vscode.workspace.getWorkspaceFolder(activeWorkflowUri)
-    if (!folder) {
+
+    // Find which root contains the active workflow
+    // We assume paths are consistent (e.g. absolute)
+    const preferred = allRoots.find(root => activeWorkflowPath!.startsWith(root))
+
+    if (!preferred) {
         return allRoots
     }
-    const preferred = folder.uri.fsPath
     return [preferred, ...allRoots.filter(r => r !== preferred)]
 }

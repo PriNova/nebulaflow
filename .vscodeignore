@@ -32,3 +32,10 @@ future-enhancements.md
 .nebulaflow/
 tasks/
 dist-tests
+.amp/
+dist/electron
+dist/release
+electron/
+.dev-notes.md
+.gitignore
+AGENTS.md
