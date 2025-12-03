@@ -1,5 +1,18 @@
 # Future Enhancements
 
+### Node Execution Pipeline – Follow-ups
+
+- Goal: Tighten contracts, typing, and observability around the shared node execution pipeline without changing current behavior.
+- What:
+  - Introduce a narrower `TemplateContext` (or similar) for `evalTemplate` in `workflow/WorkflowExecution/Core/execution/inputs.ts` so only the maps actually read by `replaceIndexedInputs` are required, avoiding broad `IndexedExecutionContext | Partial<IndexedExecutionContext>` casts.
+  - Document mode-specific guarantees for workflow vs single-node execution (e.g., presence of `cliMetadata`, scheduler usage, workspace context) near `NodeDispatch` and the LLM/CLI handlers to make responsibilities and differences between modes explicit.
+  - Consider routing all workspace-root concerns through explicit execution-context data rather than ad-hoc resolution in handlers if the architecture moves further toward data-first execution contexts.
+  - Clean up unused timeout constants and other dead symbols around LLM execution now that timeout policy lives solely inside `runLLMCore`, keeping the source of truth clear.
+  - Decide whether all user-facing templated strings and conditions should go through `evalTemplate` or whether some call sites intentionally use `replaceIndexedInputs` directly, and document that decision so future changes to templating semantics remain predictable.
+  - Optionally unify logging prefixes in LLM runners and attachment resolution so logs clearly identify node id, label/title, and mode across both workflow and single-node paths.
+  - Add focused unit tests for `runLLMCore`, `runCLICore`, and `evalTemplate` to lock in behavior for model resolution, approval flows, timeouts, exit-code handling, and template substitution.
+- Why: Keeps the core execution model explicit and type-safe, improves diagnosability in complex graphs, and makes future refactors to templating or execution contexts safer without increasing complexity.
+
 ### Tool Catalog Alignment – Alias and UI Polish
 
 ### LLM System Prompt Override – Follow-ups
@@ -81,6 +94,16 @@ Recommended improvements and optimizations for future implementation.
 - Why: Improves type safety, removes duplication, and polishes interaction edge cases without increasing complexity.
 - Priority: P2 (polish/typing)
 
+### Accumulator Node – Text Editing Follow-ups
+
+- Goal: Tighten typing, accessibility, and edge-case behavior for the new Accumulator text editing flow while keeping current UX and contracts.
+- What:
+  - Introduce a shared `EditEventDetail` type (and `WindowEventMap` entry) for the `nebula-edit-node` payload and reuse it across `useEditNode` and all node components (Accumulator, Text, LLM, CLI, Variable) to eliminate `any` in `dispatchEditEvent` and strengthen compile-time guarantees.
+  - Align Accumulator canvas accessibility with the Text node by adding `role`, `tabIndex`, and a keyboard-accessible trigger for editing (e.g., Enter/Space on a focused content area), so double‑click editing is discoverable without a mouse.
+  - Consider initializing the Accumulator sidebar modal draft from the textarea’s current value (or ensuring `onUpdate` is always synchronous locally) to avoid the rare stale-value case when users double‑click immediately after typing.
+  - Clean up the "Input Text" label/id pairing in [AccumulatorProperties.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/properties/AccumulatorProperties.tsx) so `htmlFor` and the textarea `id` match, improving a11y and aligning with the rest of the sidebar.
+- Why: Brings the new Accumulator editing path up to the same type-safety and a11y bar as existing nodes, and addresses minor edge cases called out in review without altering the current behavior.
+
 ### Webview Feature Slices & Aliases – Follow-ups
 
 - Goal: Small polish items to keep imports and aliases consistent and ergonomic.
@@ -140,6 +163,31 @@ Recommended improvements and optimizations for future implementation.
 - Why: Reduces duplication and ensures accessible, predictable keyboard navigation after scoping handlers to the canvas.
 - Priority: P2 (robustness/a11y)
 
+### LLM Assistant Result Dedup – Follow-ups
+
+- Goal: Make the Playbox assistant/result deduplication more robust and less coupled to backend string formatting while keeping current behavior.
+- What:
+  - Reconcile multi-block assistant messages by reconstructing the final assistant text from the timeline using the same rules as `run-llm.ts` (or, preferably, by using a structural identifier from the backend) so dedup works even when the last assistant turn is emitted as multiple text blocks.
+  - Relax equality checks beyond `.trim()` (for example, collapse internal whitespace and/or lowercase both sides) to tolerate harmless formatting differences between the timeline and Result string while still avoiding obvious false positives.
+  - Ensure the hidden assistant text is truly the last user-visible assistant element (not just the last `type === 'text'` item) so potential future non-text assistant blocks do not cause the wrong item to disappear.
+  - Consider passing a small piece of structural metadata (e.g., the assistant message id used for `finalText`) from the backend to the webview and using it to select which assistant item(s) should be hidden, reducing coupling to string assembly details.
+  - Add a tiny early-return guard for empty assistant timelines and keep `pairedMap` construction aligned with whatever filtering `getAssistantDisplayItems` applies if future versions also hide tool-related items.
+- Why: Improves UX predictability for multi-block or slightly reformatted assistant answers and keeps the dedup logic resilient to backend formatting changes without increasing complexity.
+
+### LLM Chat Continuation and Playbox Chat – Follow-ups
+
+- Goal: Tighten abort/draft semantics, history sizing, contracts, and accessibility for the new per-node LLM chat continuation feature without changing current behavior.
+- What:
+-   - Decide and document whether aborting a chat turn or full execution should preserve or clear `nodeThreadIDs` and Playbox `chatDrafts`; if a clean-slate UX is preferred for aborts, clear these maps on `execution_completed` when the final status is `interrupted`/`error`.
+-   - Make the assistant-vs-Result duplication filter conditional so non-chat LLM runs can still hide a duplicate last assistant text in the Playbox when there is only a single assistant message and no `threadID`, while chat-enabled nodes (with a `threadID`) always show the full assistant timeline.
+-   - Consider adding a soft cap (by message count or character length) or a manual "Clear chat history for this node" affordance to keep `nodeAssistantContent` and `nodeThreadIDs` from growing unbounded over very long chats.
+-   - Either remove the unused `mode` field from `LLMNodeChatCommand` and its guards, or start honoring `mode: 'workflow'` explicitly in the extension handler with a small inline comment explaining current support; keep the protocol and implementation aligned.
+-   - Add an explicit accessible label for the Playbox chat textarea (e.g., `aria-label` or `aria-labelledby` tied to the "Chat" heading) and consider allowing limited vertical growth or resize behavior so longer follow-ups remain readable while preserving the Ctrl/Cmd-Enter shortcut hint in the UI.
+-   - Optionally harden the `llm_node_chat` handler by re-checking `pauseRequested` immediately before invoking `executeLLMChatTurn`, treating a newly-set pause as an immediate interrupt for chat-only executions.
+-   - Add a focused integration or slice-level test that sends `llm_node_chat`, verifies the existing `threadID` is reused by the runner, and asserts that assistant content events arrive with the same `threadID` in the webview handler.
+-   - Keep external protocol docs and any client libraries in sync with the `llm_node_chat` shape, including guidance on `threadID` usage and (if retained) the `mode` field.
+- Why: Clarifies abort semantics for chat, prevents subtle state drift or unbounded growth for long-running conversations, aligns protocol contracts with the actual implementation, and raises the a11y/UX bar for the new Playbox chat experience without adding complexity.
+
 ### RightSidebar Event Containment – Hardening and Consistency
 
 - Goal: Standardize containment and add an extra safety stop.
@@ -178,14 +226,143 @@ Recommended improvements and optimizations for future implementation.
 
 - Goal: Prevent future drift in Bash detection and reduce runtime overhead in tool name normalization.
 - What:
-  - Extract a shared helper `isBash(name: string): boolean` used by both settings and runtime guards to centralize case/trim normalization.
-  - Remove unnecessary `as string` cast in normalization path in [llm-settings.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/llm-settings.ts#L12-L18) to tighten types.
-  - Cache SDK resolver availability from `safeRequireSDK()` in [llm-settings.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/llm-settings.ts#L21-L28) to avoid repeated try/catch on frequent normalization calls.
+- Extract a shared helper `isBash(name: string): boolean` used by both settings and runtime guards to centralize case/trim normalization.
+- Remove unnecessary `as string` cast in normalization path in [llm-settings.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/llm-settings.ts#L12-L18) to tighten types.
+- Cache SDK resolver availability from `safeRequireSDK()` in [llm-settings.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/llm-settings.ts#L21-L28) to avoid repeated try/catch on frequent normalization calls.
 - Why: A single source of truth for Bash checks prevents subtle mismatches; minor type cleanup improves safety; caching avoids unnecessary overhead during frequent operations.
 - Priority: P3 (code quality/robustness)
 
+### Loop/Parallel Visualization – Follow-ups
 
-### IF/ELSE Property Editor – Polish Items
+### LoopStart Loop Mode Sidebar – Follow-ups
+
+- Goal: Align LoopStart while-mode UX, typing, and accessibility with the underlying execution semantics without changing behavior.
+- What:
+-   - Clamp `maxSafeIterations` values to a minimum of 1 in the Loop Start sidebar (or otherwise reflect the effective default) so entering `0` or a negative number cannot silently resolve to the runtime fallback of 100 iterations.
+-   - Replace structural event typings like `{ target: { value: any } }` in `LoopStartProperties.tsx` with `React.ChangeEvent<HTMLInputElement>` (or a shared alias) to restore type safety and editor autocomplete for sidebar inputs.
+-   - Add `aria-pressed` (and, optionally, a small ARIA group) to the `Loop Mode` segmented buttons so screen readers recognize the active mode, and consider centralizing the `'while-variable-not-empty'` literal behind a shared constant/union reused by model, runner, and UI.
+- Why: Prevents surprising max-iteration behavior for users, strengthens type safety around sidebar inputs, and improves accessibility and maintainability of the LoopStart loop-mode UI while keeping runtime semantics unchanged.
+
+### Hybrid Loop-Aware Parallel Execution – Follow-ups
+
+- Goal: Document and harden hybrid segment dependency semantics and pause behavior without changing current runtime semantics.
+- What:
+-   - Add brief inline documentation in `runParallelSegment` describing how parents outside the segment but inside `nodeIndex` are treated as upstream dependencies, while parents outside `nodeIndex` are assumed satisfied via seeds, so future maintainers understand the intended behavior.
+-   - Introduce targeted tests for resume-from-node and resume-from-pause scenarios over graphs that combine loops and IF/ELSE nodes, ensuring children of out-of-subgraph parents still execute correctly under the hybrid scheduler.
+-   - Consider a small comment or docs note near the seeds/resume wiring in `workflow-session.ts` to keep the subgraph/seed assumptions discoverable.
+- - Why: Makes the hybrid scheduler’s dependency model explicit, reduces the risk of accidental regressions in complex resume flows, and keeps behavior around pruned subgraphs and seeds easier to reason about.
+-
++### Hybrid Loop-Aware Parallel Execution – Follow-ups
++
++- Goal: Document and harden hybrid segment dependency semantics and pause behavior without changing current runtime semantics.
++- What:
++   - Add brief inline documentation in `runParallelSegment` describing how parents outside the segment but inside `nodeIndex` are treated as upstream dependencies, while parents outside `nodeIndex` are assumed satisfied via seeds, so future maintainers understand the intended behavior.
++   - Introduce targeted tests for resume-from-node and resume-from-pause scenarios over graphs that combine loops and IF/ELSE nodes, ensuring children of out-of-subgraph parents still execute correctly under the hybrid scheduler.
++   - Consider a small comment or docs note near the seeds/resume wiring in `workflow-session.ts` to keep the subgraph/seed assumptions discoverable.
++- Why: Makes the hybrid scheduler’s dependency model explicit, reduces the risk of accidental regressions in complex resume flows, and keeps behavior around pruned subgraphs and seeds easier to reason about.
++
++- Goal: Improve pause granularity and observability for loop bodies over time while preserving current behavior.
++- What:
++   - Explore adding optional `pause` checks inside `runLoopBlock` so long-running loop bodies can honor pause requests between iterations, mirroring the `PausedError` pattern used by the parallel scheduler.
++   - Consider a low-noise debug or telemetry hook emitted when loop bodies are running under the sequential block runner to make pause limitations and performance characteristics more diagnosable.
++- Why: Keeps loop execution semantics explicit and makes it easier to evolve toward finer-grained pause points without surprising existing workflows.
++
++- Goal: Reduce small redundancies and duplication between `runParallelWholeGraph` and `runParallelSegment` while keeping the scheduler simple.
++- What:
++   - Optionally extract shared helpers for concurrency bookkeeping and inflight management so the global and per-segment schedulers share a single implementation of the core scheduling mechanics.
++   - Revisit how `loopInternalIds` are populated (single pass vs. per-loop extension) and clarify the intended strategy in code comments to avoid confusion for future maintainers.
++   - Add a brief note around `UNSUPPORTED_TYPES_V1` describing how and when to extend it if new node types require an explicit opt-out from parallel execution.
++- Why: Improves maintainability and readability of the parallel scheduler without altering current semantics or public APIs.
++
+
+- Goal: Harden loop-aware graph composition and sidebar behavior with tests and small UX improvements without changing the current runtime semantics.
+- What:
+-   - Add focused unit tests around `processGraphComposition` in `workflow/WorkflowExecution/Core/engine/node-sorting.ts` for loop-only graphs, mixed loop + independent components, and no-loop graphs to lock in the new display-mode semantics and guard against ordering regressions.
+-   - Clarify (in code comments or slice docs) that non-loop nodes appended after `processLoopWithCycles` are intended to represent disconnected components, and document the ordering trade-offs when edges exist between loop and non-loop segments.
+-   - Confirm with product/UX whether suppressing the Playbox parallel view whenever loop nodes are active is the desired long-term behavior or an interim safeguard, and, if kept, surface a small inline note or tooltip explaining why the parallel analysis is disabled for loop-containing workflows.
+-   - Optionally emit a low-noise debug or telemetry signal in the webview when `hasParallelAnalysis && hasLoopNodes` but the parallel view is suppressed, to make the gating behavior diagnosable in complex graphs.
+-   - Extract a small shared `isLoopNode` helper (e.g., in a shared models/util module) and replace repeated `node.type === NodeType.LOOP_START || node.type === NodeType.LOOP_END` predicates in `node-sorting.ts`, `parallel-analysis.ts`, and `RightSidebar.tsx` to keep loop-node detection centralized.
+- Why: Improves correctness confidence for loop-aware composition, makes the sidebar’s parallel/sequence trade-offs explicit to users, and reduces drift by centralizing loop-type checks, all without altering the existing execution behavior.
+
+### Clear Workflow Protocol and Title Reset – Follow-ups
+
+- Goal: Tighten typing and diagnostics around the new `clear_workflow` protocol message without changing behavior.
+- What:
+-   - Replace `as any` usage when posting `clear_workflow` from the webview with the shared, typed protocol contract (for example, using `WorkflowToExtension` or a dedicated `ClearWorkflowCommand` type) so message payloads stay aligned with the discriminated union.
+-   - Consider adding minimal dev-only logging or `console.error` when `vscodeAPI.postMessage` throws for Clear-related messages, keeping production behavior silent while making message pipeline failures diagnosable during development.
+-   - Optionally tidy the `isWorkflowToExtension` guard by grouping trivial `true` cases for commands like `reset_results` and `clear_workflow` for readability, while preserving existing semantics.
+- Why: Preserves the simple, additive `clear_workflow` behavior while improving type safety and debuggability of the clear path over time.
+
+### Sidebar Accordion Chevron Layout – Follow-ups
+
+### LLM Image Attachments – Follow-ups
+
+- Goal: Tighten shared contracts, path semantics, and UX around LLM image attachments without changing current behavior.
+- What:
+  - DRY up `AttachmentRef` and related attachment types by importing them from `workflow/Core/models.ts` wherever feasible in the webview (e.g., `workflow/Web/components/nodes/Nodes.tsx`, `LLM_Node.tsx`) to avoid duplicate type definitions drifting over time.
+  - Clarify and, if needed, harden `resolveAttachmentFilePath` semantics by using `node:path.resolve` plus a workspace-root prefix check so relative paths cannot escape the active workspace roots unintentionally; document how multi-root workspaces are handled.
+  - Consider expanding path resolution to probe all workspace roots when resolving relative attachment paths (or explicitly document that only the first root is used) so expectations are clear in multi-root setups.
+  - Add light validation and UX hints in the LLM sidebar properties panel for attachment inputs: basic URL validation (e.g., via `new URL()`), optional guidance on how relative file paths are resolved, and an accessible remove button with an `aria-label`.
+  - Decide whether `AttachmentRef.altText` should be wired through end-to-end (UI + runner + Amp integration if supported) or removed from the contract until a concrete consumer exists, to keep the model surface focused.
+  - Optionally consolidate repeated `@prinova/amp-sdk` `require` calls and gate new debug logging around attachment resolution and `runJSONL` image counts behind an existing debug/logging flag to keep production logs quiet.
+- Why: Keeps LLM image attachment behavior type-safe and maintainable, makes file/URL semantics and workspace scoping explicit, and polishes the sidebar UX and logging without altering the current feature.
+
+
+- Goal: Consolidate sidebar accordion trigger styling and lock in the left-aligned chevron layout over time.
+- What:
+-   - Extract a shared `SIDEBAR_ACCORDION_TRIGGER_CLASSES` (or similar) helper used by both `WorkflowSidebar` and `RightSidebar` so the Tailwind + `.sidebar-accordion-trigger` combination lives in one place, reducing duplication if more sidebars adopt the pattern.
+-   - Add or update visual/screenshot regression coverage for left and right sidebar accordions (library sections, assistant items, per-node results) to assert that chevrons remain visually on the left and headers preserve current spacing.
+-   - Document the UX decision that sidebars use the left-chevron pattern via `.sidebar-accordion-trigger`, while non-sidebar accordions keep the default layout, so future contributors don’t mix patterns inadvertently.
+- Why: Keeps the new sidebar chevron layout maintainable and explicit, reduces styling drift across panels, and makes the UX convention clear without changing current behavior.
+
+### Loop Start While-Variable Mode – Follow-ups
+
+- Goal: Clarify and harden behavior for the new "while variable is not empty" loop mode without changing current semantics.
+- What:
+-   - Decide whether `shouldContinueLoop` in `workflow/WorkflowExecution/Core/execution/task-list.ts` should remain string-only or be broadened to treat other value shapes (arrays/objects) as non-empty collections, and document the chosen behavior clearly in code and/or UI.
+-   - Refine `maxSafeIterations` handling by validating or clamping non-positive values instead of silently treating `0`/negative numbers as the default, and surface a brief explanation in the Loop Start properties UI so users understand the safety cap.
+-   - Document in the Loop Start properties panel and/or inline help that `iterations-override` inputs only apply when `loopMode === 'fixed'` and are ignored for `while-variable-not-empty`, avoiding confusion when users wire overrides into while-mode loops.
+-   - Extend the Loop Start property UI to expose `loopMode` selection, `collectionVariable` input, and a numeric `maxSafeIterations` field with a short description of its safety role, so the new behavior is discoverable without external tooling.
+-   - Optionally adjust naming and docs (e.g., `collectionVariable` vs a more precise name like `conditionVariable`, file name for `task-list.ts`, safety-cap comments near `runLoopBlock`) and consider a low-noise telemetry/log hook when loops terminate due to `maxSafeIterations` to aid future debugging.
+- Why: Keeps the new while-style loop mode explicit, predictable, and diagnosable as the engine evolves, while avoiding surprises around type assumptions, safety caps, and when overrides do or do not apply.
+
+### Loop Nodes – Execution Semantics and Observability Follow-ups
+
+- Goal: Clarify loop iteration semantics and make the sequential fallback path observable without changing the current behavior.
+- What:
+- Document that any active Loop Start/End node currently causes the engine to fall back to a sequential executor for the entire graph, and that parallel-specific options (like `concurrency` and `perType`) are effectively ignored in this mode.
+- Emit a low-noise debug or telemetry signal when the scheduler detects loop nodes and chooses sequential fallback so performance characteristics are diagnosable in complex workflows.
+- Align or explicitly document the relationship between static iteration overrides used at graph-composition time (via `getLoopIterations`) and runtime overrides consumed by `executeLoopStartNode`, especially when the override source is dynamic rather than a simple Text node.
+- Decide and document whether iteration overrides are intended to be static (node content) or dynamic (runtime output), and adjust validation or configuration constraints accordingly.
+- Consider extracting the embedded `executeWorkflowSequential` implementation in `parallel-scheduler.ts` into a dedicated module for reuse and to avoid future duplication if additional entrypoints require sequential execution.
+  - Clarify and, if needed, adjust semantics for nested loops so inner `LOOP_START` nodes either drive their own `maxIterations` via a nested `runLoopBlock` or are explicitly unsupported and rejected at validation time; add targeted nested-loop tests to lock in the chosen policy.
+  - Decide whether IF/ELSE decisions inside loops should be re-evaluated on every iteration or remain "sticky" via the global `disabledNodes` set, then document and test that behavior with a loop containing an IF/ELSE branch.
+  - Confirm the intended behavior for `onError: 'continue-subgraph'` when errors occur inside loop bodies or at loop ends (stop further iterations vs. continue remaining iterations), and add a small test matrix to keep future changes aligned with that policy.
+  - Why: Makes loop behavior easier to reason about for users wiring more dynamic overrides, improves diagnosability when sequential fallback affects performance, and reduces long-term maintenance risk around the sequential executor and complex loop shapes (nested loops, branching, and error handling).
+  
+  ### Loop Nodes – Library Category Mapping and Handle Semantics
+
+### Loop Iteration Override – Follow-ups
+
+- Goal: Keep loop iteration override behavior maintainable and explicit across runtime, scheduler, and UI.
+- What:
+   - Extract a small shared helper (or tightly documented algorithm) for parsing and clamping iteration override values so the loop runner, scheduler, and webview all rely on the same rules instead of reimplementing them in three places.
+   - Decide and document clear semantics for multiple `iterations-override` edges (for example, enforcing a single incoming override edge vs. a "first valid override wins" rule) and surface a gentle UI/validation hint if overrides are miswired.
+   - Clean up helper signatures and typing around iteration overrides (e.g., remove unused parameters like `baseIterations` when unused, align `string[] | undefined` typing, and drop `any` where `overrideIterations` is already in the Loop Start data type) to reduce future drift and improve readability.
+   - Optionally add lightweight logging or a UI hint when an invalid override value is ignored (non-numeric, < 1, or out of range) so users can understand why their override is not taking effect.
+   - Centralize iteration min/max constants (e.g., 1 and 100) in a shared location so Web, runtime, and static analysis all respect the same bounds without risk of drift.
+ - Why: Reduces duplication and ambiguity around iteration overrides, keeps loop behavior predictable as the feature evolves, and makes misconfigurations easier to diagnose without changing current semantics.
+
+ 
+ - Goal: Keep loop node UI categorization and handle semantics maintainable as new loop-related handles or node variants are introduced.
+ - What:
+   - Centralize node-type-to-category label mapping for the library (including Loop Start/End) in a small shared helper or config object, re-used by `WorkflowSidebar` and any future UIs that group nodes by category.
+   - Document that all non-`iterations-override` handles on Loop Start are currently treated as main loop body inputs, and revisit the filtering strategy if additional specialized handles (e.g., accumulator feeds) are added in the future.
+   - Optionally add lightweight validation to guard against malformed or unexpected handles on Loop Start nodes, so miswired graphs fail early with clear messages instead of silently treating unknown handles as main inputs.
+ - Why: Keeps the loop UI and runner behavior explicit and resilient to future node/handle additions without introducing extra complexity today.
+ 
+ 
+ ### IF/ELSE Property Editor – Polish Items
 
 - Goal: Refine the new condition editor UX and typing without changing behavior
 - What:
@@ -268,6 +445,17 @@ Recommended improvements and optimizations for future implementation.
 ### RightSidebar Auto-Follow – Behavior, Tests, and UX Follow-ups
 
 ### LLM Right Sidebar Assistant UX – Follow-ups
+
+### LLM Assistant Auto-Scroll – Follow-ups
+
+- Goal: Make LLM assistant auto-scroll behavior fully robust and predictable across programmatic and user-driven scrolls.
+- What:
+  - Mark all code-initiated scrolls on the assistant container (including the ref callback that runs on mount/resizes) in `programmaticScrollNodes` before setting `scrollTop`, so `handleAssistantScroll` consistently ignores those events and only treats genuine user scrolls as intent to pause or resume auto-follow.
+  - Add a small cleanup strategy for `programmaticScrollNodes` to avoid rare cases where a programmatic `scrollTop` assignment does not emit a `scroll` event (for example, by only adding the id when the offset changes, or by clearing stale ids on a short timeout or per-tick basis).
+  - Re-verify the fullscreen layout choice (`tw-max-h-[60vh]` on the inner assistant container) on small-height viewports and refine the max-height if needed to minimize double-scroll scenarios while keeping the scrollbar visually inside the LLM node accordion item.
+  - Optionally tighten inline comments around the fullscreen assistant container to call out that auto-scroll logic assumes this inner element is the scroll owner in both normal and fullscreen modes.
+- Why: Preserves the simple "auto-follow until I scroll" mental model, avoids subtle ignored-first-scroll edge cases, and keeps fullscreen layout/scrollbar ownership clear and maintainable without changing current behavior.
+
 
 - Goal: Capture medium/low-priority polish items for the new LLM assistant UX and related SDK/Electron changes.
 - What:

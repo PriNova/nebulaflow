@@ -8,6 +8,32 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Goal: LoopStart Sidebar – Loop Mode and While-Variable Configuration
+
+- Added: Surfaced the new LoopStart `loopMode` data model in the webview sidebar via a two-button toggle ("Fixed iterations" vs "While variable not empty") and while-mode-only inputs for `collectionVariable` and optional `maxSafeIterations`, wired through `LoopStartProperties` so legacy workflows default to fixed loops while advanced behavior is opt-in and data-driven.
+- Why: Makes the existing while-variable-not-empty execution semantics discoverable and configurable from the properties panel without changing default behavior or core engine contracts.
+
+### Goal: Node Execution Pipeline – Shared LLM/CLI Cores and Template Evaluation
+
+- Changed: Centralized LLM execution into `runLLMCore` in `workflow/WorkflowExecution/Application/node-runners/run-llm.ts`, reusing the same Amp SDK integration, attachment resolution, approval loop, and timeout/abort handling for both workflow and single-node runs to keep behavior consistent while simplifying handlers.
+- Changed: Centralized Shell/CLI execution into `runCLICore` in `workflow/WorkflowExecution/Application/node-runners/run-cli.ts`, so workflows and single-node runs share script/command execution, stdin/env wiring, safety checks, and exit-code handling, with workflow adapters explicitly recording `cliMetadata` for IF/ELSE branching.
+- Changed: Introduced `evalTemplate` in `workflow/WorkflowExecution/Core/execution/inputs.ts` and routed most template substitutions (accumulator/variable, input, preview, subflow, and workflow handlers) through this helper to create a single choke point for future templating semantics while preserving existing `replaceIndexedInputs` behavior.
+- Changed: Simplified single-node LLM and CLI handlers in `workflow/WorkflowExecution/Application/handlers/ExecuteSingleNode.ts` and workflow handlers in `ExecuteWorkflow.ts` and subflow runners to delegate to the shared cores, keeping orchestrators focused on routing and context while core functions remain pure aside from explicit I/O boundaries.
+- Changed: Enriched LLM error messages in the shared core so non-abort failures include node id, optional label/title, and mode (`workflow` vs `single-node`), making multi-node failures easier to diagnose without altering control flow.
+- Why: Produces a more maintainable, testable, and extensible node execution model with deterministic behavior across modes, clearer separation between orchestration and core execution logic, and a single entry point for future templating and error-reporting improvements.
+
+### Goal: Hybrid Loop-Aware Parallel Execution – Critical Fixes and Tests
+
+- Changed: Updated the hybrid parallel scheduler in `workflow/WorkflowExecution/Core/engine/parallel-scheduler.ts` so seeded IF/ELSE decisions around loops correctly adjust conditional placeholders and ensure chosen-branch targets become runnable, eliminating deadlocks such as "Parallel segment scheduler cannot proceed" on pause/resume.
+- Changed: Reintroduced a sequential fallback path for loop-containing workflows behind the `NEBULAFLOW_DISABLE_HYBRID_PARALLEL` environment flag via `hasUnsupportedNodesForParallel` in `workflow/WorkflowExecution/Core/execution/graph.ts`, allowing looped graphs to opt out of the hybrid executor without any public API changes.
+- Added: New integration-style tests in `tasks/subflow-integration/tests/subflows.spec.ts` that exercise seeded IF/ELSE decisions before, inside, and after loops under the hybrid executor to validate pause/resume behavior and guard against regressions.
+
+### Goal: Loop/Parallel Visualization – Canvas and Playbox Consistency
+
+- Changed: Updated `processGraphComposition` in `workflow/WorkflowExecution/Core/engine/node-sorting.ts` so display-mode ordering preserves loop-aware sequencing while appending a topological ordering of any remaining non-loop components, ensuring non-loop nodes stay visible even when loop nodes are present.
+- Changed: Adjusted the RightSidebar Playbox in `workflow/Web/components/sidebar/RightSidebar.tsx` to fall back to a simple sequential list whenever active loop nodes are detected, avoiding the prior state where loop nodes disappeared from the parallel analysis view.
+- Changed: Aligned `AGENTS.md` with the Biome-based workflow by switching the documented type-check command from `npm run typecheck` to `npm run check`, reducing confusion with other docs and scripts.
+
 ### Goal: Dual Host Support – VS Code Extension + Electron App
 
 - Added: Introduced a shared host abstraction (`IHostEnvironment` and `IMessagePort`) and refactored key slices (filesystem, workspace, workflow execution/persistence) to depend on this interface via dependency injection so core logic runs unchanged in both VS Code and Electron.
@@ -57,6 +83,26 @@ All notable changes to this project will be documented in this file.
 - Fixed: The Clear/Delete action is now wired through a combined `clearWorkflow` helper in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx) that resets both execution state (nodes/edges and internals) and all stored results, so no stale execution state survives a clear.
 - Fixed: Workflow saves in [workflowActions.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/hooks/workflowActions.ts) now only persist state when there is at least one node, and they filter `nodeResults` to existing node IDs, preventing results from deleted or non-existent nodes from being written.
 - Why: Ensures that clearing/deleting a workflow truly resets execution state end-to-end so subsequent saves never contain stale node results, while keeping the workflow state DTO contracts unchanged.
+
+### Goal: Clear Workflow Resets Active URI and Panel Title
+
+- Added: Extended the shared workflow protocol in [Protocol.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/Contracts/Protocol.ts) with a `clear_workflow` command and updated [guards.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/Contracts/guards.ts) so the extension recognizes clear requests from the webview.
+- Added: Updated [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx) so the Clear action still resets results and execution state and now also posts a `clear_workflow` message to the extension, keeping canvas behavior unchanged while informing the host.
+- Added: Registered a `clear_workflow` handler in the WorkflowPersistence router in [register.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/WorkflowPersistence/Application/register.ts) that clears the active workflow URI via `setActiveWorkflowUri(undefined)` and calls `updatePanelTitle(undefined)`, causing `formatPanelTitle` to render `NebulaFlow — Untitled` for cleared canvases.
+- Why: Ensures that clearing a workflow canvas also returns the extension to a “new, unsaved workflow” state with a consistent `NebulaFlow — Untitled` panel title, aligning panel identity with the cleared graph.
+
+### Goal: Accumulator Node – Double‑Click Text Editing on Canvas and Sidebar
+
+### Goal: Sidebar Accordion Chevron Layout – Left/Right Sidebars
+
+- Changed: Introduced a sidebar-specific accordion helper class `.sidebar-accordion-trigger` in `workflow/Web/ui/shadcn/ui/accordion.module.css` that flips the visual order of shadcn `AccordionTrigger` contents so the chevron appears at the left edge while preserving underlying accordion behavior and DOM order.
+- Changed: Updated the left workflow library sidebar in `workflow/Web/components/sidebar/WorkflowSidebar.tsx` to apply a shared `accordionTriggerNode` class (Tailwind + `styles['sidebar-accordion-trigger']`) to all library `AccordionTrigger`s (Agents, Text, Shell, Preview, Conditionals, Loops, Subflows, Custom Nodes), while keeping the Property Editor as a plain header using only `styles['accordion-trigger']` so it has no chevron.
+- Changed: Updated the right execution/assistant sidebar in `workflow/Web/components/sidebar/RightSidebar.tsx` to import the same accordion CSS module and use `clsx(..., styles['sidebar-accordion-trigger'])` on assistant content and per-node results `AccordionTrigger`s, aligning chevron placement and header layout with the left sidebar without touching data flow or semantics.
+- Why: Makes sidebar accordions visually consistent and easier to scan by placing chevrons on the left for all expandable sections while keeping the Property Editor as a non-toggleable header, and does so via an opt-in helper that leaves non-sidebar accordions unaffected.
+
+- Added: Enabled double‑click on the Accumulator node body to open the shared [TextEditorModal.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/modals/TextEditorModal.tsx) via the existing `nebula-edit-node` event and `useEditNode` effect, using local `draft` state wired to `data.content` and `data.isEditing` so canvas edits follow the same lifecycle as Text nodes.
+- Added: Mirrored the Input node sidebar behavior in [AccumulatorProperties.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/properties/AccumulatorProperties.tsx) so double‑clicking the "Input Text" textarea opens a focused `TextEditorModal` backed by `inputDraft`, while preserving inline textarea editing through `onUpdate` for quick changes.
+- Why: Brings Accumulator nodes to parity with existing Text/Input nodes for rich text editing, keeps all editing flows on top of the shared modal and `nebula-edit-node` contracts, and avoids new API surfaces by routing changes through the existing webview slice.
 
 ### Changed
 
@@ -210,6 +256,67 @@ Why: Aligns with Vertical Slice Architecture, reduces duplicate handling and dri
 - What: Updated the RightSidebar node accordion to automatically expand and keep in view the single currently executing node when `autoFollowActiveNode` is true, while preserving pending-approval focus and allowing users to override the open panel manually; auto-follow is reset for each new `executionRunId`. See [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx).
 - What: Refreshed the vendored Amp SDK bundle in [amp-sdk.tgz](file:///home/prinova/CodeProjects/nebulaflow/vendor/amp-sdk/amp-sdk.tgz) so NebulaFlow picks up the latest SDK behavior (including recent tool-layer improvements) without changing the existing NebulaFlow API surface.
 - Why: Keeps the sidebar aligned with the engine’s current focus during execution runs for easier inspection, while giving users an opt-out via manual accordion interaction and keeping the SDK dependency current.
+
+### Goal: LLM Node Chat Continuation and Playbox Chat Drafts
+
+- Added: Extended the workflow protocol and extension session handler with an `llm_node_chat` command that spins a mini LLM execution for a single node, reusing the existing Amp-backed `runLLMCore` runner, approval flow, and abort handling while threading an existing `threadID` through to the SDK so follow-up messages append to the same conversation.
+- Added: Tracked per-node LLM `threadID` and assistant content snapshots in the webview (Flow/messageHandling/RightSidebar slices) and surfaced a lightweight chat panel in the Right Sidebar Playbox that lets users send follow-up messages for nodes with an active thread, including Ctrl/Cmd-Enter shortcut and disabled states while paused, executing, or awaiting approval.
+- Fixed: Scoped Playbox chat drafts to the current execution run and workflow/results state by resetting the per-node `chatDrafts` map when `executionRunId` changes and when `nodeThreadIDs` are cleared via `resetResultsState`, preventing stale unsent text from leaking across runs or after clearing/deleting a workflow.
+- Changed: Simplified the LLM assistant history renderer in the Right Sidebar to always show the full Amp assistant timeline (including the last assistant text that may also appear in the Result panel) and refreshed the vendored `@prinova/amp-sdk` bundle so NebulaFlow consumes the SDK version that correctly returns the latest assistant turn for thread continuations.
+- Why: Enables per-node conversational refinement on top of existing LLM nodes without altering workflow contracts, while keeping chat drafts and assistant history lifecycle explicit and predictable across workflow runs and resets.
+
+### Goal: LLM Assistant Fullscreen Auto-Scroll Consistency
+ - Fixed: Auto-scrolling now re-applies when the assistant pane mounts or resizes (including fullscreen toggles) as long as auto-follow is not paused, so the view stays pinned to the latest assistant output without user intervention.
+ 
+### Goal: LLM Assistant Result Dedup in RightSidebar Playbox
+
+- Fixed: Updated the RightSidebar LLM assistant renderer to use a pure `getAssistantDisplayItems` helper that, after execution completes, hides the last assistant `text` item from the Playbox timeline when its trimmed content exactly matches the node’s current Result string, so the latest answer appears only in the Result block instead of being duplicated.
+- Why: Keeps the Playbox assistant history readable and focused by avoiding redundant display of the most recent answer, while preserving full assistant timelines during streaming and across subsequent chat turns.
+
+ ### Goal: Loop Start While-Variable Mode and Dynamic Scheduler Checks
+
+- Fixed: Ensured the LLM assistant auto-scroll logic uses the same inner scroll container in both normal and fullscreen modes, keeping the scrollbar visually inside the LLM node accordion item and reliably following new assistant/tool output when auto-follow is active.
+- Fixed: Tracked programmatic scrolls via a per-node `programmaticScrollNodes` ref so auto-scroll no longer pauses itself in response to code-initiated scrolls, preserving the existing "pause on user scroll" semantics.
+- Fixed: Auto-scrolling now re-applies when the assistant pane mounts or resizes (including fullscreen toggles) as long as auto-follow is not paused, so the view stays pinned to the latest assistant output without user intervention.
+
+### Goal: Loop Start While-Variable Mode and Dynamic Scheduler Checks
+
+- Added: Extended the Loop Start node model and webview node type with optional `loopMode`, `collectionVariable`, and `maxSafeIterations` fields so existing fixed-count loops remain compatible while enabling a new "while variable is not empty" mode.
+- Changed: Updated `executeLoopStartNode` in `workflow/WorkflowExecution/Application/node-runners/run-loop-start.ts` to branch on `loopMode`, preserve legacy fixed-iteration behavior (including `iterations-override` handling), and use a small `shouldContinueLoop` helper to decide whether the watched variable is considered non-empty in while mode.
+- Changed: Adjusted the sequential/parallel scheduler in `workflow/WorkflowExecution/Core/engine/parallel-scheduler.ts` to consult `loopStates.maxIterations` on each iteration so while-mode loops can shorten their run when the watched variable becomes empty, while still enforcing an upper-bound safety cap to prevent runaway iterations.
+- Added: Introduced `shouldContinueLoop` in `workflow/WorkflowExecution/Core/execution/task-list.ts` as a tiny, pure helper to encapsulate the "non-empty" check for the watched variable, keeping the loop continuation decision testable and easy to evolve.
+- Why: Allows workflows to express loops that terminate based on live variable state instead of a fixed count, while keeping fixed loops backward compatible and guarding against infinite or misconfigured loops through a clear safety cap and dynamic scheduler checks.
+
+### Goal: Loop Nodes – UI Exposure and Sequential Execution Fallback
+
+### Goal: Loop Start Iteration Override via Text Node
+
+- Added: Enabled Loop Start nodes to accept an iteration override from a connected Text (Input) node wired into the `iterations-override` handle, so workflows can dynamically cap loop iterations without editing node properties.
+- Changed: Updated the loop runner and scheduler (`executeLoopStartNode` and `getLoopIterations`) to compute an effective iteration count from the override, restricted to Text nodes only, and clamp it to a safe 1–100 range that matches the Loop sidebar controls.
+- Added: Extended the webview state transformer and Loop Start node UI so the canvas reflects the effective iteration count, highlights when an override is active, and keeps engine/runtime and editor semantics aligned on the same override rules.
+
+
+- Added: Surfaced Loop Start and Loop End nodes in the WorkflowSidebar library under a dedicated "Loops" section and category label so loop constructs are discoverable alongside existing Agent, Text, Shell, Conditional, and Subflow nodes.
+- Added: Implemented dedicated loop node runners (`executeLoopStartNode`, `executeLoopEndNode`) and wired them into both the main workflow executor and the subflow executor so Loop Start/End participate in the standard node-dispatch pipeline.
+- Changed: Updated the v1 parallel scheduler to detect active loop nodes and transparently fall back to a sequential execution path that reuses the existing `ParallelExecutionContext`, graph-composition order, and node status/error semantics, ensuring loop workflows run reliably even when true parallelism is disabled.
+- Changed: Refreshed the vendored Amp SDK bundle in `vendor/amp-sdk/amp-sdk.tgz` to stay aligned with the SDK version expected by the updated workflow engine and loop execution path.
+- Why: Introduces first-class loop support with explicit UI affordances and simple, predictable runtime behavior by routing loop-containing workflows through a sequential executor while preserving the existing parallel engine for graphs without loops.
+
+### Goal: Runtime Loop Iteration Overrides and Sequential Loop Execution
+
+- Changed: Relaxed the Loop Start `iterations-override` handle so any upstream node can provide a runtime iterations value via combined parent outputs, with digits-only parsing, 1–100 clamping, and "first valid override wins" semantics shared between webview and engine.
+- Changed: Reworked the sequential workflow executor to use the non-unrolled graph, discover loop internals via exported helpers from `node-sorting.ts`, and drive each loop with an explicit `runLoopBlock` that iterates `LoopStart → body → LoopEnd` while preserving existing IF/ELSE branching, status reporting, and error-handling behavior.
+- Changed: Updated the webview node-state transform and Loop Start UI so the canvas reflects the effective iteration count (runtime override → static Text content → configured `iterations`) and flags overridden loops via `overrideIterations`, keeping execution and display semantics aligned.
+- Why: Enables runtime-driven iteration counts for loops and makes loop execution deterministic and observable in the sequential scheduler without changing the surrounding workflow contracts.
+
+### Goal: LLM Image Attachments for Agent Nodes
+
+- What:
+  - Added `AttachmentKind`, `AttachmentRef`, and optional `attachments?: AttachmentRef[]` to the core LLM node model in `workflow/Core/models.ts`, treating image attachments as first-class workflow data.
+  - Extended the webview LLM node types and sidebar properties panel so users can add/remove image file paths and URLs on an Agent node; these are stored as attachments on the node data.
+  - Introduced `resolveLLMAttachmentsToImages` and `resolveAttachmentFilePath` in `workflow/WorkflowExecution/Application/node-runners/run-llm.ts` to turn attachments into Amp SDK `imageFromFile` / `imageFromURL` inputs with clear error messages and workspace-root-aware path handling.
+  - Updated both the main workflow runner (`executeLLMNode`) and the single-node handler (`executeSingleLLMNode`) to resolve attachments and pass `images` into `amp.runJSONL({ prompt, images })`, so vision prompts work consistently in full runs and single-node runs.
+- Why: Enables NebulaFlow LLM nodes to send prompts with associated images through the Amp SDK in both execution modes, using a shared, data-first attachment model and explicit path resolution so image inputs are debuggable and maintainable.
 
 ## [NebulaFlow 0.2.13]
 

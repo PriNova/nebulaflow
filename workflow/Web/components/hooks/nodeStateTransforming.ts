@@ -41,6 +41,59 @@ function computeHandleEdgeMap(
     return map
 }
 
+function computeLoopIterationOverride(
+    nodeId: string,
+    baseIterations: number,
+    nodes: WorkflowNodes[],
+    edges: FlowEdge[],
+    nodeResults: Map<string, string>
+): { active: true; effectiveIterations: number } | { active: false } {
+    const overrideEdges = edges.filter(
+        e => e.target === nodeId && (e as any).targetHandle === 'iterations-override'
+    )
+
+    if (overrideEdges.length === 0) return { active: false }
+
+    const nodeById = new Map(nodes.map(node => [node.id, node]))
+
+    const parseOverride = (raw: string | undefined): number | undefined => {
+        const min = 1
+        const max = 100
+
+        const trimmed = raw?.trim() ?? ''
+        if (!/^\d+$/.test(trimmed)) {
+            return undefined
+        }
+
+        const parsed = Number.parseInt(trimmed, 10)
+        if (Number.isNaN(parsed)) {
+            return undefined
+        }
+
+        return Math.min(max, Math.max(min, parsed))
+    }
+
+    for (const edge of overrideEdges) {
+        const sourceNode = nodeById.get(edge.source)
+
+        const runtimeRaw = nodeResults.get(edge.source)
+        const runtimeParsed = parseOverride(runtimeRaw)
+        if (runtimeParsed !== undefined) {
+            return { active: true, effectiveIterations: runtimeParsed }
+        }
+
+        if (sourceNode?.type === NodeType.INPUT) {
+            const staticRaw = (sourceNode as any).data?.content as string | undefined
+            const staticParsed = parseOverride(staticRaw)
+            if (staticParsed !== undefined) {
+                return { active: true, effectiveIterations: staticParsed }
+            }
+        }
+    }
+
+    return { active: false }
+}
+
 export const useNodeStateTransformation = (
     nodes: WorkflowNodes[],
     selectedNodes: WorkflowNodes[],
@@ -91,6 +144,30 @@ export const useNodeStateTransformation = (
                 ? computeHandleEdgeMap(nodeId, edges, nodes)
                 : undefined
 
+            let extraLoopFields: Record<string, unknown> = {}
+
+            if (node.type === NodeType.LOOP_START) {
+                const baseIterations = ((node.data as any).iterations ?? 1) as number
+                const overrideInfo = computeLoopIterationOverride(
+                    nodeId,
+                    baseIterations,
+                    nodes,
+                    edges,
+                    nodeResults
+                )
+
+                if (overrideInfo.active) {
+                    extraLoopFields = {
+                        iterations: overrideInfo.effectiveIterations,
+                        overrideIterations: true,
+                    }
+                } else {
+                    extraLoopFields = {
+                        overrideIterations: false,
+                    }
+                }
+            }
+
             return {
                 ...node,
                 selected: nodeIsSelected,
@@ -104,6 +181,7 @@ export const useNodeStateTransformation = (
                     active: nodeIsActive,
                     tokenCount,
                     ...(fanInEnabled ? { inputPortCount, inputEdgeIdByHandle } : {}),
+                    ...extraLoopFields,
                 },
             }
         })

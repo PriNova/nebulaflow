@@ -235,6 +235,22 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
                 return false
             return true
         }
+        case 'llm_node_chat': {
+            const data = msg.data
+            if (!isObject(data)) return false
+            if (!('node' in data) || !isWorkflowNodeDTO((data as any).node)) return false
+            if (!isString((data as any).threadID)) return false
+            if (!isString((data as any).message)) return false
+            if (
+                'mode' in data &&
+                (data as any).mode !== undefined &&
+                (data as any).mode !== 'single-node' &&
+                (data as any).mode !== 'workflow'
+            ) {
+                return false
+            }
+            return true
+        }
         case 'node_approved':
             return (
                 isObject(msg.data) &&
@@ -252,6 +268,8 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
         case 'paste_selection':
             return true
         case 'reset_results':
+            return true
+        case 'clear_workflow':
             return true
         default:
             return false

@@ -1,6 +1,8 @@
+import { TextEditorModal } from '@modals/TextEditorModal'
 import RunFromHereButton from '@shared/RunFromHereButton'
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react'
-import { useEffect } from 'react'
+import type React from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { FanInTargetHandles } from './FanInTargetHandles'
 import {
     type BaseNodeData,
@@ -17,12 +19,38 @@ export type AccumulatorNode = Omit<WorkflowNode, 'data'> & {
 }
 
 export const AccumulatorNode: React.FC<BaseNodeProps> = ({ id, data, selected }) => {
+    const [draft, setDraft] = useState('')
     const updateNodeInternals = useUpdateNodeInternals()
+
+    const dispatchEditEvent = useCallback(
+        (action: 'start' | 'commit' | 'cancel', payload?: any) => {
+            const detail: any = { id, action }
+            if (payload?.content !== undefined) {
+                detail.content = payload.content
+            }
+            window.dispatchEvent(
+                new CustomEvent('nebula-edit-node', {
+                    detail,
+                })
+            )
+        },
+        [id]
+    )
+
+    useEffect(() => {
+        if (data.isEditing) {
+            setDraft(data.content || '')
+        }
+    }, [data.isEditing, data.content])
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: we must refresh handles when the count changes
     useEffect(() => {
         if (data?.fanInEnabled) updateNodeInternals(id)
     }, [id, data?.fanInEnabled, data?.inputPortCount, updateNodeInternals])
+
+    const handleBodyDoubleClick = () => {
+        dispatchEditEvent('start')
+    }
 
     return (
         <div
@@ -66,9 +94,24 @@ export const AccumulatorNode: React.FC<BaseNodeProps> = ({ id, data, selected })
                     <div className="tw-flex-grow tw-text-center">ACCUMULATOR</div>
                     <RunFromHereButton nodeId={id} className="tw-w-[1.75rem] tw-h-[1.75rem]" />
                 </div>
-                <div className="tw-flex tw-items-center tw-justify-center">
+                <div
+                    className="tw-flex tw-items-center tw-justify-center tw-cursor-pointer"
+                    onDoubleClick={handleBodyDoubleClick}
+                >
                     <span>{data.title}</span>
                 </div>
+                <TextEditorModal
+                    isOpen={data.isEditing === true}
+                    value={draft}
+                    onChange={setDraft}
+                    onConfirm={() => {
+                        dispatchEditEvent('commit', { content: draft })
+                    }}
+                    onCancel={() => {
+                        dispatchEditEvent('cancel')
+                    }}
+                    title={data.title ?? 'Edit Accumulator Input'}
+                />
             </div>
             <Handle type="source" position={Position.Bottom} />
         </div>

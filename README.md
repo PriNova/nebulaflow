@@ -33,6 +33,11 @@ The LLM node runs via the Amp SDK. The editor acts as a visual wrapper around th
 
 ## Features
 
+### LLM Node and Chat Continuation
+
+- LLM nodes run via the vendored Amp SDK (`@prinova/amp-sdk`), building prompts from upstream node outputs and executing them inside a thread so later runs can reuse the same conversation.
+- When an LLM node has an active `threadID`, the Right Sidebar shows a small chat panel that lets you send follow-up messages to that node; replies append to the existing assistant history and stream back into the Playbox, while drafts are scoped to the current execution run and cleared on workflow reset.
+
 ### Shell Node (CLI)
 
 - Switch between Command (one-liner) and Script (multiline via stdin) in the Property Editor.

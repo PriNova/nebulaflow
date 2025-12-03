@@ -1,9 +1,11 @@
 import { Save } from 'lucide-react'
 import type React from 'react'
+import { useState } from 'react'
 import { Button } from '../../../ui/shadcn/ui/button'
 import { Input } from '../../../ui/shadcn/ui/input'
 import { Label } from '../../../ui/shadcn/ui/label'
 import { Textarea } from '../../../ui/shadcn/ui/textarea'
+import { TextEditorModal } from '../../modals/TextEditorModal'
 import type { AccumulatorNode } from '../../nodes/Accumulator_Node'
 
 interface AccumulatorPropertiesProps {
@@ -17,6 +19,9 @@ export const AccumulatorProperties: React.FC<AccumulatorPropertiesProps> = ({
     onUpdate,
     onSaveCustomNode,
 }) => {
+    const [isInputEditorOpen, setIsInputEditorOpen] = useState(false)
+    const [inputDraft, setInputDraft] = useState('')
+
     return (
         <div className="tw-flex tw-flex-col tw-gap-4">
             <div>
@@ -50,7 +55,22 @@ export const AccumulatorProperties: React.FC<AccumulatorPropertiesProps> = ({
                     onChange={(e: { target: { value: any } }) =>
                         onUpdate(node.id, { content: e.target.value })
                     }
+                    onDoubleClick={() => {
+                        setInputDraft(node.data.content || '')
+                        setIsInputEditorOpen(true)
+                    }}
                     placeholder="Enter input text... (use ${1}, ${2} and so on for positional inputs)"
+                />
+                <TextEditorModal
+                    isOpen={isInputEditorOpen}
+                    value={inputDraft}
+                    onChange={setInputDraft}
+                    onConfirm={() => {
+                        onUpdate(node.id, { content: inputDraft })
+                        setIsInputEditorOpen(false)
+                    }}
+                    onCancel={() => setIsInputEditorOpen(false)}
+                    title={node.data.title ?? 'Edit Accumulator Input'}
                 />
             </div>
         </div>

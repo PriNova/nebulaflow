@@ -40,3 +40,14 @@ export function replaceIndexedInputs(
     }
     return result
 }
+
+export function evalTemplate(
+    template: string,
+    inputs: string[],
+    context?: IndexedExecutionContext | Partial<IndexedExecutionContext>
+): string {
+    if (!template) {
+        return ''
+    }
+    return replaceIndexedInputs(template, inputs, context as IndexedExecutionContext | undefined)
+}

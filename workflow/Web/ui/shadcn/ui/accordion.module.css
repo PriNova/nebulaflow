@@ -8,6 +8,19 @@
     transition-duration: 150ms;
 }
 
+/* Sidebar-specific accordion layout:
+ * - Chevron visually at the start (left)
+ * - Header content immediately to the right
+ * - Does not affect non-sidebar accordions
+ */
+.sidebar-accordion-trigger {
+    /* Use row-reverse so the Chevron comes first visually, but
+     * justify-content: flex-end so the group hugs the left side
+     * of the sidebar instead of the right. */
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+}
+
 .accordion-trigger[data-state="open"] .accordion-trigger-chevron {
     transform: rotate(90deg);
 }

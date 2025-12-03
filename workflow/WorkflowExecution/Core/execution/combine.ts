@@ -1,6 +1,6 @@
 import { NodeType } from '../../../Core/models'
 import type { IndexedExecutionContext } from '../../Application/handlers/ExecuteWorkflow'
-import { replaceIndexedInputs } from './inputs'
+import { evalTemplate } from './inputs'
 
 export function combineParentOutputsByConnectionOrder(
     nodeId: string,
@@ -51,7 +51,7 @@ export function combineParentOutputsByConnectionOrder(
                     localVisited
                 )
                 const template = ((parentNode as any).data?.content || '').toString()
-                const text = template ? replaceIndexedInputs(template, parentInputs, context) : ''
+                const text = evalTemplate(template, parentInputs, context)
                 return text.replace(/\r\n/g, '\n')
             }
 

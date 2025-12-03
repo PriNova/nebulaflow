@@ -1,7 +1,9 @@
+import * as nodePath from 'node:path'
 import {
     AbortedError,
     type ApprovalResult,
     type AssistantContentItem,
+    type AttachmentRef,
     type ExtensionToWorkflow,
     type WorkflowNodes,
 } from '../../../Core/models'
@@ -15,6 +17,399 @@ import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
 
 const DEFAULT_LLM_TIMEOUT_MS = 300_000
 
+export interface LLMRunArgs {
+    node: WorkflowNodes
+    prompt: string
+    workspaceRoots: string[]
+    abortSignal: AbortSignal
+    port: IMessagePort
+    approvalHandler: (nodeId: string) => Promise<ApprovalResult>
+    mode: 'workflow' | 'single-node'
+}
+
+export async function resolveLLMAttachmentsToImages(
+    node: WorkflowNodes,
+    ampSdk: any,
+    workspaceRoots: string[]
+): Promise<any[] | undefined> {
+    const data = (node as any)?.data
+    const attachments = (data?.attachments ?? []) as AttachmentRef[]
+    console.debug(
+        '[ExecuteWorkflow] LLM attachments for node %s: %s',
+        node.id,
+        JSON.stringify(attachments ?? [], null, 2)
+    )
+
+    if (!Array.isArray(attachments) || attachments.length === 0) {
+        return undefined
+    }
+
+    if (!ampSdk) {
+        console.debug('[ExecuteWorkflow] Amp SDK not available when resolving attachments')
+        return undefined
+    }
+
+    const images: any[] = []
+
+    for (const attachment of attachments) {
+        if (!attachment || attachment.kind !== 'image') continue
+
+        if (attachment.source === 'file' && attachment.path) {
+            const filePath = resolveAttachmentFilePath(attachment.path, workspaceRoots)
+            console.debug(
+                '[ExecuteWorkflow] Resolving file attachment for node %s: %s -> %s',
+                node.id,
+                attachment.path,
+                filePath
+            )
+            try {
+                const image = await ampSdk.imageFromFile({ path: filePath })
+                images.push(image)
+            } catch (error) {
+                const reason = error instanceof Error ? error.message : String(error)
+                throw new Error(
+                    `Failed to load image attachment "${attachment.path}" for LLM node ${node.id}: ${reason}`
+                )
+            }
+        } else if (attachment.source === 'url' && attachment.url) {
+            console.debug(
+                '[ExecuteWorkflow] Resolving URL attachment for node %s: %s',
+                node.id,
+                attachment.url
+            )
+            try {
+                const image = await ampSdk.imageFromURL({ url: attachment.url })
+                images.push(image)
+            } catch (error) {
+                const reason = error instanceof Error ? error.message : String(error)
+                throw new Error(
+                    `Failed to load image attachment "${attachment.url}" for LLM node ${node.id}: ${reason}`
+                )
+            }
+        }
+    }
+
+    console.debug(
+        '[ExecuteWorkflow] Resolved %d image attachment(s) for node %s',
+        images.length,
+        node.id
+    )
+
+    return images.length > 0 ? images : undefined
+}
+
+export function resolveAttachmentFilePath(
+    relativeOrAbsolutePath: string,
+    workspaceRoots: string[]
+): string {
+    const trimmed = relativeOrAbsolutePath.trim()
+    if (!trimmed) {
+        throw new Error('Attachment file path is empty')
+    }
+
+    // Absolute path for the current OS: use as-is (after normalisation)
+    if (nodePath.isAbsolute(trimmed)) {
+        return nodePath.normalize(trimmed)
+    }
+
+    // Otherwise, treat as workspace-relative (first root preferred)
+    if (!Array.isArray(workspaceRoots) || workspaceRoots.length === 0) {
+        throw new Error(
+            `Relative attachment path "${trimmed}" cannot be resolved: no active workspace roots. ` +
+                'Provide an absolute path or open a workspace.'
+        )
+    }
+
+    const base = workspaceRoots[0]
+    const resolved = nodePath.join(base, trimmed)
+    return nodePath.normalize(resolved)
+}
+
+export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): Promise<string> {
+    const { node, prompt, workspaceRoots, abortSignal, port, approvalHandler, mode } = args
+
+    const nodeLabel = (node as any)?.data?.label ?? (node as any)?.data?.title
+    const labelSuffix =
+        typeof nodeLabel === 'string' && nodeLabel.trim().length > 0 ? ` "${nodeLabel.trim()}"` : ''
+
+    const wrapErrorWithContext = (error: unknown): Error => {
+        if (error instanceof AbortedError) {
+            return error
+        }
+        const baseMessage = error instanceof Error ? error.message : String(error)
+        return new Error(`[LLM node ${node.id}${labelSuffix} (${mode})] ${baseMessage}`)
+    }
+
+    try {
+        let ampSdk: any
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            ampSdk = require('@prinova/amp-sdk')
+        } catch (error) {
+            throw new Error(
+                `Amp SDK not available: ${error instanceof Error ? error.message : String(error)}`
+            )
+        }
+
+        const apiKey = process.env.AMP_API_KEY
+        if (!apiKey) {
+            throw new Error('AMP_API_KEY is not set')
+        }
+
+        const defaultModelKey = DEFAULT_LLM_MODEL_ID
+        const modelId = (node as any)?.data?.model?.id as string | undefined
+
+        let selectedKey: string | undefined
+        try {
+            const resolveModel:
+                | ((args: { key: string } | { displayName: string; provider?: any }) => { key: string })
+                | undefined = ampSdk?.resolveModel
+            if (modelId && typeof resolveModel === 'function') {
+                const { key } = resolveModel({ key: modelId })
+                selectedKey = key
+            }
+        } catch {
+            // Ignore and fall back
+        }
+
+        const { settings: llmSettings, debug: llmDebug } = computeLLMAmpSettings(node)
+        if (
+            llmDebug.dangerouslyAllowAll &&
+            llmDebug.disabledTools.some(t => typeof t === 'string' && t.toLowerCase() === 'bash')
+        ) {
+            console.debug(
+                '[ExecuteWorkflow] Bash is disabled; ignoring dangerouslyAllowAll flag for safety'
+            )
+        }
+        const autoApprove = Boolean((llmSettings as any)['amp.dangerouslyAllowAll'])
+
+        const rawSystemPrompt = ((node as any).data?.systemPromptTemplate ?? '').toString()
+        const trimmedSystemPrompt = rawSystemPrompt.trim()
+        const systemPromptTemplate = trimmedSystemPrompt.length > 0 ? rawSystemPrompt : undefined
+
+        const { createAmp } = ampSdk
+        const amp = await createAmp({
+            apiKey,
+            workspaceRoots,
+            systemPromptTemplate,
+            settings: {
+                'internal.primaryModel': selectedKey ?? defaultModelKey,
+                ...llmSettings,
+            },
+        })
+
+        const logPrefix = mode === 'workflow' ? '[ExecuteWorkflow]' : '[ExecuteSingleNode]'
+
+        // Ensure tools are registered before first run
+        try {
+            if (typeof (amp as any).whenToolsReady === 'function') {
+                const enabled = await (amp as any).whenToolsReady()
+                console.debug(`${logPrefix} Tools ready for node`, node.id, {
+                    enabled,
+                    disabled: llmDebug.disabledTools,
+                    allowAll: llmDebug.dangerouslyAllowAll,
+                    effort: llmDebug.reasoningEffort,
+                })
+            }
+        } catch {
+            // Non-fatal: continue
+        }
+
+        const images = await resolveLLMAttachmentsToImages(node, ampSdk, workspaceRoots)
+
+        try {
+            let finalText = ''
+            const handledBlocked = new Set<string>()
+            const streamP = (async () => {
+                const runOptions: any = { prompt }
+                if (images && images.length > 0) {
+                    runOptions.images = images
+                }
+                if (existingThreadID) {
+                    runOptions.threadID = existingThreadID
+                }
+
+                console.debug(
+                    `${logPrefix} Starting amp.runJSONL for node %s with images=%s`,
+                    node.id,
+                    images && images.length > 0 ? String(images.length) : '0'
+                )
+
+                for await (const event of amp.runJSONL(runOptions)) {
+                    abortSignal.throwIfAborted()
+                    if (event.type === 'messages') {
+                        const thread = event.thread as any
+
+                        // Debug: log first user message content block types to confirm image blocks are present
+                        try {
+                            const firstUser = (thread?.messages || []).find(
+                                (m: any) => m.role === 'user'
+                            )
+                            const types = (firstUser?.content || []).map((b: any) => b.type)
+                            console.debug(
+                                `${logPrefix} First user message block types for node %s: %s`,
+                                node.id,
+                                JSON.stringify(types)
+                            )
+                        } catch {
+                            // best-effort only
+                        }
+
+                        const items = extractAssistantTimeline(thread)
+                        await safePost(port, {
+                            type: 'node_assistant_content',
+                            data: {
+                                nodeId: node.id,
+                                threadID: thread.id,
+                                content: items,
+                            },
+                        } as ExtensionToWorkflow)
+
+                        // Detect blocked-on-user tool results and request approval
+                        try {
+                            const blocked: Array<{
+                                toolUseID: string
+                                toAllow?: string[]
+                                reason?: string
+                                tokens?: { percent?: number; threshold?: number }
+                            }> = []
+                            for (const msg of thread?.messages || []) {
+                                if (msg.role === 'user') {
+                                    for (const block of msg.content || []) {
+                                        if (block.type === 'tool_result') {
+                                            const run = block.run || {}
+                                            if (run?.status === 'blocked-on-user' && block.toolUseID) {
+                                                blocked.push({
+                                                    toolUseID: block.toolUseID,
+                                                    toAllow: run.toAllow,
+                                                    reason: run.reason,
+                                                    tokens: run.tokens,
+                                                })
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            for (const b of blocked) {
+                                if (handledBlocked.has(b.toolUseID)) continue
+                                handledBlocked.add(b.toolUseID)
+
+                                // Auto-approve when dangerouslyAllowAll is enabled, regardless of toAllow content
+                                if (autoApprove) {
+                                    if (!b.toAllow || b.toAllow.length === 0) {
+                                        console.warn(
+                                            `${logPrefix} Auto-approving toolUseID=%s with no explicit toAllow`,
+                                            b.toolUseID
+                                        )
+                                    }
+                                    await amp.sendToolInput({
+                                        threadID: thread.id,
+                                        toolUseID: b.toolUseID,
+                                        value: { accepted: true },
+                                    })
+                                    continue
+                                }
+
+                                const summaryLines: string[] = []
+                                if (b.toAllow && Array.isArray(b.toAllow) && b.toAllow.length > 0) {
+                                    summaryLines.push('Command(s) awaiting approval:')
+                                    for (const c of b.toAllow) summaryLines.push(`- ${c}`)
+                                }
+                                if (b.reason) summaryLines.push(`Reason: ${b.reason}`)
+                                if (
+                                    b.tokens &&
+                                    (b.tokens.percent != null || b.tokens.threshold != null)
+                                ) {
+                                    const pct = b.tokens.percent != null ? `${b.tokens.percent}%` : 'n/a'
+                                    const thr =
+                                        b.tokens.threshold != null ? `${b.tokens.threshold}` : 'n/a'
+                                    summaryLines.push(`Tokens: ${pct} (threshold ${thr})`)
+                                }
+                                const display = summaryLines.join('\n') || 'Approval required'
+
+                                await safePost(port, {
+                                    type: 'node_execution_status',
+                                    data: {
+                                        nodeId: node.id,
+                                        status: 'pending_approval',
+                                        result: display,
+                                    },
+                                } as ExtensionToWorkflow)
+
+                                let accepted = false
+                                try {
+                                    const decision = await approvalHandler(node.id)
+                                    if ((decision as any)?.type === 'aborted') {
+                                        throw new AbortedError()
+                                    }
+                                    accepted = true
+                                } catch {
+                                    accepted = false
+                                }
+
+                                await amp.sendToolInput({
+                                    threadID: thread.id,
+                                    toolUseID: b.toolUseID,
+                                    value: { accepted },
+                                })
+                            }
+                        } catch (e) {
+                            // If approval wait aborted, surface abort
+                            if (e instanceof AbortedError) throw e
+                            // Otherwise, continue streaming; errors here shouldn't crash the node
+                        }
+
+                        // Update latest assistant text for final result only
+                        const lastAssistantMessage = thread.messages?.findLast(
+                            (m: any) => m.role === 'assistant'
+                        )
+                        if (lastAssistantMessage) {
+                            const textBlocks = (lastAssistantMessage.content || []).filter(
+                                (b: any) => b.type === 'text'
+                            )
+                            if (textBlocks.length > 0) {
+                                finalText = textBlocks
+                                    .map((b: any) => b.text)
+                                    .join('\n')
+                                    .trim()
+                            }
+                        }
+                    }
+                }
+            })()
+
+            let abortHandler: (() => void) | undefined
+            const abortP = new Promise<never>((_, rej) => {
+                abortHandler = () => rej(new AbortedError())
+                abortSignal.addEventListener('abort', abortHandler)
+            }).catch(() => {})
+            const sec = Number((node as any)?.data?.timeoutSec)
+            const disableTimeout = sec === 0
+            const timeoutMs =
+                Number.isFinite(sec) && sec > 0 ? Math.floor(sec * 1000) : DEFAULT_LLM_TIMEOUT_MS
+            let timer: ReturnType<typeof setTimeout> | undefined
+            const timeoutP = disableTimeout
+                ? undefined
+                : new Promise<never>((_, rej) => {
+                      timer = setTimeout(() => rej(new Error('LLM request timed out')), timeoutMs)
+                  })
+
+            try {
+                const racePromises = timeoutP ? [streamP, abortP, timeoutP] : [streamP, abortP]
+                await Promise.race(racePromises)
+            } finally {
+                if (timer) clearTimeout(timer)
+                if (abortHandler) abortSignal.removeEventListener('abort', abortHandler)
+            }
+            return finalText
+        } finally {
+            await amp.dispose()
+        }
+    } catch (error) {
+        throw wrapErrorWithContext(error)
+    }
+}
+
 export async function executeLLMNode(
     node: WorkflowNodes,
     context: IndexedExecutionContext,
@@ -27,235 +422,60 @@ export async function executeLLMNode(
     const prompt = template
         ? replaceIndexedInputs(template, inputs, context).trim()
         : (inputs[0] || '').trim()
+
     if (!prompt) {
         throw new Error('LLM Node requires a non-empty prompt')
     }
 
-    let createAmp: any
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        ;({ createAmp } = require('@prinova/amp-sdk'))
-    } catch (error) {
-        throw new Error(
-            `Amp SDK not available: ${error instanceof Error ? error.message : String(error)}`
-        )
-    }
+    const { getActiveWorkspaceRoots } = await import('../../../Shared/Infrastructure/workspace.js')
+    const workspaceRoots = getActiveWorkspaceRoots()
+    console.debug('executeLLMNode workspaceRoots: %s', JSON.stringify(workspaceRoots, null, 2))
 
-    const apiKey = process.env.AMP_API_KEY
-    if (!apiKey) {
-        throw new Error('AMP_API_KEY is not set')
+    return await runLLMCore({
+        node,
+        prompt,
+        workspaceRoots,
+        abortSignal,
+        port,
+        approvalHandler,
+        mode: 'workflow',
+    })
+}
+
+export async function executeLLMChatTurn(
+    node: WorkflowNodes,
+    threadID: string,
+    userMessage: string,
+    abortSignal: AbortSignal,
+    port: IMessagePort,
+    approvalHandler: (nodeId: string) => Promise<ApprovalResult>
+): Promise<string> {
+    const prompt = (userMessage ?? '').toString().trim()
+    if (!prompt) {
+        throw new Error('Chat message must be non-empty')
     }
 
     const { getActiveWorkspaceRoots } = await import('../../../Shared/Infrastructure/workspace.js')
     const workspaceRoots = getActiveWorkspaceRoots()
-    console.debug('executeLLMNode: ', JSON.stringify(workspaceRoots, null, 2))
-
-    // Determine model key from node selection, validating with SDK when available
-    const defaultModelKey = DEFAULT_LLM_MODEL_ID
-    const modelId = (node as any)?.data?.model?.id as string | undefined
-    let selectedKey: string | undefined
-    if (modelId) {
-        try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const sdk = require('@prinova/amp-sdk') as any
-            const resolveModel:
-                | ((args: { key: string } | { displayName: string; provider?: any }) => { key: string })
-                | undefined = sdk?.resolveModel
-            if (typeof resolveModel === 'function') {
-                const { key } = resolveModel({ key: modelId })
-                selectedKey = key
-            }
-        } catch {
-            // Ignore and fall back
-        }
-    }
-
-    const { settings: llmSettings, debug: llmDebug } = computeLLMAmpSettings(node)
-    if (
-        llmDebug.dangerouslyAllowAll &&
-        llmDebug.disabledTools.some(t => typeof t === 'string' && t.toLowerCase() === 'bash')
-    ) {
-        console.debug('[ExecuteWorkflow] Bash is disabled; ignoring dangerouslyAllowAll flag for safety')
-    }
-    const autoApprove = Boolean((llmSettings as any)['amp.dangerouslyAllowAll'])
-
-    const rawSystemPrompt = ((node as any).data?.systemPromptTemplate ?? '').toString()
-    const trimmedSystemPrompt = rawSystemPrompt.trim()
-    const systemPromptTemplate = trimmedSystemPrompt.length > 0 ? rawSystemPrompt : undefined
-
-    const amp = await createAmp({
-        apiKey,
-        workspaceRoots,
-        systemPromptTemplate,
-        settings: {
-            'internal.primaryModel': selectedKey ?? defaultModelKey,
-            ...llmSettings,
-        },
+    console.debug('executeLLMChatTurn workspaceRoots: %s', JSON.stringify(workspaceRoots, null, 2))
+    console.debug('executeLLMChatTurn prompt', {
+        nodeId: node.id,
+        threadID,
+        prompt,
     })
-    // Ensure tools are registered before first run
-    try {
-        if (typeof (amp as any).whenToolsReady === 'function') {
-            const enabled = await (amp as any).whenToolsReady()
-            console.debug('[ExecuteWorkflow] Tools ready for node', node.id, {
-                enabled,
-                disabled: llmDebug.disabledTools,
-                allowAll: llmDebug.dangerouslyAllowAll,
-                effort: llmDebug.reasoningEffort,
-            })
-        }
-    } catch {
-        // Non-fatal: continue
-    }
-    try {
-        let finalText = ''
-        const handledBlocked = new Set<string>()
-        const streamP = (async () => {
-            for await (const event of amp.runJSONL({ prompt })) {
-                abortSignal.throwIfAborted()
-                if (event.type === 'messages') {
-                    const thread = event.thread as any
-                    const items = extractAssistantTimeline(thread)
-                    await safePost(port, {
-                        type: 'node_assistant_content',
-                        data: {
-                            nodeId: node.id,
-                            threadID: thread.id,
-                            content: items,
-                        },
-                    } as ExtensionToWorkflow)
 
-                    // Detect blocked-on-user tool results and request approval
-                    try {
-                        const blocked: Array<{
-                            toolUseID: string
-                            toAllow?: string[]
-                            reason?: string
-                            tokens?: { percent?: number; threshold?: number }
-                        }> = []
-                        for (const msg of thread?.messages || []) {
-                            if (msg.role === 'user') {
-                                for (const block of msg.content || []) {
-                                    if (block.type === 'tool_result') {
-                                        const run = block.run || {}
-                                        if (run?.status === 'blocked-on-user' && block.toolUseID) {
-                                            blocked.push({
-                                                toolUseID: block.toolUseID,
-                                                toAllow: run.toAllow,
-                                                reason: run.reason,
-                                                tokens: run.tokens,
-                                            })
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        for (const b of blocked) {
-                            if (handledBlocked.has(b.toolUseID)) continue
-                            handledBlocked.add(b.toolUseID)
-
-                            // Auto-approve when dangerouslyAllowAll is enabled, regardless of toAllow content
-                            if (autoApprove) {
-                                if (!b.toAllow || b.toAllow.length === 0) {
-                                    console.warn(
-                                        '[ExecuteWorkflow] Auto-approving toolUseID=%s with no explicit toAllow',
-                                        b.toolUseID
-                                    )
-                                }
-                                await amp.sendToolInput({
-                                    threadID: thread.id,
-                                    toolUseID: b.toolUseID,
-                                    value: { accepted: true },
-                                })
-                                continue
-                            }
-
-                            const summaryLines: string[] = []
-                            if (b.toAllow && Array.isArray(b.toAllow) && b.toAllow.length > 0) {
-                                summaryLines.push('Command(s) awaiting approval:')
-                                for (const c of b.toAllow) summaryLines.push(`- ${c}`)
-                            }
-                            if (b.reason) summaryLines.push(`Reason: ${b.reason}`)
-                            if (b.tokens && (b.tokens.percent != null || b.tokens.threshold != null)) {
-                                const pct = b.tokens.percent != null ? `${b.tokens.percent}%` : 'n/a'
-                                const thr = b.tokens.threshold != null ? `${b.tokens.threshold}` : 'n/a'
-                                summaryLines.push(`Tokens: ${pct} (threshold ${thr})`)
-                            }
-                            const display = summaryLines.join('\n') || 'Approval required'
-
-                            await safePost(port, {
-                                type: 'node_execution_status',
-                                data: { nodeId: node.id, status: 'pending_approval', result: display },
-                            } as ExtensionToWorkflow)
-
-                            let accepted = false
-                            try {
-                                const decision = await approvalHandler(node.id)
-                                if ((decision as any)?.type === 'aborted') {
-                                    throw new AbortedError()
-                                }
-                                accepted = true
-                            } catch {
-                                accepted = false
-                            }
-
-                            await amp.sendToolInput({
-                                threadID: thread.id,
-                                toolUseID: b.toolUseID,
-                                value: { accepted },
-                            })
-                        }
-                    } catch (e) {
-                        // If approval wait aborted, surface abort
-                        if (e instanceof AbortedError) throw e
-                        // Otherwise, continue streaming; errors here shouldn't crash the node
-                    }
-
-                    // Update latest assistant text for final result only
-                    const lastAssistantMessage = thread.messages?.findLast(
-                        (m: any) => m.role === 'assistant'
-                    )
-                    if (lastAssistantMessage) {
-                        const textBlocks = (lastAssistantMessage.content || []).filter(
-                            (b: any) => b.type === 'text'
-                        )
-                        if (textBlocks.length > 0) {
-                            finalText = textBlocks
-                                .map((b: any) => b.text)
-                                .join('\n')
-                                .trim()
-                        }
-                    }
-                }
-            }
-        })()
-
-        let abortHandler: (() => void) | undefined
-        const abortP = new Promise<never>((_, rej) => {
-            abortHandler = () => rej(new AbortedError())
-            abortSignal.addEventListener('abort', abortHandler)
-        }).catch(() => {})
-        const sec = Number((node as any)?.data?.timeoutSec)
-        const disableTimeout = sec === 0
-        const timeoutMs =
-            Number.isFinite(sec) && sec > 0 ? Math.floor(sec * 1000) : DEFAULT_LLM_TIMEOUT_MS
-        let timer: ReturnType<typeof setTimeout> | undefined
-        const timeoutP = disableTimeout
-            ? undefined
-            : new Promise<never>((_, rej) => {
-                  timer = setTimeout(() => rej(new Error('LLM request timed out')), timeoutMs)
-              })
-
-        try {
-            const racePromises = timeoutP ? [streamP, abortP, timeoutP] : [streamP, abortP]
-            await Promise.race(racePromises)
-        } finally {
-            if (timer) clearTimeout(timer)
-            if (abortHandler) abortSignal.removeEventListener('abort', abortHandler)
-        }
-        return finalText
-    } finally {
-        await amp.dispose()
-    }
+    return await runLLMCore(
+        {
+            node,
+            prompt,
+            workspaceRoots,
+            abortSignal,
+            port,
+            approvalHandler,
+            mode: 'single-node',
+        },
+        threadID
+    )
 }
 
 export function extractAssistantTimeline(thread: any): AssistantContentItem[] {

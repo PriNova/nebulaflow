@@ -1,4 +1,5 @@
 import { type BaseNodeData, NodeType, type WorkflowNodes } from '@nodes/Nodes'
+import clsx from 'clsx'
 import { Edit, Trash2 } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
@@ -34,7 +35,10 @@ type CustomNodesByType = { [key in NodeType]?: WorkflowNodes[] }
 
 const sidebarCardContainer =
     'tw-rounded tw-px-2 tw-py-1 tw-border tw-border-[var(--vscode-panel-border)] tw-bg-[var(--vscode-editor-background)]'
-const accordionTriggerNode = 'tw-w-full tw-text-sm tw-h-6 tw-py-[.1rem]'
+const accordionTriggerNode = clsx(
+    'tw-w-full tw-text-sm tw-h-6 tw-py-[.1rem]',
+    styles['sidebar-accordion-trigger']
+)
 const libraryButton =
     'tw-w-full tw-text-left tw-px-2 tw-py-1 tw-rounded tw-truncate hover:tw-bg-[var(--vscode-button-secondaryHoverBackground)]'
 const innerListContainer =
@@ -48,6 +52,8 @@ const displayCategoryLabel = (type: string): string => {
         [NodeType.PREVIEW]: 'Preview',
         [NodeType.IF_ELSE]: 'Conditionals',
         [NodeType.SUBFLOW]: 'Subflows',
+        [NodeType.LOOP_START]: 'Loops',
+        [NodeType.LOOP_END]: 'Loops',
     }
     return categoryLabels[type] || type
 }
@@ -199,6 +205,32 @@ export const WorkflowSidebar: React.FC<WorkflowSidebarProps> = ({
                                     onClick={() => onNodeAdd('If/Else', NodeType.IF_ELSE)}
                                 >
                                     If/Else
+                                </button>
+                            </li>
+                        </ul>
+                    </AccordionContent>
+                </AccordionItem>
+                {/* Loops */}
+                <AccordionItem value="loops" className={sidebarCardContainer}>
+                    <AccordionTrigger className={accordionTriggerNode}>Loops</AccordionTrigger>
+                    <AccordionContent className="tw-pt-1">
+                        <ul className="tw-space-y-1">
+                            <li>
+                                <button
+                                    type="button"
+                                    className={libraryButton}
+                                    onClick={() => onNodeAdd('Loop Start', NodeType.LOOP_START)}
+                                >
+                                    Loop Start
+                                </button>
+                            </li>
+                            <li>
+                                <button
+                                    type="button"
+                                    className={libraryButton}
+                                    onClick={() => onNodeAdd('Loop End', NodeType.LOOP_END)}
+                                >
+                                    Loop End
                                 </button>
                             </li>
                         </ul>

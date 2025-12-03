@@ -90,7 +90,13 @@ export const useInteractionHandling = (
 
     const handleBackgroundKeyDown = useCallback(
         (event: React.KeyboardEvent) => {
-            if (event.key === 'Enter') {
+            if (
+                event.key === 'Enter' &&
+                !event.ctrlKey &&
+                !event.metaKey &&
+                !event.altKey &&
+                !event.shiftKey
+            ) {
                 setSelectedNodes([])
                 setActiveNode(null)
             }

@@ -1,7 +1,15 @@
 import { type Edge, NodeType, PausedError, type WorkflowNodes } from '../../../Core/models'
+import { hasUnsupportedNodesForParallel } from '../execution/graph'
+import {
+    findLoopEndForLoopStart,
+    findLoopNodes,
+    findPreLoopNodes,
+    processGraphComposition,
+} from './node-sorting'
+import { computeBranchSubgraphs } from './parallel-analysis'
 
-// Exclude LOOP nodes from supported scheduling (IF_ELSE now supported)
-const UNSUPPORTED_TYPES_V1 = new Set<NodeType>([NodeType.LOOP_START, NodeType.LOOP_END])
+// Reserved for future unsupported types (none currently)
+const UNSUPPORTED_TYPES_V1 = new Set<NodeType>()
 
 export type ParallelOptions = {
     // Global max concurrent nodes (default: Infinity)
@@ -68,6 +76,34 @@ export async function executeWorkflowParallel(
     options?: ParallelOptions,
     outerAbortSignal?: AbortSignal
 ): Promise<void> {
+    const activeNodes = nodes.filter(n => n.data?.active !== false)
+
+    // Allow callers to opt out of parallel/hybrid execution for certain graphs
+    // (currently: looped graphs when NEBULAFLOW_DISABLE_HYBRID_PARALLEL is set)
+    if (hasUnsupportedNodesForParallel(activeNodes)) {
+        await executeWorkflowSequential(nodes, edges, callbacks, options, outerAbortSignal)
+        return
+    }
+
+    const hasLoopNodes = activeNodes.some(
+        n => n.type === NodeType.LOOP_START || n.type === NodeType.LOOP_END
+    )
+
+    if (!hasLoopNodes) {
+        await runParallelWholeGraph(nodes, edges, callbacks, options, outerAbortSignal)
+        return
+    }
+
+    await executeWorkflowWithLoopsHybrid(nodes, edges, callbacks, options, outerAbortSignal)
+}
+
+async function runParallelWholeGraph(
+    nodes: WorkflowNodes[],
+    edges: Edge[],
+    callbacks: ParallelCallbacks,
+    options: ParallelOptions | undefined,
+    outerAbortSignal: AbortSignal | undefined
+): Promise<void> {
     const { onStatus, runNode } = callbacks
 
     const concurrency = options?.concurrency ?? Number.POSITIVE_INFINITY
@@ -86,9 +122,7 @@ export async function executeWorkflowParallel(
     const unsupported = activeNodes.filter(n => UNSUPPORTED_TYPES_V1.has(n.type))
     if (unsupported.length > 0) {
         const list = unsupported.map(n => `${n.id}:${n.type}`).join(', ')
-        throw new Error(
-            `Unsupported node types for v1 parallel scheduler present: ${list}. Please exclude LOOP nodes.`
-        )
+        throw new Error(`Unsupported node types for v1 parallel scheduler present: ${list}`)
     }
 
     const includedIds = new Set(activeNodes.map(n => n.id))
@@ -465,6 +499,694 @@ export async function executeWorkflowParallel(
 
     // All done
     return
+}
+
+async function executeWorkflowWithLoopsHybrid(
+    nodes: WorkflowNodes[],
+    edges: Edge[],
+    callbacks: ParallelCallbacks,
+    options?: ParallelOptions,
+    outerAbortSignal?: AbortSignal
+): Promise<void> {
+    const onError: 'fail-fast' | 'continue-subgraph' = options?.onError ?? 'fail-fast'
+
+    const activeNodes = nodes.filter(n => n.data?.active !== false)
+    if (activeNodes.length === 0) {
+        return
+    }
+
+    const ac = new AbortController()
+    const combinedSignal = ac.signal
+    if (outerAbortSignal) {
+        if (outerAbortSignal.aborted) ac.abort()
+        else outerAbortSignal.addEventListener('abort', () => ac.abort(), { once: true })
+    }
+
+    const nodeIndex = new Map(nodes.map(n => [n.id, n] as const))
+    const edgeIndex = createEdgeIndex(edges)
+
+    const includedIds = new Set(activeNodes.map(n => n.id))
+    const activeEdges = edges.filter(e => includedIds.has(e.target))
+
+    const seedOutputs = options?.seeds?.outputs ?? {}
+    const seedDecisions = options?.seeds?.decisions ?? {}
+    const seedVariables = options?.seeds?.variables ?? {}
+
+    const { conditionalOutEdges, conditionalInPlaceholders } = buildConditionalEdges(
+        activeNodes,
+        activeEdges
+    )
+
+    const ctx: ParallelExecutionContext = {
+        nodeOutputs: new Map<string, string | string[]>(),
+        nodeIndex,
+        edgeIndex,
+        ifElseDecisions: new Map<string, boolean>(),
+        disabledNodes: new Set<string>(),
+        conditionalOutEdges,
+        conditionalInPlaceholders,
+        loopStates: new Map(),
+        accumulatorValues: new Map(),
+        cliMetadata: new Map(),
+        variableValues: new Map(),
+        ifelseSkipPaths: new Map(),
+    }
+
+    for (const [name, value] of Object.entries(seedVariables)) {
+        ctx.variableValues?.set(name, value)
+    }
+
+    for (const [sid, val] of Object.entries(seedOutputs)) {
+        ctx.nodeOutputs.set(sid, val)
+        if (includedIds.has(sid)) {
+            const n = nodeIndex.get(sid)
+            if ((n as any)?.data?.bypass !== true) {
+                ctx.disabledNodes?.add(sid)
+            }
+        }
+    }
+
+    for (const [ifElseId, decisionStr] of Object.entries(seedDecisions)) {
+        const decision = decisionStr.toLowerCase() === 'true'
+        ctx.ifElseDecisions?.set(ifElseId, decision)
+
+        const branches = ctx.conditionalOutEdges?.get(ifElseId)
+        if (branches && ctx.conditionalInPlaceholders) {
+            const chosenTargets = decision ? branches.true : branches.false
+            for (const target of chosenTargets) {
+                const current = ctx.conditionalInPlaceholders.get(target) ?? 0
+                if (current <= 1) {
+                    ctx.conditionalInPlaceholders.delete(target)
+                } else {
+                    ctx.conditionalInPlaceholders.set(target, current - 1)
+                }
+            }
+        }
+
+        // Reuse existing helper to prune the non-chosen branch across the full graph.
+        // We pass a throwaway in-degree map and ready queue here because the hybrid
+        // scheduler will recompute per-segment in-degrees from the updated
+        // conditionalInPlaceholders and current disabledNodes set.
+        processIfElseCompletion(
+            ifElseId,
+            decision,
+            ctx.conditionalOutEdges || new Map<string, { true: string[]; false: string[] }>(),
+            new Map<string, number>(),
+            ctx.disabledNodes || new Set<string>(),
+            activeEdges,
+            nodeIndex,
+            []
+        )
+    }
+
+    const { byIfElseId } = computeBranchSubgraphs(nodes, edges)
+    const loopInternalIds = buildLoopInternalIds(nodes, edges)
+    const executionOrder = processGraphComposition(nodes, edges, false, { mode: 'execution' })
+
+    type HybridStep =
+        | { kind: 'parallel-segment'; nodeIds: string[] }
+        | { kind: 'loop-block'; loopStartId: string }
+
+    const steps: HybridStep[] = []
+    let currentSegment: string[] = []
+
+    for (const ordered of executionOrder) {
+        const original = nodeIndex.get(ordered.id)
+        if (!original) continue
+        if (original.data?.active === false) continue
+        if (ctx.disabledNodes?.has(original.id)) continue
+
+        const isLoopStart = original.type === NodeType.LOOP_START
+        const isLoopEnd = original.type === NodeType.LOOP_END
+        const isLoopInternal = loopInternalIds.has(original.id)
+
+        if (isLoopStart) {
+            if (currentSegment.length > 0) {
+                steps.push({ kind: 'parallel-segment', nodeIds: currentSegment })
+                currentSegment = []
+            }
+            steps.push({ kind: 'loop-block', loopStartId: original.id })
+            continue
+        }
+
+        if (isLoopInternal || isLoopEnd) {
+            continue
+        }
+
+        currentSegment.push(original.id)
+    }
+
+    if (currentSegment.length > 0) {
+        steps.push({ kind: 'parallel-segment', nodeIds: currentSegment })
+    }
+
+    for (const step of steps) {
+        if (combinedSignal.aborted) {
+            break
+        }
+        if (options?.pause?.isPaused?.()) {
+            throw new PausedError()
+        }
+
+        if (step.kind === 'parallel-segment') {
+            const segmentNodes = step.nodeIds
+                .map(id => nodeIndex.get(id))
+                .filter((n): n is WorkflowNodes => !!n && !ctx.disabledNodes?.has(n.id))
+            if (segmentNodes.length === 0) {
+                continue
+            }
+            await runParallelSegment(
+                segmentNodes,
+                activeEdges,
+                ctx,
+                callbacks,
+                options,
+                combinedSignal,
+                () => ac.abort()
+            )
+        } else {
+            const loopStart = nodeIndex.get(step.loopStartId)
+            if (!loopStart) {
+                continue
+            }
+            if (loopStart.data?.active === false || ctx.disabledNodes?.has(loopStart.id)) {
+                continue
+            }
+
+            const loopEnd = findLoopEndForLoopStart(loopStart, nodes, edges)
+            const preLoopNodes = findPreLoopNodes(loopStart, nodes, edges)
+            const preLoopNodeIds = new Set(preLoopNodes.map(n => n.id))
+            const loopBodyNodes = findLoopNodes(loopStart, nodes, edges, preLoopNodeIds)
+
+            for (const body of loopBodyNodes) {
+                loopInternalIds.add(body.id)
+            }
+            if (loopEnd) {
+                loopInternalIds.add(loopEnd.id)
+            }
+
+            await runLoopBlock(
+                loopStart,
+                loopBodyNodes,
+                loopEnd,
+                ctx,
+                callbacks,
+                byIfElseId,
+                onError,
+                combinedSignal
+            )
+        }
+    }
+}
+
+async function executeWorkflowSequential(
+    nodes: WorkflowNodes[],
+    edges: Edge[],
+    callbacks: ParallelCallbacks,
+    options?: ParallelOptions,
+    outerAbortSignal?: AbortSignal
+): Promise<void> {
+    const { onStatus, runNode } = callbacks
+    const onError: 'fail-fast' | 'continue-subgraph' = options?.onError ?? 'fail-fast'
+
+    const activeNodes = nodes.filter(n => n.data?.active !== false)
+    if (activeNodes.length === 0) {
+        return
+    }
+
+    const ac = new AbortController()
+    const combinedSignal = ac.signal
+    if (outerAbortSignal) {
+        if (outerAbortSignal.aborted) ac.abort()
+        else outerAbortSignal.addEventListener('abort', () => ac.abort(), { once: true })
+    }
+
+    const edgeIndex = createEdgeIndex(edges)
+    const nodeIndex = new Map(nodes.map(n => [n.id, n] as const))
+
+    const ctx: ParallelExecutionContext = {
+        nodeOutputs: new Map<string, string | string[]>(),
+        nodeIndex,
+        edgeIndex,
+        ifElseDecisions: new Map<string, boolean>(),
+        disabledNodes: new Set<string>(),
+        loopStates: new Map(),
+        accumulatorValues: new Map(),
+        cliMetadata: new Map(),
+        variableValues: new Map(),
+        ifelseSkipPaths: new Map(),
+    }
+
+    const seedVariables = options?.seeds?.variables ?? {}
+    for (const [name, value] of Object.entries(seedVariables)) {
+        ctx.variableValues?.set(name, value)
+    }
+
+    const seedOutputs = options?.seeds?.outputs ?? {}
+    for (const [sid, val] of Object.entries(seedOutputs)) {
+        ctx.nodeOutputs.set(sid, val)
+    }
+
+    const { byIfElseId } = computeBranchSubgraphs(nodes, edges)
+
+    const loopInternalIds = buildLoopInternalIds(nodes, edges)
+    const executionOrder = processGraphComposition(nodes, edges, false, { mode: 'execution' })
+
+    for (const node of executionOrder) {
+        if (node.data?.active === false) continue
+        if (ctx.disabledNodes?.has(node.id)) continue
+
+        if (combinedSignal.aborted) break
+        if (options?.pause?.isPaused?.()) {
+            throw new PausedError()
+        }
+
+        if (node.type === NodeType.LOOP_START) {
+            if (loopInternalIds.has(node.id)) continue
+
+            const loopEnd = findLoopEndForLoopStart(node, nodes, edges)
+            const preLoopNodes = findPreLoopNodes(node, nodes, edges)
+            const preLoopNodeIds = new Set(preLoopNodes.map(n => n.id))
+            const loopBodyNodes = findLoopNodes(node, nodes, edges, preLoopNodeIds)
+
+            for (const bodyNode of loopBodyNodes) {
+                loopInternalIds.add(bodyNode.id)
+            }
+            if (loopEnd) {
+                loopInternalIds.add(loopEnd.id)
+            }
+
+            await runLoopBlock(
+                node,
+                loopBodyNodes,
+                loopEnd,
+                ctx,
+                callbacks,
+                byIfElseId,
+                onError,
+                combinedSignal
+            )
+            continue
+        }
+
+        if (loopInternalIds.has(node.id)) continue
+
+        await onStatus({ nodeId: node.id, status: 'running' })
+
+        const res = await startNode(node, runNode, ctx, combinedSignal)
+
+        if (res.status === 'ok') {
+            const asText = toResultString(res.result)
+            const maybeMulti = Array.isArray((res as any).result)
+                ? { multi: (res as any).result as string[] }
+                : {}
+            await onStatus({
+                nodeId: node.id,
+                status: 'completed',
+                result: asText,
+                ...maybeMulti,
+            })
+
+            if (node.type === NodeType.IF_ELSE) {
+                const decision = asText.trim().toLowerCase() === 'true'
+                ctx.ifElseDecisions?.set(node.id, decision)
+                const branches = byIfElseId.get(node.id)
+                if (branches) {
+                    const disableSet = decision ? branches.false : branches.true
+                    for (const nid of disableSet) {
+                        ctx.disabledNodes?.add(nid)
+                    }
+                }
+            }
+        } else if (res.status === 'interrupted') {
+            await onStatus({ nodeId: node.id, status: 'interrupted' })
+            break
+        } else {
+            await onStatus({ nodeId: node.id, status: 'error', result: res.error })
+            if (onError === 'fail-fast') {
+                ac.abort()
+                break
+            }
+        }
+    }
+}
+
+function buildLoopInternalIds(nodes: WorkflowNodes[], edges: Edge[]): Set<string> {
+    const loopInternalIds = new Set<string>()
+    const loopStartNodes = nodes.filter(n => n.type === NodeType.LOOP_START)
+    for (const loopStart of loopStartNodes) {
+        const preLoopNodes = findPreLoopNodes(loopStart, nodes, edges)
+        const preLoopNodeIds = new Set(preLoopNodes.map(n => n.id))
+        const loopBodyNodes = findLoopNodes(loopStart, nodes, edges, preLoopNodeIds)
+        const loopEnd = findLoopEndForLoopStart(loopStart, nodes, edges)
+        for (const bodyNode of loopBodyNodes) {
+            loopInternalIds.add(bodyNode.id)
+        }
+        if (loopEnd) {
+            loopInternalIds.add(loopEnd.id)
+        }
+    }
+    return loopInternalIds
+}
+async function runLoopBlock(
+    loopStart: WorkflowNodes,
+    loopBodyNodes: WorkflowNodes[],
+    loopEnd: WorkflowNodes | undefined,
+    ctx: ParallelExecutionContext,
+    callbacks: ParallelCallbacks,
+    byIfElseId: Map<string, { true: Set<string>; false: Set<string> }>,
+    onError: 'fail-fast' | 'continue-subgraph',
+    combinedSignal: AbortSignal
+): Promise<void> {
+    const { onStatus, runNode } = callbacks
+    const runNodeWithStandardHandling = async (
+        node: WorkflowNodes
+    ): Promise<'ok' | 'interrupted' | 'error'> => {
+        const res = await startNode(node, runNode, ctx, combinedSignal)
+        if (res.status === 'ok') {
+            const asText = toResultString(res.result)
+            const maybeMulti = Array.isArray((res as any).result)
+                ? { multi: (res as any).result as string[] }
+                : {}
+            await onStatus({
+                nodeId: node.id,
+                status: 'completed',
+                result: asText,
+                ...maybeMulti,
+            })
+            if (node.type === NodeType.IF_ELSE) {
+                const decision = asText.trim().toLowerCase() === 'true'
+                ctx.ifElseDecisions?.set(node.id, decision)
+                const branches = byIfElseId.get(node.id)
+                if (branches) {
+                    const disableSet = decision ? branches.false : branches.true
+                    for (const nid of disableSet) {
+                        ctx.disabledNodes?.add(nid)
+                    }
+                }
+            }
+            return 'ok'
+        }
+        if (res.status === 'interrupted') {
+            await onStatus({ nodeId: node.id, status: 'interrupted' })
+            return 'interrupted'
+        }
+        await onStatus({ nodeId: node.id, status: 'error', result: res.error })
+        if (onError === 'fail-fast') {
+            throw new Error(res.error)
+        }
+        return 'error'
+    }
+    const runLoopBodyAndEnd = async (): Promise<boolean> => {
+        for (const bodyNode of loopBodyNodes) {
+            if (bodyNode.data?.active === false) continue
+            if (ctx.disabledNodes?.has(bodyNode.id)) continue
+            if (combinedSignal.aborted) return false
+            await onStatus({ nodeId: bodyNode.id, status: 'running' })
+            const status = await runNodeWithStandardHandling(bodyNode)
+            if (status !== 'ok') return false
+        }
+        if (loopEnd && !ctx.disabledNodes?.has(loopEnd.id) && loopEnd.data?.active !== false) {
+            if (combinedSignal.aborted) return false
+            await onStatus({ nodeId: loopEnd.id, status: 'running' })
+            const status = await runNodeWithStandardHandling(loopEnd)
+            if (status !== 'ok') return false
+        }
+        return true
+    }
+    if (combinedSignal.aborted) return
+    if (loopStart.data?.active === false || ctx.disabledNodes?.has(loopStart.id)) {
+        return
+    }
+    await onStatus({ nodeId: loopStart.id, status: 'running' })
+    const firstStatus = await runNodeWithStandardHandling(loopStart)
+    if (firstStatus !== 'ok') return
+
+    const loopState = ctx.loopStates?.get(loopStart.id)
+    const initialMaxIterations = loopState?.maxIterations ?? 1
+
+    if (initialMaxIterations <= 0) {
+        return
+    }
+
+    let maxIterations = initialMaxIterations
+
+    if (!(await runLoopBodyAndEnd())) {
+        return
+    }
+
+    for (let i = 1; i < maxIterations; i++) {
+        if (combinedSignal.aborted) return
+        if (ctx.disabledNodes?.has(loopStart.id)) {
+            return
+        }
+
+        await onStatus({ nodeId: loopStart.id, status: 'running' })
+        const status = await runNodeWithStandardHandling(loopStart)
+        if (status !== 'ok') return
+
+        const updatedState = ctx.loopStates?.get(loopStart.id)
+        const updatedMax = updatedState?.maxIterations ?? maxIterations
+
+        if (i >= updatedMax) {
+            return
+        }
+
+        if (!(await runLoopBodyAndEnd())) {
+            return
+        }
+
+        maxIterations = updatedMax
+    }
+}
+async function runParallelSegment(
+    segmentNodes: WorkflowNodes[],
+    activeEdges: Edge[],
+    ctx: ParallelExecutionContext,
+    callbacks: ParallelCallbacks,
+    options: ParallelOptions | undefined,
+    combinedSignal: AbortSignal,
+    abortAll: () => void
+): Promise<void> {
+    const { onStatus, runNode } = callbacks
+    if (segmentNodes.length === 0) return
+
+    const concurrency = options?.concurrency ?? Number.POSITIVE_INFINITY
+    const perTypeCaps: Partial<Record<NodeType, number>> = {
+        [NodeType.LLM]: 8,
+        [NodeType.CLI]: 8,
+        ...options?.perType,
+    }
+    const onError: 'fail-fast' | 'continue-subgraph' = options?.onError ?? 'fail-fast'
+
+    const nodeIndex = ctx.nodeIndex
+    const disabledNodes = ctx.disabledNodes ?? new Set<string>()
+    if (!ctx.disabledNodes) {
+        ctx.disabledNodes = disabledNodes
+    }
+    const conditionalOutEdges =
+        ctx.conditionalOutEdges ?? new Map<string, { true: string[]; false: string[] }>()
+    const conditionalInPlaceholders = ctx.conditionalInPlaceholders ?? new Map<string, number>()
+
+    const segmentIdSet = new Set(segmentNodes.map(n => n.id))
+    const segmentEdges = activeEdges.filter(edge => segmentIdSet.has(edge.target))
+
+    const edgeIndex = createEdgeIndex(segmentEdges)
+    const orderIndex = buildOrderIndex(segmentEdges)
+
+    const inDegree = new Map<string, number>()
+    for (const node of segmentNodes) {
+        inDegree.set(node.id, 0)
+    }
+
+    for (const edge of segmentEdges) {
+        if (conditionalOutEdges.has(edge.source)) {
+            continue
+        }
+
+        const parentId = edge.source
+        if (disabledNodes.has(parentId)) {
+            continue
+        }
+
+        const parentNode = nodeIndex.get(parentId)
+        const parentInactive = parentNode ? parentNode.data?.active === false : true
+        const parentHasOutput = ctx.nodeOutputs.has(parentId)
+
+        if (!parentInactive && !parentHasOutput) {
+            inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1)
+        }
+    }
+
+    for (const [target, count] of conditionalInPlaceholders) {
+        if (!segmentIdSet.has(target)) continue
+        inDegree.set(target, (inDegree.get(target) || 0) + count)
+    }
+
+    const ready: WorkflowNodes[] = []
+    for (const node of segmentNodes) {
+        if (disabledNodes.has(node.id)) continue
+        if ((inDegree.get(node.id) || 0) === 0) {
+            ready.push(node)
+        }
+    }
+    sortReadyQueue(ready, orderIndex, segmentEdges)
+
+    let remaining = segmentNodes.filter(node => !disabledNodes.has(node.id)).length
+
+    const runningByType = new Map<NodeType, number>()
+    const inflight: Array<{ nodeId: string; type: NodeType; promise: Promise<TaskResult> }> = []
+
+    const isPaused = (): boolean => options?.pause?.isPaused?.() === true
+
+    const canStart = (type: NodeType): boolean => {
+        const totalRunning = inflight.length
+        if (totalRunning >= concurrency) return false
+        const cap = perTypeCaps[type] ?? Number.POSITIVE_INFINITY
+        const cur = runningByType.get(type) || 0
+        return cur < cap
+    }
+
+    const markStart = (type: NodeType): void => {
+        runningByType.set(type, (runningByType.get(type) || 0) + 1)
+    }
+    const markDone = (type: NodeType): void => {
+        const cur = runningByType.get(type) || 0
+        runningByType.set(type, Math.max(0, cur - 1))
+    }
+
+    const tryStart = (): void => {
+        while (ready.length > 0 && canStart(ready[0].type) && !combinedSignal.aborted && !isPaused()) {
+            const node = ready.shift()!
+            markStart(node.type)
+            void onStatus({ nodeId: node.id, status: 'running' })
+
+            const p = startNode(node, runNode, ctx, combinedSignal).then(async res => {
+                markDone(node.type)
+
+                if (res.status === 'ok') {
+                    const asText = toResultString(res.result)
+                    const maybeMulti = Array.isArray((res as any).result)
+                        ? { multi: (res as any).result as string[] }
+                        : {}
+
+                    try {
+                        await onStatus({
+                            nodeId: node.id,
+                            status: 'completed',
+                            result: asText,
+                            ...maybeMulti,
+                        })
+                    } catch {
+                        // ignore status callback errors
+                    }
+
+                    if (node.type === NodeType.IF_ELSE) {
+                        const decision = asText.trim().toLowerCase() === 'true'
+                        ctx.ifElseDecisions?.set(node.id, decision)
+                        processIfElseCompletion(
+                            node.id,
+                            decision,
+                            conditionalOutEdges,
+                            inDegree,
+                            disabledNodes,
+                            activeEdges,
+                            nodeIndex,
+                            ready
+                        )
+                    } else {
+                        const outEdges = edgeIndex.bySource.get(node.id) || []
+                        for (const edge of outEdges) {
+                            if (conditionalOutEdges.has(edge.source)) continue
+                            const targetId = edge.target
+                            const d = (inDegree.get(targetId) || 0) - 1
+                            inDegree.set(targetId, d)
+                            if (d === 0 && !disabledNodes.has(targetId) && segmentIdSet.has(targetId)) {
+                                const child = nodeIndex.get(targetId)
+                                if (child) {
+                                    ready.push(child)
+                                }
+                            }
+                        }
+                    }
+
+                    sortReadyQueue(ready, orderIndex, segmentEdges)
+                    remaining -= 1
+                } else if (res.status === 'interrupted') {
+                    try {
+                        await onStatus({ nodeId: node.id, status: 'interrupted' })
+                    } catch {}
+                    remaining -= 1
+                } else {
+                    try {
+                        await onStatus({ nodeId: node.id, status: 'error', result: res.error })
+                    } catch {}
+                    remaining -= 1
+                    if (onError === 'fail-fast') {
+                        abortAll()
+                    }
+                }
+                return res
+            })
+
+            inflight.push({ nodeId: node.id, type: node.type, promise: p })
+        }
+    }
+
+    tryStart()
+
+    while (remaining > 0 && !combinedSignal.aborted) {
+        if (inflight.length === 0) {
+            if (isPaused()) {
+                throw new PausedError()
+            }
+            if (ready.length > 0) {
+                tryStart()
+                if (inflight.length > 0) {
+                    continue
+                }
+            }
+
+            const blocked: string[] = []
+            const blockedWithParents: string[] = []
+            for (const [nid, deg] of inDegree) {
+                if (!segmentIdSet.has(nid)) continue
+                if (disabledNodes.has(nid)) continue
+                if (deg > 0) {
+                    blocked.push(nid)
+                    const parents = (edgeIndex.byTarget.get(nid) || [])
+                        .map(e => e.source)
+                        .filter(pid => !disabledNodes.has(pid))
+                    if (parents.length > 0) {
+                        blockedWithParents.push(`${nid}<=${parents.join('+')}`)
+                    }
+                }
+            }
+
+            const detail =
+                blockedWithParents.length > 0
+                    ? `; unsatisfied inputs for nodes: ${blockedWithParents.join(', ')}`
+                    : blocked.length > 0
+                      ? `; unsatisfied inputs for nodes: ${blocked.join(', ')}`
+                      : ''
+            throw new Error(`Parallel segment scheduler cannot proceed${detail}`)
+        }
+
+        const winner = await Promise.race(inflight.map(t => t.promise))
+        const idx = inflight.findIndex(t => t.nodeId === winner.nodeId)
+        if (idx >= 0) inflight.splice(idx, 1)
+
+        tryStart()
+    }
+
+    if (combinedSignal.aborted && onError === 'fail-fast') {
+        await Promise.allSettled(inflight.map(t => t.promise))
+        return
+    }
+
+    if (remaining !== 0) {
+        await Promise.allSettled(inflight.map(t => t.promise))
+    }
 }
 
 function createEdgeIndex(edges: Edge[]): EdgeIndex {

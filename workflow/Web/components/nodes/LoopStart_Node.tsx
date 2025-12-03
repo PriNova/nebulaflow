@@ -12,7 +12,14 @@ import {
 
 export type LoopStartNode = Omit<WorkflowNode, 'data'> & {
     type: NodeType.LOOP_START
-    data: BaseNodeData & { iterations: number; loopVariable: string; overrideIterations?: boolean }
+    data: BaseNodeData & {
+        iterations: number
+        loopVariable: string
+        overrideIterations?: boolean
+        loopMode?: 'fixed' | 'while-variable-not-empty'
+        collectionVariable?: string
+        maxSafeIterations?: number
+    }
 }
 
 export const LoopStartNode: React.FC<BaseNodeProps> = ({ id, data, selected }) => (
@@ -54,8 +61,19 @@ export const LoopStartNode: React.FC<BaseNodeProps> = ({ id, data, selected }) =
             </div>
             <div className="tw-flex tw-flex-col tw-justify-center">
                 <span>{data.title}</span>
-                <span className="tw-text-sm tw-opacity-70">Iterations: {data.iterations || 1}</span>
-                <span className="tw-text-xs tw-opacity-50">← Iterations Override</span>
+                <span className="tw-text-sm tw-opacity-70">
+                    Iterations: {data.iterations || 1}
+                    {(data as any).overrideIterations ? ' (overridden)' : ''}
+                </span>
+                <span
+                    className={
+                        (data as any).overrideIterations
+                            ? 'tw-text-xs tw-text-[var(--vscode-testing-iconPassed)]'
+                            : 'tw-text-xs tw-opacity-50'
+                    }
+                >
+                    Iterations Override
+                </span>
             </div>
         </div>
         <Handle type="source" position={Position.Bottom} />

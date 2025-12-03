@@ -129,7 +129,7 @@ function kahnSortbyOrderedEdges(activeNodes: WorkflowNodes[], activeEdges: Edge[
     return sortedNodes
 }
 
-function findPreLoopNodes(
+export function findPreLoopNodes(
     loopStart: WorkflowNodes,
     nodes: WorkflowNodes[],
     edges: Edge[]
@@ -167,7 +167,7 @@ function findPreLoopNodes(
     return kahnSortbyOrderedEdges(preLoopNodeArray, preLoopEdges)
 }
 
-function findLoopNodes(
+export function findLoopNodes(
     loopStart: WorkflowNodes,
     nodes: WorkflowNodes[],
     edges: Edge[],
@@ -273,16 +273,30 @@ export function processGraphComposition(
 
     const loopStartNodes = nodeSet.filter(node => node.type === NodeType.LOOP_START)
 
-    if (loopStartNodes.some(n => n.type === NodeType.LOOP_START)) {
-        return processLoopWithCycles(nodeSet, edgeSet, shouldIterateLoops)
-    }
-    if (loopStartNodes.length === 0) {
-        const subgraphComponents = findStronglyConnectedComponents(nodeSet, edgeSet)
-        const flatSubs = subgraphComponents.flatMap(components => components)
-        return kahnSortbyOrderedEdges(flatSubs, edgeSet)
+    if (loopStartNodes.length > 0) {
+        const loopProcessed = processLoopWithCycles(nodeSet, edgeSet, shouldIterateLoops)
+
+        if (mode === 'display') {
+            const processedIds = new Set(loopProcessed.map(n => n.id))
+            const remainingNodes = nodeSet.filter(n => !processedIds.has(n.id))
+
+            if (remainingNodes.length === 0) {
+                return loopProcessed
+            }
+
+            const remainingNodeIds = new Set(remainingNodes.map(n => n.id))
+            const remainingEdges = filterEdgesForNodeSet(edgeSet, remainingNodeIds)
+            const remainingSorted = kahnSortbyOrderedEdges(remainingNodes, remainingEdges)
+
+            return [...loopProcessed, ...remainingSorted]
+        }
+
+        return loopProcessed
     }
 
-    return nodeSet
+    const subgraphComponents = findStronglyConnectedComponents(nodeSet, edgeSet)
+    const flatSubs = subgraphComponents.flatMap(components => components)
+    return kahnSortbyOrderedEdges(flatSubs, edgeSet)
 }
 
 interface NodeState {
@@ -383,7 +397,7 @@ function findRelatedNodeOfType(
     return undefined
 }
 
-function findLoopEndForLoopStart(
+export function findLoopEndForLoopStart(
     loopStart: WorkflowNodes,
     nodes: WorkflowNodes[],
     edges: Edge[]
@@ -453,16 +467,37 @@ function getLoopIterations(
         return 1
     }
 
+    const baseIterations = ((loopStart as any).data?.iterations ?? 1) as number
+    const min = 1
+    const max = 100
+
     const iterationOverrideEdges = edges.filter(
         edge => edge.target === loopStart.id && edge.targetHandle === 'iterations-override'
     )
 
     if (iterationOverrideEdges.length === 0) {
-        return (loopStart as any).data.iterations
+        return baseIterations
     }
 
-    const sourceNode = nodes.find(n => n.id === iterationOverrideEdges[0].source)
-    const overrideValue = Number.parseInt(sourceNode?.data.content || '', 10)
+    const nodeById = new Map(nodes.map(node => [node.id, node]))
 
-    return !Number.isNaN(overrideValue) ? overrideValue : (loopStart as any).data.iterations
+    let overrideIterations: number | undefined
+    for (const edge of iterationOverrideEdges) {
+        const sourceNode = nodeById.get(edge.source)
+        if (sourceNode?.type !== NodeType.INPUT) {
+            continue
+        }
+
+        const raw = ((sourceNode as any).data?.content ?? '') as string
+        const parsed = Number.parseInt(raw, 10)
+        if (Number.isNaN(parsed) || parsed < min) {
+            break
+        }
+
+        const clamped = Math.min(max, Math.max(min, parsed))
+        overrideIterations = clamped
+        break
+    }
+
+    return overrideIterations ?? baseIterations
 }

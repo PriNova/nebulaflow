@@ -1,79 +1,96 @@
-## High-level summary
-The diff introduces a **node-level fullscreen view** for the execution sidebar, refactors the assistant-content renderer to better separate plain text vs. accordion items, and updates supporting UI/UX logic.  
-Additional, very small formatting change in `electron/main/index.ts` and an updated vendored `amp-sdk.tgz` binary.
+## High-level summary  
+A single file (`RightSidebar.tsx`) was updated.  
+The change introduces a new helper `getAssistantDisplayItems()` that decides whether the *last* assistant “text” item should be hidden from the timeline when it is identical to the node’s final “Result”. The main render path for assistant messages now calls this helper instead of always showing all items.
 
-## Tour of changes
-Begin with `workflow/Web/components/sidebar/RightSidebar.tsx`.  
-This file contains >95 % of the diff and drives all new behaviour (new state, button, conditional rendering, scroll/overflow logic, assistant item grouping, container restructuring). Understanding it first makes the other file changes trivial.
+## Tour of changes  
+Start with the **new helper function** (`getAssistantDisplayItems`) because it contains the actual filtering logic; everything else is wiring this function into the existing render flow. Once that logic is understood, the small change in the render branch is trivial to follow.
 
 ## File level review
 
-### `electron/main/index.ts`
-Change  
-```
-if (host.workspace instanceof ElectronWorkspace &&
-    host.workspace.workspaceFolders.length > 0)
-```  
-This is a pure formatting / readability tweak – no functional change.  
-No issues.
-
-### `vendor/amp-sdk/amp-sdk.tgz`
-Binary was replaced. Without release notes we cannot review, but risk is that the checksum changes and reproducible builds might break. Verify licence compatibility and run `npm audit` after update.
-
 ### `workflow/Web/components/sidebar/RightSidebar.tsx`
-Large functional update.
 
-1. New UI state
-   • `fullscreenNodeId` (nullable string) added.  
-   • Node header now shows Maximize2 / Minimize2 icons (only for LLM nodes) to toggle state.
+#### 1. New helper `getAssistantDisplayItems`
 
-2. `renderNodeItem`
-   • Wrapper `<div>` now receives an extra `tw-h-full` when node is fullscreen.  
-   • `AccordionContent` receives flex/overflow classes under fullscreen.  
-   • Button click handler does `e.stopPropagation()` to avoid triggering accordion toggle 👍.
+```ts
+function getAssistantDisplayItems(
+    items: AssistantContentItem[],
+    options: { isExecuting: boolean; resultText: string | undefined }
+): AssistantContentItem[] { … }
+```
 
-3. Assistant content rendering
-   • Previously every item lived inside one accordion.  
-   • Now: 
-     – Iterates over `displayItems`, grouping non-text items into nested accordions (`pendingNonText`).  
-     – Text segments are rendered as individual bordered `<Markdown>` blocks outside those accordions.  
-   • Pros: cleaner UX, immediate visibility of text.  
-   • Implementation is correct but **complex**; add unit test to guard regressions.
+Correctness & edge-cases  
+• Early exits (`isExecuting`, missing `resultText`) look fine.  
+• `normalize` uses only `.trim()`. That will ignore leading/trailing whitespace but still require
+  – identical casing  
+  – identical internal whitespace (multiple spaces, newlines within the answer, etc.)  
+  Depending on how `Result` is produced, this might be too strict (e.g., a trailing newline inside a
+  fenced code block will break the match). Consider a more robust equality test (e.g., collapse all whitespace or a checksum that matches the input path).  
+• The algorithm finds the *last* **text** item, not necessarily the last item overall.  
+  If the last timeline item is a non-text block (e.g., code, image), but the penultimate is text that matches the result, we will still hide it. Is that intentional? If you want to hide *only if it is the very last item of any type*, filter should check `i === items.length - 1` as well.  
+• Time complexity is O(n) but lists are tiny; fine.  
+• The function is pure and does not mutate its inputs – good.  
 
-4. Fullscreen container handling  
-   • Top-level sidebar items list now switches between:
-     – single fullscreen item (`renderNodeItem(node)`)  
-     – normal list / parallel-group logic.  
-   • Adds height / flex management to allow sidebar itself to scroll while fullscreen node fills remaining height.
+Type safety  
+• Uses `Extract<AssistantContentItem, { type: 'text' }>` to narrow the item type. 👍  
+• The return type is correctly stated as `AssistantContentItem[]`.  
 
-5. Side effects / interactions
-   • When entering fullscreen the accordion is force-opened (`setOpenItemId(node.id)`) and auto-follow is disabled.  
-   • Exiting fullscreen leaves `openItemId` as previously set – acceptable UX.  
-   • No cleanup if the node disappears (e.g., after workflow restart). Consider a `useEffect` watching `sortedNodes` to clear `fullscreenNodeId` if node no longer exists.
+Performance  
+• Will run on every render. Cost is negligible, but if items grow large, memoization could help.  
 
-6. Keys & performance  
-   • Good unique `key`s (`${node.id}:text:${i}` etc.).  
-   • `flushNonTextAccordion` recomputes segments; O(n) – fine.  
-   • `assistantScrollRefs.current` still maintained – unchanged.
+Naming / readability  
+• Name clearly describes purpose; doc-comment is thorough.  
 
-7. Styling / accessibility
-   • Tooltip titles supplied.  
-   • Fullscreen button uses icon only; consider `aria-label`.  
-   • When fullscreen, outer list wrapper uses `tw-flex tw-flex-col`; if parent is not flex this is harmless but redundant.
+#### 2. Integration into render path
 
-8. Possible corner cases / bugs
-   • Parallel-groups path when fullscreen is active: code bypasses group rendering and looks up node in `sortedNodes`. If that node belonged to a parallel group it is still rendered correctly (outside group container) – acceptable.  
-   • If two nodes obtain the same ID (should never happen) toggling fullscreen could misbehave – negligible.  
-   • `getBorderColorClass` / CSS now may expand to whole height; ensure class doesn’t rely on fixed height backgrounds.
+Old:
 
-9. Security
-   • No new data leakage.  
-   • Clipboard, Markdown rendering unchanged (assumes sanitizer already in place elsewhere).
+```ts
+const displayItems = items
+```
 
-10. Tests / docs
-   • None added. Recommend:
-     – Unit test for new assistant segmentation.  
-     – Integration test toggling fullscreen and navigating between nodes to ensure scroll/auto-follow works.
+New:
 
-## Overall
-Well-structured feature addition, mostly cosmetic risk. Address the minor cleanup for node disappearance, add accessibility label, and consider tests to avoid regressions in the complex assistant rendering logic.
+```ts
+const displayItems = getAssistantDisplayItems(items, {
+    isExecuting: executingNodeIds.has(node.id),
+    resultText: nodeResults.get(node.id),
+})
+```
+
+Correctness  
+• `executingNodeIds` and `nodeResults` pre-exist; arguments are passed correctly.  
+• Behaviour while streaming (`isExecuting = true`) remains unchanged (always show).  
+
+Potential UX issues  
+• Users might find the answer “jumping” from the timeline to the Result panel abruptly when execution finishes. Consider an animation or placeholder to reduce jank.  
+
+Other observations  
+• `pairedMap` is still populated with the original `items` (not `displayItems`). If later logic
+  relies on `pairedMap` and the removed text, this can lead to inconsistencies. Double-check where
+  `pairedMap` is used; maybe it should iterate over `displayItems` as well.  
+
+Security  
+• No user-supplied HTML is inserted; filtering logic cannot introduce XSS. No new surface area.  
+
+#### 3. Comments / documentation  
+Good descriptive comments were added next to both the helper and its call-site, explaining the rationale.  
+
+---
+
+### Recommendations / possible improvements  
+1. Robustness of equality check  
+   ```ts
+   const normalize = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase()
+   ```  
+   would ignore extra internal whitespace and casing differences.
+
+2. Ensure we only hide if the matching text is truly the *last* item overall:  
+   ```ts
+   if (lastTextIndex !== items.length - 1) return items
+   ```
+
+3. Consider feeding `displayItems` (not `items`) into any subsequent processing to avoid hidden items re-appearing elsewhere (see `pairedMap`).
+
+4. Minor optimisation: if `items.length === 0` return early.
+
+Overall, the change is small, safe and improves UX, but verify the edge-cases above before merging.

@@ -104,6 +104,12 @@ export function registerHandlers(router: Router): void {
         })
     })
 
+    // clear_workflow
+    router.set('clear_workflow', async (_message, env) => {
+        setActiveWorkflowUri(undefined)
+        env.updatePanelTitle(undefined)
+    })
+
     // open_external_link
     router.set('open_external_link', async (message, env) => {
         try {

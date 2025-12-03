@@ -25,7 +25,7 @@
   - SDK Sync: Builds auto-sync the upstream SDK via `sync:sdk` in the `prebuild` hook; manual linking not required. To force, run `npm i /home/prinova/CodeProjects/upstreamAmp/sdk`.
 - Webview only: `npm run build:webview`. Extension only: `npm run build:ext` (uses esbuild to bundle extension + SDK).
 - Webview watch: `npm run watch:webview`.
-- Typecheck: `npm run typecheck` (TS 5.x; extends `@sourcegraph/tsconfig`).
+- Typecheck: `npm run check` (TS 5.x; extends `@sourcegraph/tsconfig`).
 - Lint: Biome configured (no ESLint/Prettier). `npm run lint` or `npm run check` (typecheck + Biome preferred over Typecheck). Auto-fix with `npm run biome`.
 - Format: `npm run format` (Biome).
 - Tests: not configured. Single-test N/A. If added (e.g., Vitest), run: `npx vitest run path -t "name"`.

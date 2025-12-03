@@ -44,7 +44,7 @@
         "build:ext": "node scripts/bundle-ext.mjs",
         "watch:ext": "node scripts/bundle-ext.mjs --watch",
         "watch": "node scripts/dev-watch.mjs",
-        "typecheck": "tsc -p . && tsc -p workflow/Web/tsconfig.json",
+        "typecheck": "tsc -p . && tsc -p workflow/Web/tsconfig.json && tsc -p electron/tsconfig.json --noEmit",
         "biome": "biome check --apply --error-on-warnings .",
         "format": "npm run biome",
         "check": "npm run -s typecheck && npm run -s biome",

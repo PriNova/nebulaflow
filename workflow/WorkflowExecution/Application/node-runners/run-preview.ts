@@ -2,7 +2,7 @@ import type { ExtensionToWorkflow } from '../../../Core/models'
 import type { IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
-import { replaceIndexedInputs } from '../../Core/execution/inputs'
+import { evalTemplate } from '../../Core/execution/inputs'
 import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
 
 export async function executePreviewNode(
@@ -11,7 +11,7 @@ export async function executePreviewNode(
     context: IndexedExecutionContext
 ): Promise<string> {
     const input = combineParentOutputsByConnectionOrder(nodeId, context).join('\n')
-    const processedInput = replaceIndexedInputs(input, [], context)
+    const processedInput = evalTemplate(input, [], context)
     const trimmedInput = processedInput.trim()
     const tokenCount = trimmedInput.length
     await safePost(port, {

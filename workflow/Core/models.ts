@@ -58,6 +58,17 @@ export interface BaseNodeData {
     shouldAbort?: boolean
 }
 
+export type AttachmentKind = 'image'
+
+export interface AttachmentRef {
+    id: string
+    kind: AttachmentKind
+    source: 'file' | 'url'
+    path?: string
+    url?: string
+    altText?: string
+}
+
 export interface WorkflowNode {
     id: string
     type: NodeType
@@ -131,6 +142,7 @@ export interface LLMNode extends WorkflowNode {
         dangerouslyAllowAll?: boolean
         reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
         systemPromptTemplate?: string
+        attachments?: AttachmentRef[]
     }
 }
 
@@ -140,6 +152,9 @@ export interface LoopStartNode extends WorkflowNode {
         iterations: number
         loopVariable: string
         overrideIterations?: boolean
+        loopMode?: 'fixed' | 'while-variable-not-empty'
+        collectionVariable?: string
+        maxSafeIterations?: number
     }
 }
 

@@ -4,11 +4,13 @@ import type { IHostEnvironment, IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
 import { type ParallelCallbacks, executeWorkflowParallel } from '../../Core/engine/parallel-scheduler'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
-import { replaceIndexedInputs } from '../../Core/execution/inputs'
+import { evalTemplate } from '../../Core/execution/inputs'
 import { executeCLINode } from '../node-runners/run-cli'
 import { executeIfElseNode } from '../node-runners/run-if-else'
 import { executeInputNode } from '../node-runners/run-input'
 import { executeLLMNode } from '../node-runners/run-llm'
+import { executeLoopEndNode } from '../node-runners/run-loop-end'
+import { executeLoopStartNode } from '../node-runners/run-loop-start'
 import { executePreviewNode } from '../node-runners/run-preview'
 import { runSubflowWrapper } from '../subflow/run-subflow'
 import { routeNodeExecution } from './NodeDispatch'
@@ -73,9 +75,8 @@ export async function executeWorkflow(
                     runIfElse: (..._args: any[]) => executeIfElseNode(ctx, node),
                     runAccumulator: async (..._args: any[]) => {
                         const inputs = combineParentOutputsByConnectionOrder(node.id, ctx)
-                        const inputValue = node.data.content
-                            ? replaceIndexedInputs(node.data.content, inputs, ctx)
-                            : ''
+                        const template = ((node as any).data?.content || '').toString()
+                        const inputValue = evalTemplate(template, inputs, ctx)
                         const variableName = (node as any).data.variableName as string
                         const initialValue = (node as any).data.initialValue as string | undefined
                         let accumulatedValue =
@@ -86,9 +87,8 @@ export async function executeWorkflow(
                     },
                     runVariable: async (..._args: any[]) => {
                         const inputs = combineParentOutputsByConnectionOrder(node.id, ctx)
-                        const inputValue = node.data.content
-                            ? replaceIndexedInputs(node.data.content, inputs, ctx)
-                            : ''
+                        const template = ((node as any).data?.content || '').toString()
+                        const inputValue = evalTemplate(template, inputs, ctx)
                         const variableName = (node as any).data.variableName as string
                         const initialValue = (node as any).data.initialValue as string | undefined
                         let variableValue = ctx.variableValues?.get(variableName) || initialValue || ''
@@ -96,8 +96,8 @@ export async function executeWorkflow(
                         ctx.variableValues?.set(variableName, variableValue)
                         return variableValue
                     },
-                    runLoopStart: undefined,
-                    runLoopEnd: undefined,
+                    runLoopStart: async (..._args: any[]) => executeLoopStartNode(node, ctx),
+                    runLoopEnd: async (..._args: any[]) => executeLoopEndNode(node, ctx),
                     runSubflow: async (..._args: any[]) =>
                         runSubflowWrapper(node, ctx, signal, port, host, subflowCache),
                 })

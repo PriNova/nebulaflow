@@ -54,6 +54,17 @@ export const formatNodeTitle = (type: NodeType, title?: string | null): string =
 export const DEFAULT_LLM_REASONING_EFFORT = 'medium' as const
 export { DEFAULT_LLM_MODEL_ID, DEFAULT_LLM_MODEL_TITLE }
 
+export type AttachmentKind = 'image'
+
+export interface AttachmentRef {
+    id: string
+    kind: AttachmentKind
+    source: 'file' | 'url'
+    path?: string
+    url?: string
+    altText?: string
+}
+
 export interface BaseNodeProps {
     id: string
     data: {

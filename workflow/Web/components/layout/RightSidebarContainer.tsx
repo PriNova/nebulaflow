@@ -18,6 +18,7 @@ interface RightSidebarContainerProps {
     interruptedNodeId: string | null
     stoppedAtNodeId: string | null
     nodeAssistantContent: Map<string, AssistantContentItem[]>
+    nodeThreadIDs: Map<string, string>
     executionRunId: number
     isPaused: boolean
     selectionSummary: any
@@ -31,6 +32,7 @@ interface RightSidebarContainerProps {
     onResume: (nodeId: string, outputs: Record<string, string>) => void
     handleResultUpdate: (nodeId: string, value: string) => void
     handleRightSidebarMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void
+    onChat?: (args: { nodeId: string; threadID: string; message: string }) => void
 }
 
 /**
@@ -46,6 +48,7 @@ export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
     interruptedNodeId,
     stoppedAtNodeId,
     nodeAssistantContent,
+    nodeThreadIDs,
     executionRunId,
     isPaused,
     selectionSummary,
@@ -59,6 +62,7 @@ export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
     onResume,
     handleResultUpdate,
     handleRightSidebarMouseDown,
+    onChat,
 }) => {
     return (
         <>
@@ -99,6 +103,7 @@ export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
                         interruptedNodeId={interruptedNodeId}
                         stoppedAtNodeId={stoppedAtNodeId}
                         nodeAssistantContent={nodeAssistantContent}
+                        nodeThreadIDs={nodeThreadIDs}
                         executionRunId={executionRunId}
                         isPaused={isPaused}
                         onRunFromHere={(nodeId: string) => {
@@ -117,6 +122,7 @@ export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
                         branchByIfElseId={branchByIfElseId}
                         onToggleCollapse={() => setRightCollapsed(true)}
                         onResultUpdate={handleResultUpdate}
+                        onChat={onChat}
                     />
                 )}
             </div>

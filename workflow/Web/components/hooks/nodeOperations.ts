@@ -64,6 +64,9 @@ function cloneNodeData(sourceNode: WorkflowNodes): WorkflowNodes {
                     ...baseClone.data,
                     iterations: loopSource.data.iterations,
                     loopVariable: loopSource.data.loopVariable,
+                    loopMode: loopSource.data.loopMode,
+                    collectionVariable: loopSource.data.collectionVariable,
+                    maxSafeIterations: loopSource.data.maxSafeIterations,
                 },
             } as LoopStartNode
         }

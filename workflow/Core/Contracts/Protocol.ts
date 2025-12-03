@@ -164,6 +164,10 @@ interface ResetResultsCommand extends BaseWorkflowMessage {
     type: 'reset_results'
 }
 
+interface ClearWorkflowCommand extends BaseWorkflowMessage {
+    type: 'clear_workflow'
+}
+
 // Subflow commands
 interface CreateSubflowCommand extends BaseWorkflowMessage {
     type: 'create_subflow'
@@ -301,6 +305,16 @@ interface ExecuteNodeCommand extends BaseWorkflowMessage {
     }
 }
 
+interface LLMNodeChatCommand extends BaseWorkflowMessage {
+    type: 'llm_node_chat'
+    data: {
+        node: WorkflowNodeDTO
+        threadID: string
+        message: string
+        mode?: 'single-node' | 'workflow'
+    }
+}
+
 // Clipboard commands
 interface CopySelectionCommand extends BaseWorkflowMessage {
     type: 'copy_selection'
@@ -325,6 +339,7 @@ export type WorkflowToExtension =
     | LoadLastWorkflowCommand
     | ExecuteWorkflowCommand
     | ExecuteNodeCommand
+    | LLMNodeChatCommand
     | AbortWorkflowCommand
     | PauseWorkflowCommand
     | CalculateTokensCommand
@@ -337,6 +352,7 @@ export type WorkflowToExtension =
     | GetStorageScopeCommand
     | ToggleStorageScopeCommand
     | ResetResultsCommand
+    | ClearWorkflowCommand
     | CreateSubflowCommand
     | GetSubflowCommand
     | GetSubflowsCommand

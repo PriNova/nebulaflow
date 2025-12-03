@@ -151,6 +151,7 @@ export const Flow: React.FC<{
     const [selectedNodes, setSelectedNodes] = useState<WorkflowNodes[]>([])
     const [activeNode, setActiveNode] = useState<WorkflowNodes | null>(null)
     const [nodeResults, setNodeResults] = useState<Map<string, string>>(new Map())
+    const [nodeThreadIDs, setNodeThreadIDs] = useState<Map<string, string>>(new Map())
     const [pendingApprovalNodeId, setPendingApprovalNodeId] = useState<string | null>(null)
     const [models, setModels] = useState<{ id: string; title?: string }[]>([])
     const [customNodes, setCustomNodes] = useState<WorkflowNodes[]>([])
@@ -279,6 +280,27 @@ export const Flow: React.FC<{
             return next
         })
     }, [])
+
+    const handleChat = useCallback(
+        ({ nodeId, threadID, message }: { nodeId: string; threadID: string; message: string }) => {
+            const node = nodes.find(n => n.id === nodeId)
+            if (!node) return
+            try {
+                vscodeAPI.postMessage({
+                    type: 'llm_node_chat',
+                    data: {
+                        node: toWorkflowNodeDTO(node),
+                        threadID,
+                        message,
+                        mode: 'single-node',
+                    },
+                } as any)
+            } catch (err) {
+                console.error('[Flow] Failed to post llm_node_chat message', err)
+            }
+        },
+        [nodes, vscodeAPI]
+    )
 
     const selectionSummary = useMemo(() => buildSelectionSummary(selectedNodes), [selectedNodes])
 
@@ -534,6 +556,7 @@ export const Flow: React.FC<{
         setCustomNodes,
         setNodeAssistantContent,
         setIfElseDecisions,
+        setNodeThreadIDs,
         notify,
         edges,
         orderedEdges,
@@ -800,6 +823,7 @@ export const Flow: React.FC<{
     const resetResultsState = useCallback(() => {
         setNodeResults(new Map())
         setNodeAssistantContent(new Map())
+        setNodeThreadIDs(new Map())
         setNodeErrors(new Map())
         setNodes(prev =>
             prev.map(n =>
@@ -817,7 +841,10 @@ export const Flow: React.FC<{
     const clearWorkflow = useCallback(() => {
         resetResultsState()
         resetExecutionState()
-    }, [resetResultsState, resetExecutionState])
+        try {
+            vscodeAPI.postMessage({ type: 'clear_workflow' } as any)
+        } catch {}
+    }, [resetResultsState, resetExecutionState, vscodeAPI])
 
     const onResetResults = useCallback(() => {
         resetResultsState()
@@ -976,6 +1003,7 @@ export const Flow: React.FC<{
                         interruptedNodeId={interruptedNodeId}
                         stoppedAtNodeId={stoppedAtNodeId}
                         nodeAssistantContent={nodeAssistantContent}
+                        nodeThreadIDs={nodeThreadIDs}
                         executionRunId={executionRunId}
                         isPaused={isPaused}
                         selectionSummary={selectionSummary}
@@ -989,6 +1017,7 @@ export const Flow: React.FC<{
                         onResume={onResume}
                         handleResultUpdate={handleResultUpdate}
                         handleRightSidebarMouseDown={handleRightSidebarMouseDown}
+                        onChat={handleChat}
                     />
                 </div>
             </div>

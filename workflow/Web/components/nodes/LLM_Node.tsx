@@ -8,6 +8,7 @@ import nebulaMark from '../../assets/nebula-mark.svg'
 import type { Model } from '../../services/Protocol'
 import { FanInTargetHandles } from './FanInTargetHandles'
 import {
+    type AttachmentRef,
     type BaseNodeData,
     type BaseNodeProps,
     NodeType,
@@ -25,6 +26,7 @@ export type LLMNode = Omit<WorkflowNode, 'data'> & {
         dangerouslyAllowAll?: boolean
         reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
         systemPromptTemplate?: string
+        attachments?: AttachmentRef[]
     }
 }
 

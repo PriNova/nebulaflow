@@ -1,5 +1,5 @@
 import { isWorkflowPayloadDTO, isWorkflowToExtension } from '../Core/Contracts/guards'
-import type { ApprovalResult, ExtensionToWorkflow } from '../Core/models'
+import { AbortedError, type ApprovalResult, type ExtensionToWorkflow } from '../Core/models'
 import {
     type SliceEnv,
     registerHandlers as registerLLMHandlers,
@@ -10,6 +10,7 @@ import { safePost } from '../Shared/Infrastructure/messaging/safePost'
 import { registerHandlers as registerSubflowsHandlers } from '../Subflows/Application/register'
 import { executeSingleNode } from '../WorkflowExecution/Application/handlers/ExecuteSingleNode'
 import { executeWorkflow } from '../WorkflowExecution/Application/handlers/ExecuteWorkflow'
+import { executeLLMChatTurn } from '../WorkflowExecution/Application/node-runners/run-llm'
 import { registerHandlers as registerPersistenceHandlers } from '../WorkflowPersistence/Application/register'
 import { fromProtocolPayload } from './messaging/converters'
 
@@ -257,6 +258,81 @@ export function setupWorkflowMessageHandling(
                         ctx.abortController.signal,
                         approvalHandler
                     )
+                } finally {
+                    await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
+                        strict: isDev,
+                    })
+                    const controller = ctx.abortController
+                    ctx.abortController = null
+                    if (controller) activeAbortControllers.delete(controller)
+                }
+                break
+            }
+            case 'llm_node_chat': {
+                const ctx = getOrCreateSessionContext(port)
+                if (ctx.pauseRequested) {
+                    void host.window.showInformationMessage('Cannot start chat while paused')
+                    break
+                }
+                if (ctx.abortController) {
+                    void host.window.showInformationMessage('Execution already in progress')
+                    break
+                }
+                const data = (message as any).data
+                ctx.abortController = new AbortController()
+                activeAbortControllers.add(ctx.abortController)
+                let nodeId: string | undefined
+                try {
+                    const approvalHandler = createWaitForApproval(port)
+                    await safePost(port, { type: 'execution_started' } as ExtensionToWorkflow, {
+                        strict: isDev,
+                    })
+                    const { nodes } = fromProtocolPayload({ nodes: [data.node], edges: [] })
+                    const node = nodes[0] as any
+                    if (!node) {
+                        void host.window.showErrorMessage('LLM chat failed: node not found')
+                        break
+                    }
+                    nodeId = node.id
+                    await safePost(port, {
+                        type: 'node_execution_status',
+                        data: { nodeId, status: 'running' },
+                    } as ExtensionToWorkflow)
+
+                    try {
+                        const result = await executeLLMChatTurn(
+                            node,
+                            data.threadID as string,
+                            data.message as string,
+                            ctx.abortController.signal,
+                            port,
+                            approvalHandler
+                        )
+                        await safePost(port, {
+                            type: 'node_execution_status',
+                            data: { nodeId, status: 'completed', result: result ?? '' },
+                        } as ExtensionToWorkflow)
+                    } catch (error) {
+                        const aborted =
+                            ctx.abortController?.signal.aborted || error instanceof AbortedError
+                        const msg = error instanceof Error ? error.message : String(error)
+                        if (aborted) {
+                            await safePost(port, {
+                                type: 'node_execution_status',
+                                data: { nodeId: nodeId ?? data.node?.id, status: 'interrupted' },
+                            } as ExtensionToWorkflow)
+                        } else {
+                            void host.window.showErrorMessage(`LLM Chat Error: ${msg}`)
+                            await safePost(port, {
+                                type: 'node_execution_status',
+                                data: {
+                                    nodeId: nodeId ?? data.node?.id,
+                                    status: 'error',
+                                    result: msg,
+                                },
+                            } as ExtensionToWorkflow)
+                        }
+                    }
                 } finally {
                     await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
                         strict: isDev,

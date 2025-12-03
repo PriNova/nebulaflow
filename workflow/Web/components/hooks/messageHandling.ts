@@ -138,6 +138,7 @@ export const useMessageHandler = (
     setCustomNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>,
     setNodeAssistantContent: React.Dispatch<React.SetStateAction<Map<string, any[]>>>,
     setIfElseDecisions: React.Dispatch<React.SetStateAction<Map<string, 'true' | 'false'>>>,
+    setNodeThreadIDs: React.Dispatch<React.SetStateAction<Map<string, string>>>,
     notify: (p: { type: 'success' | 'error'; text: string }) => void,
     edges: Edge[],
     orderedEdges: Edge[],
@@ -359,7 +360,7 @@ export const useMessageHandler = (
                     break
                 }
                 case 'node_assistant_content': {
-                    const { nodeId, content } = event.data.data as any
+                    const { nodeId, content, threadID } = event.data.data as any
                     // If assistant content arrives, mark node as executing (handles mid-run opens)
                     if (nodeId) {
                         setExecutingNodeIds(prev => {
@@ -367,12 +368,16 @@ export const useMessageHandler = (
                             next.add(nodeId)
                             return next
                         })
+                        if (typeof threadID === 'string' && threadID) {
+                            setNodeThreadIDs(prev => new Map(prev).set(nodeId, threadID))
+                        }
                     }
+                    // Latest snapshot from SDK becomes the current assistant timeline for this node
                     setNodeAssistantContent(prev => new Map(prev).set(nodeId, content))
                     break
                 }
                 case 'subflow_node_assistant_content': {
-                    const { subflowId, nodeId, content } = (event.data as any).data || {}
+                    const { subflowId, nodeId, content, threadID } = (event.data as any).data || {}
                     if (subflowId && activeSubflowIdRef?.current === subflowId && nodeId) {
                         // If assistant content arrives, mark node as executing (handles mid-run opens)
                         setExecutingNodeIds(prev => {
@@ -381,6 +386,9 @@ export const useMessageHandler = (
                             return next
                         })
                         setNodeAssistantContent(prev => new Map(prev).set(nodeId, content))
+                        if (typeof threadID === 'string' && threadID) {
+                            setNodeThreadIDs(prev => new Map(prev).set(nodeId, threadID))
+                        }
                     }
                     break
                 }

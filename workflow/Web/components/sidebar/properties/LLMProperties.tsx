@@ -1,9 +1,11 @@
 import { Save } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useState } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import { isToolEnabled } from '../../../services/toolNames'
 import { Button } from '../../../ui/shadcn/ui/button'
 import { Checkbox } from '../../../ui/shadcn/ui/checkbox'
+import { Input } from '../../../ui/shadcn/ui/input'
 import { Label } from '../../../ui/shadcn/ui/label'
 import { Textarea } from '../../../ui/shadcn/ui/textarea'
 import { TextEditorModal } from '../../modals/TextEditorModal'
@@ -31,6 +33,8 @@ export const LLMProperties: React.FC<LLMPropertiesProps> = ({
     const [promptDraft, setPromptDraft] = useState('')
     const [isSystemPromptEditorOpen, setIsSystemPromptEditorOpen] = useState(false)
     const [systemPromptDraft, setSystemPromptDraft] = useState('')
+    const [newFilePath, setNewFilePath] = useState('')
+    const [newUrl, setNewUrl] = useState('')
 
     useEffect(() => {
         if (node.data.reasoningEffort === undefined) {
@@ -44,6 +48,50 @@ export const LLMProperties: React.FC<LLMPropertiesProps> = ({
         setIsPromptEditorOpen(false)
         setIsSystemPromptEditorOpen(false)
     }, [node.id])
+
+    const attachments = ((node.data as any).attachments ?? []) as NonNullable<
+        LLMNode['data']['attachments']
+    >
+
+    const handleAddFileAttachment = () => {
+        const path = newFilePath.trim()
+        if (!path) return
+        const next = [
+            ...attachments,
+            {
+                id: uuidv4(),
+                kind: 'image',
+                source: 'file',
+                path,
+            } as any,
+        ]
+        onUpdate(node.id, { attachments: next } as any)
+        setNewFilePath('')
+    }
+
+    const handleAddUrlAttachment = () => {
+        const url = newUrl.trim()
+        if (!url) return
+        const next = [
+            ...attachments,
+            {
+                id: uuidv4(),
+                kind: 'image',
+                source: 'url',
+                url,
+            } as any,
+        ]
+        onUpdate(node.id, { attachments: next } as any)
+        setNewUrl('')
+    }
+
+    const handleRemoveAttachment = (id: string) => {
+        const existing = ((node.data as any).attachments ?? []) as NonNullable<
+            LLMNode['data']['attachments']
+        >
+        const next = existing.filter(att => att.id !== id)
+        onUpdate(node.id, { attachments: next } as any)
+    }
 
     return (
         <div className="tw-flex tw-flex-col tw-gap-2">
@@ -143,6 +191,87 @@ export const LLMProperties: React.FC<LLMPropertiesProps> = ({
                 )
             })()}
             <ToolsSelector node={node} onUpdate={onUpdate} />
+            <div className="tw-mt-3 tw-flex tw-flex-col tw-gap-1">
+                <Label>Image attachments</Label>
+                <p className="tw-text-xs tw-text-gray-500">
+                    These images are sent with this node's prompt.
+                </p>
+                {attachments.length === 0 ? (
+                    <p className="tw-text-xs tw-text-gray-500">No attachments added.</p>
+                ) : (
+                    <ul className="tw-mt-1 tw-flex tw-flex-col tw-gap-1">
+                        {attachments.map(att => (
+                            <li
+                                key={att.id}
+                                className="tw-flex tw-items-center tw-justify-between tw-gap-2"
+                            >
+                                <span className="tw-text-xs tw-break-all tw-text-[var(--vscode-foreground)]">
+                                    {att.source === 'file' ? att.path : att.url}
+                                </span>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="tw-h-6 tw-w-6"
+                                    onClick={() => handleRemoveAttachment(att.id)}
+                                >
+                                    ×
+                                </Button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                <div className="tw-mt-2 tw-flex tw-flex-col tw-gap-1">
+                    <Label className="tw-text-xs">Add image file path</Label>
+                    <Input
+                        className="tw-h-7 tw-text-xs"
+                        placeholder="src/assets/screenshot.png"
+                        value={newFilePath}
+                        onChange={(e: { target: { value: string } }) => setNewFilePath(e.target.value)}
+                        onKeyDown={(e: any) => {
+                            if (e.key === 'Enter') {
+                                handleAddFileAttachment()
+                            }
+                        }}
+                    />
+                    <div className="tw-flex tw-justify-end tw-mt-1">
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!newFilePath.trim()}
+                            onClick={handleAddFileAttachment}
+                        >
+                            Add file
+                        </Button>
+                    </div>
+                </div>
+                <div className="tw-mt-2 tw-flex tw-flex-col tw-gap-1">
+                    <Label className="tw-text-xs">Add image URL</Label>
+                    <Input
+                        className="tw-h-7 tw-text-xs"
+                        placeholder="https://example.com/image.png"
+                        value={newUrl}
+                        onChange={(e: { target: { value: string } }) => setNewUrl(e.target.value)}
+                        onKeyDown={(e: any) => {
+                            if (e.key === 'Enter') {
+                                handleAddUrlAttachment()
+                            }
+                        }}
+                    />
+                    <div className="tw-flex tw-justify-end tw-mt-1">
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!newUrl.trim()}
+                            onClick={handleAddUrlAttachment}
+                        >
+                            Add URL
+                        </Button>
+                    </div>
+                </div>
+            </div>
             <div>
                 <Label htmlFor={`llm-timeout-sec-${node.id}`}>Timeout (seconds)</Label>
                 <LLMTimeoutField key={node.id} node={node} onUpdate={onUpdate} />

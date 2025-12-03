@@ -7,10 +7,10 @@ import { NodeType } from '../../../Core/models'
 import { loadSubflow } from '../../../DataAccess/fs'
 import type { IHostEnvironment, IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
-import { DEFAULT_LLM_MODEL_ID } from '../../../Shared/LLM/default-model'
 import { type ParallelCallbacks, executeWorkflowParallel } from '../../Core/engine/parallel-scheduler'
-import { replaceIndexedInputs } from '../../Core/execution/inputs'
-import { commandsNotAllowed, sanitizeForShell } from '../../Core/execution/sanitize'
+import { evalTemplate, replaceIndexedInputs } from '../../Core/execution/inputs'
+import { runCLICore } from '../node-runners/run-cli'
+import { runLLMCore } from '../node-runners/run-llm'
 import type { IndexedExecutionContext } from './ExecuteWorkflow'
 import { routeNodeExecution } from './NodeDispatch'
 
@@ -108,6 +108,7 @@ async function executeSingleLLMNode(
     if (!hasTemplate && !hasParentResult) {
         throw new Error('LLM Node requires content or an input from a parent node')
     }
+
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
         ? { variableValues: new Map(Object.entries(variables)) as any }
         : undefined
@@ -115,264 +116,19 @@ async function executeSingleLLMNode(
         ? replaceIndexedInputs(template, inputs, ctx as any)
         : (inputs[0] ?? '').toString()
 
-    let createAmp: any
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        ;({ createAmp } = require('@prinova/amp-sdk'))
-    } catch (error) {
-        throw new Error(
-            `Amp SDK not available: ${error instanceof Error ? error.message : String(error)}`
-        )
-    }
-
-    const apiKey = process.env.AMP_API_KEY
-    if (!apiKey) {
-        throw new Error('AMP_API_KEY is not set')
-    }
-
     const { getActiveWorkspaceRoots } = await import('../../../Shared/Infrastructure/workspace.js')
     const workspaceRoots = getActiveWorkspaceRoots()
     console.debug('executeSingleLLMNode: ', JSON.stringify(workspaceRoots, null, 2))
 
-    const defaultModelKey = DEFAULT_LLM_MODEL_ID
-    const modelId = (node as any)?.data?.model?.id as string | undefined
-    let selectedKey: string | undefined
-    if (modelId) {
-        try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const sdk = require('@prinova/amp-sdk') as any
-            const resolveModel:
-                | ((args: { key: string } | { displayName: string; provider?: any }) => { key: string })
-                | undefined = sdk?.resolveModel
-            if (typeof resolveModel === 'function') {
-                const { key } = resolveModel({ key: modelId })
-                selectedKey = key
-            }
-        } catch {
-            // ignore
-        }
-    }
-
-    const { computeLLMAmpSettings } = await import('../../../LLMIntegration/Application/llm-settings.js')
-    const { settings: llmSettings, debug: llmDebug } = computeLLMAmpSettings(node)
-    const autoApprove = Boolean((llmSettings as any)['amp.dangerouslyAllowAll'])
-
-    const rawSystemPrompt = ((node as any).data?.systemPromptTemplate ?? '').toString()
-    const trimmedSystemPrompt = rawSystemPrompt.trim()
-    const systemPromptTemplate = trimmedSystemPrompt.length > 0 ? rawSystemPrompt : undefined
-
-    const amp = await createAmp({
-        apiKey,
+    return await runLLMCore({
+        node,
+        prompt,
         workspaceRoots,
-        systemPromptTemplate,
-        settings: {
-            'internal.primaryModel': selectedKey ?? defaultModelKey,
-            ...llmSettings,
-        },
+        abortSignal,
+        port,
+        approvalHandler,
+        mode: 'single-node',
     })
-
-    // Ensure tools are registered before first run
-    try {
-        if (typeof (amp as any).whenToolsReady === 'function') {
-            const enabled = await (amp as any).whenToolsReady()
-            console.debug('[ExecuteSingleNode] Tools ready for node', node.id, {
-                enabled,
-                disabled: llmDebug.disabledTools,
-                allowAll: llmDebug.dangerouslyAllowAll,
-                effort: llmDebug.reasoningEffort,
-            })
-        }
-    } catch {}
-
-    try {
-        let finalText = ''
-        const handledBlocked = new Set<string>()
-        const streamP = (async () => {
-            for await (const event of amp.runJSONL({ prompt })) {
-                abortSignal.throwIfAborted()
-                if (event.type === 'messages') {
-                    const thread = event.thread as any
-
-                    // 1) Stream assistant timeline to webview so RightSidebar updates in real-time
-                    const items = extractAssistantTimelineSingle(thread)
-                    await safePost(port, {
-                        type: 'node_assistant_content',
-                        data: { nodeId: node.id, threadID: thread.id, content: items },
-                    })
-
-                    // 2) Handle blocked-on-user approvals (mirror workflow path)
-                    try {
-                        const blocked: Array<{
-                            toolUseID: string
-                            toAllow?: string[]
-                            reason?: string
-                            tokens?: { percent?: number; threshold?: number }
-                        }> = []
-                        for (const msg of thread?.messages || []) {
-                            if (msg.role === 'user') {
-                                for (const block of msg.content || []) {
-                                    if (block.type === 'tool_result') {
-                                        const run = block.run || {}
-                                        if (run?.status === 'blocked-on-user' && block.toolUseID) {
-                                            blocked.push({
-                                                toolUseID: block.toolUseID,
-                                                toAllow: run.toAllow,
-                                                reason: run.reason,
-                                                tokens: run.tokens,
-                                            })
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        for (const b of blocked) {
-                            if (handledBlocked.has(b.toolUseID)) continue
-                            handledBlocked.add(b.toolUseID)
-
-                            if (autoApprove) {
-                                await amp.sendToolInput({
-                                    threadID: thread.id,
-                                    toolUseID: b.toolUseID,
-                                    value: { accepted: true },
-                                })
-                                continue
-                            }
-
-                            const summaryLines: string[] = []
-                            if (b.toAllow && Array.isArray(b.toAllow) && b.toAllow.length > 0) {
-                                summaryLines.push('Command(s) awaiting approval:')
-                                for (const c of b.toAllow) summaryLines.push(`- ${c}`)
-                            }
-                            if (b.reason) summaryLines.push(`Reason: ${b.reason}`)
-                            if (b.tokens && (b.tokens.percent != null || b.tokens.threshold != null)) {
-                                const pct = b.tokens.percent != null ? `${b.tokens.percent}%` : 'n/a'
-                                const thr = b.tokens.threshold != null ? `${b.tokens.threshold}` : 'n/a'
-                                summaryLines.push(`Tokens: ${pct} (threshold ${thr})`)
-                            }
-                            const display = summaryLines.join('\n') || 'Approval required'
-
-                            await safePost(port, {
-                                type: 'node_execution_status',
-                                data: { nodeId: node.id, status: 'pending_approval', result: display },
-                            })
-
-                            let accepted = false
-                            try {
-                                const decision = await approvalHandler(node.id)
-                                if ((decision as any)?.type === 'aborted') {
-                                    throw new AbortedError()
-                                }
-                                accepted = true
-                            } catch {
-                                accepted = false
-                            }
-
-                            await amp.sendToolInput({
-                                threadID: thread.id,
-                                toolUseID: b.toolUseID,
-                                value: { accepted },
-                            })
-                        }
-                    } catch (e) {
-                        if (e instanceof AbortedError) throw e
-                    }
-
-                    // 3) Track latest assistant text for final result
-                    const lastAssistantMessage = thread.messages?.findLast(
-                        (m: any) => m.role === 'assistant'
-                    )
-                    if (lastAssistantMessage) {
-                        const textBlocks = (lastAssistantMessage.content || []).filter(
-                            (b: any) => b.type === 'text'
-                        )
-                        if (textBlocks.length > 0) {
-                            finalText = textBlocks
-                                .map((b: any) => b.text)
-                                .join('\n')
-                                .trim()
-                        }
-                    }
-                }
-            }
-        })()
-
-        let abortHandler: (() => void) | undefined
-        const abortP = new Promise<never>((_, rej) => {
-            abortHandler = () => rej(new AbortedError())
-            abortSignal.addEventListener('abort', abortHandler)
-        }).catch(() => {})
-        const sec = Number((node as any)?.data?.timeoutSec)
-        const disableTimeout = sec === 0
-        const timeoutMs =
-            Number.isFinite(sec) && sec > 0 ? Math.floor(sec * 1000) : DEFAULT_LLM_TIMEOUT_MS
-        let timer: ReturnType<typeof setTimeout> | undefined
-        const timeoutP = disableTimeout
-            ? undefined
-            : new Promise<never>((_, rej) => {
-                  timer = setTimeout(() => rej(new Error('LLM request timed out')), timeoutMs)
-              })
-
-        try {
-            const racePromises = timeoutP ? [streamP, abortP, timeoutP] : [streamP, abortP]
-            await Promise.race(racePromises)
-        } finally {
-            if (timer) clearTimeout(timer)
-            if (abortHandler) abortSignal.removeEventListener('abort', abortHandler)
-        }
-        return finalText
-    } finally {
-        await amp.dispose()
-    }
-}
-
-// Minimal copy of workflow helper to avoid cross-file dependency
-function extractAssistantTimelineSingle(thread: any): any[] {
-    const items: any[] = []
-    for (const msg of thread?.messages || []) {
-        if (msg.role === 'assistant') {
-            for (const block of msg.content || []) {
-                if (block.type === 'text') {
-                    items.push({ type: 'text', text: block.text || '' })
-                } else if (block.type === 'thinking') {
-                    items.push({ type: 'thinking', thinking: block.thinking || '' })
-                } else if (block.type === 'tool_use') {
-                    const inputJSON = block.inputPartialJSON?.json || JSON.stringify(block.input || {})
-                    items.push({ type: 'tool_use', id: block.id, name: block.name, inputJSON })
-                } else if (block.type === 'server_tool_use') {
-                    const inputJSON = JSON.stringify(block.input || {})
-                    items.push({ type: 'server_tool_use', name: block.name, inputJSON })
-                } else if (block.type === 'server_web_search_result') {
-                    const resultJSON = safeSafeStringifySingle(block.result)
-                    items.push({
-                        type: 'server_web_search_result',
-                        query: (block as any).query,
-                        resultJSON,
-                    })
-                }
-            }
-        } else if (msg.role === 'user') {
-            for (const block of msg.content || []) {
-                if (block.type === 'tool_result') {
-                    const run = block.run || {}
-                    const resultJSON = safeSafeStringifySingle(run)
-                    items.push({ type: 'tool_result', toolUseID: block.toolUseID, resultJSON })
-                }
-            }
-        }
-    }
-    return items
-}
-
-function safeSafeStringifySingle(obj: any, maxLength = 100000): string {
-    try {
-        const str = JSON.stringify(obj, null, 2)
-        if (str.length > maxLength) {
-            return str.slice(0, maxLength) + '\n... (truncated)'
-        }
-        return str
-    } catch {
-        return String(obj)
-    }
 }
 
 async function executeSingleCLINode(
@@ -391,6 +147,7 @@ async function executeSingleCLINode(
     if (!hasTemplate && !hasParentResult) {
         throw new Error('CLI Node requires content or an input from a parent node')
     }
+
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
         ? { variableValues: new Map(Object.entries(variables)) as any }
         : undefined
@@ -399,143 +156,20 @@ async function executeSingleCLINode(
     const base = hasTemplate
         ? replaceIndexedInputs(template, inputs, ctx as any)
         : (inputs[0] ?? '').toString()
-    let effective = base
 
-    // Minimal approval path for single node execution: reuse existing hook
-    if ((node as any).data?.needsUserApproval) {
-        await safePost(port, {
-            type: 'node_execution_status',
-            data: { nodeId: node.id, status: 'pending_approval', result: `${base}` },
-        })
-        const approval = await approvalHandler(node.id)
-        if (approval.type === 'aborted') {
-            throw new AbortedError()
-        }
-        if (approval.type === 'approved' && typeof approval.command === 'string') {
-            effective = approval.command
-        }
-    }
+    const { output } = await runCLICore({
+        node,
+        baseCommandOrScript: base,
+        mode,
+        inputs,
+        abortSignal,
+        port,
+        host,
+        approvalHandler,
+        context: ctx,
+    })
 
-    const cwd = host.workspace.workspaceFolders?.[0]
-    try {
-        const {
-            expandHome,
-            execute: shellExecute,
-            executeScript: shellExecuteScript,
-            executeCommandSpawn: shellExecuteCommandSpawn,
-        } = await import('../../../DataAccess/shell.js')
-        if (mode === 'script') {
-            // Build stdin for script
-            const stdinCfg = ((node as any).data?.stdin ?? {}) as {
-                source?: 'none' | 'parents-all' | 'parent-index' | 'literal'
-                parentIndex?: number
-                literal?: string
-                stripCodeFences?: boolean
-                normalizeCRLF?: boolean
-            }
-            let stdinText: string | undefined
-            const source = stdinCfg.source || 'none'
-            if (source === 'parents-all') {
-                stdinText = inputs.join('\n')
-            } else if (source === 'parent-index') {
-                const idx = Math.max(1, Number(stdinCfg.parentIndex || 1)) - 1
-                stdinText = inputs[idx] ?? ''
-            } else if (source === 'literal') {
-                stdinText = replaceIndexedInputs(stdinCfg.literal || '', inputs, ctx as any)
-            }
-            if (stdinText != null) {
-                const hasFences = /(\n|^)```/.test(stdinText)
-                const shouldStrip =
-                    stdinCfg.stripCodeFences === true ||
-                    (stdinCfg.stripCodeFences === undefined && hasFences)
-                if (shouldStrip) {
-                    stdinText = stdinText
-                        .split('\n')
-                        .filter(line => !/^```/.test(line))
-                        .join('\n')
-                }
-                const hasCRLF = /\r\n/.test(stdinText)
-                const shouldNormalize =
-                    (stdinCfg.normalizeCRLF !== false && hasCRLF) || stdinCfg.normalizeCRLF === true
-                if (shouldNormalize) {
-                    stdinText = stdinText.replace(/\r\n/g, '\n')
-                }
-            }
-
-            const envCfg = ((node as any).data?.env ?? {}) as {
-                exposeParents?: boolean
-                names?: string[]
-                static?: Record<string, string>
-            }
-            const extraEnv: Record<string, string> = {}
-            if (envCfg.exposeParents) {
-                if (Array.isArray(envCfg.names) && envCfg.names.length > 0) {
-                    for (let i = 0; i < inputs.length && i < envCfg.names.length; i++) {
-                        const k = envCfg.names[i]
-                        if (k && typeof k === 'string') extraEnv[k] = inputs[i] ?? ''
-                    }
-                } else {
-                    for (let i = 0; i < inputs.length; i++) extraEnv[`INPUT_${i + 1}`] = inputs[i] ?? ''
-                }
-            }
-            if (envCfg.static && typeof envCfg.static === 'object') {
-                for (const [k, v] of Object.entries(envCfg.static)) {
-                    extraEnv[k] = replaceIndexedInputs(String(v ?? ''), inputs, ctx as any)
-                }
-            }
-
-            const shell =
-                ((node as any).data?.shell as any) || (process.platform === 'win32' ? 'pwsh' : 'bash')
-            const flags = ((node as any).data?.flags ?? {}) as any
-
-            const { output, exitCode } = await shellExecuteScript({
-                shell,
-                flags: {
-                    exitOnError: !!flags.exitOnError,
-                    unsetVars: !!flags.unsetVars,
-                    pipefail: !!flags.pipefail,
-                    noProfile: flags.noProfile !== false,
-                    nonInteractive: flags.nonInteractive !== false,
-                    executionPolicyBypass: !!flags.executionPolicyBypass,
-                },
-                script: effective,
-                stdinText,
-                cwd,
-                env: extraEnv,
-                abortSignal,
-            })
-            if (exitCode !== '0' && (node as any).data?.shouldAbort) {
-                throw new Error(output)
-            }
-            return output
-        }
-
-        const filteredCommand = expandHome(effective) || ''
-        const safety: 'safe' | 'advanced' =
-            ((node as any).data?.safetyLevel as any) === 'advanced' ? 'advanced' : 'safe'
-        if (safety !== 'advanced') {
-            if (commandsNotAllowed.some(cmd => sanitizeForShell(filteredCommand).startsWith(cmd))) {
-                void host.window.showErrorMessage('Command cannot be executed')
-                throw new Error('Command cannot be executed')
-            }
-        }
-        const userSpawn = Boolean((node as any).data?.streamOutput)
-        const autoSpawn = !userSpawn && (filteredCommand.length > 200 || /[|><]/.test(filteredCommand))
-        const runner = userSpawn || autoSpawn ? shellExecuteCommandSpawn : shellExecute
-        const { output, exitCode } = await runner(filteredCommand, abortSignal, { cwd })
-        if (exitCode !== '0' && (node as any).data?.shouldAbort) {
-            throw new Error(output)
-        }
-        return output
-    } catch (error: unknown) {
-        if (error instanceof AbortedError) {
-            throw error
-        }
-        if (error instanceof Error) {
-            throw error
-        }
-        throw new Error(String(error))
-    }
+    return output
 }
 
 async function executeSinglePreviewNode(
@@ -548,7 +182,7 @@ async function executeSinglePreviewNode(
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
         ? { variableValues: new Map(Object.entries(variables)) as any }
         : undefined
-    const processed = replaceIndexedInputs(inputJoined, inputs, ctx as any)
+    const processed = evalTemplate(inputJoined, inputs, ctx)
     const trimmed = processed.trim()
     const tokenCount = trimmed.length
     await safePost(port, { type: 'token_count', data: { nodeId: node.id, count: tokenCount } })
@@ -564,7 +198,7 @@ async function executeSingleInputNode(
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
         ? { variableValues: new Map(Object.entries(variables)) as any }
         : undefined
-    const text = template ? replaceIndexedInputs(template, inputs, ctx as any) : ''
+    const text = evalTemplate(template, inputs, ctx)
     return text.trim()
 }
 
@@ -577,7 +211,7 @@ async function executeSingleVariableNode(
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
         ? { variableValues: new Map(Object.entries(variables)) as any }
         : undefined
-    const value = template ? replaceIndexedInputs(template, inputs, ctx as any) : ''
+    const value = evalTemplate(template, inputs, ctx)
     return value
 }
 

@@ -24,6 +24,7 @@ import {
     AccordionItem,
     AccordionTrigger,
 } from '../../ui/shadcn/ui/accordion'
+import styles from '../../ui/shadcn/ui/accordion.module.css'
 import { Button } from '../../ui/shadcn/ui/button'
 import { Textarea } from '../../ui/shadcn/ui/textarea'
 import type { SelectionSummary } from '../hooks/selectionHandling'
@@ -54,6 +55,44 @@ function formatPercentLabel(p: number): string {
         .replace(/\.00$/, '')
         .replace(/(\.\d)0$/, '$1')
     return `${s} %`
+}
+
+// When an LLM node finishes a round, hide the last assistant text when it
+// exactly matches the Result so the latest answer only appears in the Result.
+// On the next run (e.g., follow-up chat), that text becomes part of the
+// timeline again because it is no longer the last assistant message.
+function getAssistantDisplayItems(
+    items: AssistantContentItem[],
+    options: { isExecuting: boolean; resultText: string | undefined }
+): AssistantContentItem[] {
+    const { isExecuting, resultText } = options
+
+    // While the node is still executing (streaming), always show all items.
+    if (isExecuting) return items
+
+    if (!resultText) return items
+    const normalize = (s: string): string => s.trim()
+    const normalizedResult = normalize(resultText)
+    if (!normalizedResult) return items
+
+    // Find the last assistant text item, if any.
+    let lastTextIndex = -1
+    let lastTextItem: Extract<AssistantContentItem, { type: 'text' }> | null = null
+    for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i]
+        if (it.type === 'text') {
+            lastTextIndex = i
+            lastTextItem = it
+            break
+        }
+    }
+    if (lastTextIndex === -1 || !lastTextItem) return items
+
+    const assistantText = lastTextItem.text
+    if (normalize(assistantText) !== normalizedResult) return items
+
+    // Remove only the last assistant text item; earlier ones remain visible.
+    return items.filter((_, index) => index !== lastTextIndex)
 }
 
 function getToolRunStatus(resultJSON?: string): string | null {
@@ -94,6 +133,7 @@ interface RightSidebarProps {
     interruptedNodeId: string | null
     stoppedAtNodeId: string | null
     nodeAssistantContent: Map<string, AssistantContentItem[]>
+    nodeThreadIDs: Map<string, string>
     executionRunId: number
     isPaused?: boolean
     onRunFromHere?: (nodeId: string) => void
@@ -103,6 +143,7 @@ interface RightSidebarProps {
     branchByIfElseId?: Map<string, { true: Set<string>; false: Set<string> }>
     onToggleCollapse?: () => void
     onResultUpdate: (nodeId: string, value: string) => void
+    onChat?: (args: { nodeId: string; threadID: string; message: string }) => void
 }
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({
@@ -114,6 +155,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     interruptedNodeId,
     stoppedAtNodeId,
     nodeAssistantContent,
+    nodeThreadIDs,
     executionRunId,
     isPaused,
     onRunFromHere,
@@ -123,6 +165,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     branchByIfElseId,
     onToggleCollapse,
     onResultUpdate,
+    onChat,
 }) => {
     const filteredByActiveNodes = useMemo(
         () => sortedNodes.filter(node => node.type !== NodeType.PREVIEW && node.data.active !== false),
@@ -208,6 +251,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         }
     }, [parallelSteps, parallelStepByNodeId, filteredByActiveNodes])
 
+    const hasLoopNodes = useMemo(
+        () =>
+            filteredByActiveNodes.some(
+                node => node.type === NodeType.LOOP_START || node.type === NodeType.LOOP_END
+            ),
+        [filteredByActiveNodes]
+    )
+
     const getBorderColorClass = (nodeId: string): string => {
         if (executingNodeIds.has(nodeId)) {
             return 'tw-border-[var(--vscode-charts-yellow)]'
@@ -254,6 +305,22 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     const [expandedJsonItems, setExpandedJsonItems] = useState<Set<string>>(new Set())
     const [previewNodeId, setPreviewNodeId] = useState<string | null>(null)
     const [fullscreenNodeId, setFullscreenNodeId] = useState<string | null>(null)
+    const [chatDrafts, setChatDrafts] = useState<Map<string, string>>(new Map())
+
+    const lastExecutionRunIdRef = useRef(executionRunId)
+
+    useEffect(() => {
+        if (lastExecutionRunIdRef.current !== executionRunId) {
+            setChatDrafts(new Map())
+            lastExecutionRunIdRef.current = executionRunId
+        }
+    }, [executionRunId])
+
+    useEffect(() => {
+        if (nodeThreadIDs.size === 0 && chatDrafts.size > 0) {
+            setChatDrafts(new Map())
+        }
+    }, [nodeThreadIDs, chatDrafts])
 
     const singleActiveNodeId = useMemo(() => {
         if (executingNodeIds.size !== 1) return null
@@ -273,9 +340,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
     // Auto-scroll management for LLM assistant output per node
     const assistantScrollRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+    const programmaticScrollNodes = useRef<Set<string>>(new Set())
     const [pausedAutoScroll, setPausedAutoScroll] = useState<Set<string>>(new Set())
 
     const handleAssistantScroll = (nodeId: string, el: HTMLDivElement) => {
+        // Ignore scroll events caused by our own auto-scroll logic
+        if (programmaticScrollNodes.current.has(nodeId)) {
+            programmaticScrollNodes.current.delete(nodeId)
+            return
+        }
         const threshold = 8 // px tolerance for being at bottom
         const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - threshold
         setPausedAutoScroll(prev => {
@@ -291,6 +364,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
     const handleCommandChange = (nodeId: string, value: string) => {
         setModifiedCommands(prev => new Map(prev).set(nodeId, value))
+    }
+
+    const handleChatSend = (nodeId: string) => {
+        if (!onChat) return
+        const threadID = nodeThreadIDs.get(nodeId)
+        const message = (chatDrafts.get(nodeId) || '').trim()
+        if (!threadID || !message) return
+        onChat({ nodeId, threadID, message })
+        setChatDrafts(prev => {
+            const next = new Map(prev)
+            next.set(nodeId, '')
+            return next
+        })
     }
 
     const toggleJsonExpanded = (id: string) => {
@@ -491,7 +577,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     item.type === 'thinking' ? 'tw-mt-3 tw-mb-0' : ''
                 )}
             >
-                <AccordionTrigger className="tw-w-full tw-text-xs tw-h-7 tw-py-1 tw-px-2 tw-bg-[var(--vscode-sideBar-background)] tw-rounded-t">
+                <AccordionTrigger
+                    className={clsx(
+                        'tw-w-full tw-text-xs tw-h-7 tw-py-1 tw-px-2 tw-bg-[var(--vscode-sideBar-background)] tw-rounded-t',
+                        styles['sidebar-accordion-trigger']
+                    )}
+                >
                     {(() => {
                         const toolStatus =
                             item.type === 'tool_use' ? getToolRunStatus(pairedResultJSON) : null
@@ -688,7 +779,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     }}
                 >
                     <AccordionItem value={node.id}>
-                        <AccordionTrigger className="tw-w-full tw-text-sm tw-h-6 tw-py-[.1rem]">
+                        <AccordionTrigger
+                            className={clsx(
+                                'tw-w-full tw-text-sm tw-h-6 tw-py-[.1rem]',
+                                styles['sidebar-accordion-trigger']
+                            )}
+                        >
                             <div className="tw-flex tw-items-center tw-w-full">
                                 <div className="tw-w-4 tw-mr-2">
                                     {executingNodeIds.has(node.id) && (
@@ -793,11 +889,17 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                         <div
                                             className={clsx(
                                                 'tw-overflow-y-auto',
-                                                isFullscreen ? 'tw-flex-1' : 'tw-max-h-64'
+                                                // In fullscreen, keep the scrollbar on the inner container as well,
+                                                // just allow a taller max height instead of flexing to fill.
+                                                isFullscreen ? 'tw-max-h-[60vh]' : 'tw-max-h-64'
                                             )}
                                             ref={el => {
                                                 if (el) {
                                                     assistantScrollRefs.current.set(node.id, el)
+                                                    if (!pausedAutoScroll.has(node.id)) {
+                                                        // Keep auto-following when the container mounts or resizes
+                                                        el.scrollTop = el.scrollHeight
+                                                    }
                                                 } else {
                                                     assistantScrollRefs.current.delete(node.id)
                                                 }
@@ -809,32 +911,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                             {(() => {
                                                 const items = nodeAssistantContent.get(node.id) || []
 
-                                                const filterLastTextMatchingResult = (
-                                                    arr: AssistantContentItem[],
-                                                    result: string | undefined
-                                                ): AssistantContentItem[] => {
-                                                    const r = (result || '').trim()
-                                                    if (!r) return arr
-                                                    for (let i = arr.length - 1; i >= 0; i--) {
-                                                        const it = arr[i]
-                                                        if (it.type === 'text' && it.text.trim() === r) {
-                                                            return [
-                                                                ...arr.slice(0, i),
-                                                                ...arr.slice(i + 1),
-                                                            ]
-                                                        }
-                                                    }
-                                                    return arr
-                                                }
-
-                                                const finalResult = nodeResults.get(node.id)
-                                                const displayItems =
-                                                    node.type === NodeType.LLM
-                                                        ? filterLastTextMatchingResult(
-                                                              items,
-                                                              finalResult
-                                                          )
-                                                        : items
+                                                // When a node finishes a round, hide the last assistant text when it
+                                                // exactly matches the Result so the latest answer only appears in the
+                                                // Result. On the next run (e.g., follow-up chat), that text becomes
+                                                // part of the timeline again because it is no longer the last
+                                                // assistant message.
+                                                const displayItems = getAssistantDisplayItems(items, {
+                                                    isExecuting: executingNodeIds.has(node.id),
+                                                    resultText: nodeResults.get(node.id),
+                                                })
 
                                                 const pairedMap = new Map<string, string | undefined>()
                                                 for (const it of items) {
@@ -1079,6 +1164,59 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                             </Button>
                                         </div>
                                     )}
+
+                                    {node.type === NodeType.LLM && nodeThreadIDs.has(node.id) && (
+                                        <div className="tw-mt-3 tw-space-y-2">
+                                            <div className="tw-flex tw-items-center tw-justify-between">
+                                                <h4 className="tw-text-sm tw-font-semibold tw-text-[var(--vscode-foreground)]">
+                                                    Chat
+                                                </h4>
+                                            </div>
+                                            <Textarea
+                                                value={chatDrafts.get(node.id) || ''}
+                                                onChange={e => {
+                                                    const value = e.target.value
+                                                    setChatDrafts(prev => {
+                                                        const next = new Map(prev)
+                                                        next.set(node.id, value)
+                                                        return next
+                                                    })
+                                                }}
+                                                placeholder="Write a follow-up message..."
+                                                rows={3}
+                                                className="tw-resize-none tw-text-xs"
+                                                disabled={
+                                                    isPaused ||
+                                                    executingNodeIds.size > 0 ||
+                                                    !!pendingApprovalNodeId
+                                                }
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                                                        e.preventDefault()
+                                                        e.stopPropagation()
+                                                        handleChatSend(node.id)
+                                                    }
+                                                }}
+                                            />
+                                            <div className="tw-flex tw-justify-end">
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    className="tw-h-6 tw-px-2 tw-py-0"
+                                                    disabled={
+                                                        !onChat ||
+                                                        isPaused ||
+                                                        executingNodeIds.size > 0 ||
+                                                        !!pendingApprovalNodeId ||
+                                                        !(chatDrafts.get(node.id) || '').trim()
+                                                    }
+                                                    onClick={() => handleChatSend(node.id)}
+                                                >
+                                                    Send
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </AccordionContent>
@@ -1114,6 +1252,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         if (assistantItemsTick >= 0) {
             for (const [nodeId, el] of assistantScrollRefs.current) {
                 if (el && !pausedAutoScroll.has(nodeId)) {
+                    programmaticScrollNodes.current.add(nodeId)
                     el.scrollTop = el.scrollHeight
                 }
             }
@@ -1162,7 +1301,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                               const node = sortedNodes.find(n => n.id === fullscreenNodeId)
                               return node ? renderNodeItem(node, false) : null
                           })()
-                        : hasParallelAnalysis && parallelGroups.length > 0
+                        : hasParallelAnalysis && parallelGroups.length > 0 && !hasLoopNodes
                           ? allItemsInOrder.map(item => {
                                 if (item.type === 'parallel') {
                                     const stepLabel = getStepLabel(

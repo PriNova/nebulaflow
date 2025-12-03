@@ -1,6 +1,6 @@
 import type { WorkflowNode } from '../../../Core/models'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
-import { replaceIndexedInputs } from '../../Core/execution/inputs'
+import { evalTemplate } from '../../Core/execution/inputs'
 import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
 
 export async function executeInputNode(
@@ -8,6 +8,7 @@ export async function executeInputNode(
     context: IndexedExecutionContext
 ): Promise<string> {
     const inputs = combineParentOutputsByConnectionOrder(node.id, context)
-    const text = node.data.content ? replaceIndexedInputs(node.data.content, inputs, context) : ''
+    const template = ((node as any).data?.content || '').toString()
+    const text = evalTemplate(template, inputs, context)
     return text.trim()
 }

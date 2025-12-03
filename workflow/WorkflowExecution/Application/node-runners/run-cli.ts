@@ -17,27 +17,52 @@ import { replaceIndexedInputs } from '../../Core/execution/inputs'
 import { commandsNotAllowed, sanitizeForShell } from '../../Core/execution/sanitize'
 import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
 
-export async function executeCLINode(
-    node: WorkflowNodes,
-    abortSignal: AbortSignal,
-    port: IMessagePort,
-    host: IHostEnvironment,
-    approvalHandler: (nodeId: string) => Promise<ApprovalResult>,
-    context?: IndexedExecutionContext
-): Promise<string> {
+/**
+ * Core CLI runner arguments.
+ *
+ * NOTE: runCLICore does not record exit-code metadata into any execution context.
+ * Callers that need cliMetadata (for example, workflow runners) must write it
+ * explicitly based on the returned exitCode.
+ *
+ * The optional context is read-only and used only for template evaluation.
+ */
+export interface CLICoreArgs {
+    node: WorkflowNodes
+    baseCommandOrScript: string
+    mode: 'command' | 'script'
+    inputs: string[]
+    abortSignal: AbortSignal
+    port: IMessagePort
+    host: IHostEnvironment
+    approvalHandler: (nodeId: string) => Promise<ApprovalResult>
+    context?: IndexedExecutionContext | Partial<IndexedExecutionContext>
+}
+
+export interface CLICoreResult {
+    output: string
+    exitCode: string
+}
+
+export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
+    const {
+        node,
+        baseCommandOrScript,
+        mode,
+        inputs,
+        abortSignal,
+        port,
+        host,
+        approvalHandler,
+        context,
+    } = args
+
     abortSignal.throwIfAborted()
-    const inputs = combineParentOutputsByConnectionOrder(node.id, context)
 
-    // Determine mode (command | script). Default to command for back-compat.
-    const mode = ((node as any).data?.mode as 'command' | 'script') || 'command'
-
-    // Base content after templating
-    const base = (
-        node.data.content ? replaceIndexedInputs(node.data.content, inputs, context) : ''
-    ).toString()
+    const base = baseCommandOrScript.toString()
     if (!base.trim()) {
         throw new Error('CLI Node requires a non-empty command/script')
     }
+
     let effective = base
 
     const cwd = host.workspace.workspaceFolders?.[0]
@@ -83,7 +108,7 @@ export async function executeCLINode(
             const idx = Math.max(1, Number(stdinCfg.parentIndex || 1)) - 1
             stdinText = inputs[idx] ?? ''
         } else if (source === 'literal') {
-            stdinText = replaceIndexedInputs(stdinCfg.literal || '', inputs, context)
+            stdinText = replaceIndexedInputs(stdinCfg.literal || '', inputs, context as any)
         }
         if (stdinText != null) {
             const hasFences = /(\n|^)```/.test(stdinText)
@@ -125,7 +150,7 @@ export async function executeCLINode(
         }
         if (envCfg.static && typeof envCfg.static === 'object') {
             for (const [k, v] of Object.entries(envCfg.static)) {
-                extraEnv[k] = replaceIndexedInputs(String(v ?? ''), inputs, context)
+                extraEnv[k] = replaceIndexedInputs(String(v ?? ''), inputs, context as any)
             }
         }
 
@@ -154,9 +179,11 @@ export async function executeCLINode(
             if (exitCode !== '0' && (node as any).data?.shouldAbort) {
                 throw new Error(output)
             }
-            context?.cliMetadata?.set(node.id, { exitCode })
-            return output
+            return { output, exitCode }
         } catch (error: unknown) {
+            if (error instanceof AbortedError) {
+                throw error
+            }
             const errorMessage = error instanceof Error ? error.message : String(error)
             throw new Error(`CLI Node execution failed: ${errorMessage}`)
         }
@@ -180,10 +207,47 @@ export async function executeCLINode(
         if (exitCode !== '0' && (node as any).data?.shouldAbort) {
             throw new Error(output)
         }
-        context?.cliMetadata?.set(node.id, { exitCode: exitCode })
-        return output
+        return { output, exitCode }
     } catch (error: unknown) {
+        if (error instanceof AbortedError) {
+            throw error
+        }
         const errorMessage = error instanceof Error ? error.message : String(error)
         throw new Error(`CLI Node execution failed: ${errorMessage}`)
     }
+}
+
+export async function executeCLINode(
+    node: WorkflowNodes,
+    abortSignal: AbortSignal,
+    port: IMessagePort,
+    host: IHostEnvironment,
+    approvalHandler: (nodeId: string) => Promise<ApprovalResult>,
+    context?: IndexedExecutionContext
+): Promise<string> {
+    const inputs = combineParentOutputsByConnectionOrder(node.id, context)
+
+    // Determine mode (command | script). Default to command for back-compat.
+    const mode = ((node as any).data?.mode as 'command' | 'script') || 'command'
+
+    // Base content after templating
+    const baseContent = (
+        node.data.content ? replaceIndexedInputs(node.data.content, inputs, context) : ''
+    ).toString()
+
+    const { output, exitCode } = await runCLICore({
+        node,
+        baseCommandOrScript: baseContent,
+        mode,
+        inputs,
+        abortSignal,
+        port,
+        host,
+        approvalHandler,
+        context,
+    })
+
+    context?.cliMetadata?.set(node.id, { exitCode })
+
+    return output
 }

@@ -5,13 +5,15 @@ import type { IHostEnvironment, IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
 import { type ParallelCallbacks, executeWorkflowParallel } from '../../Core/engine/parallel-scheduler'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
-import { replaceIndexedInputs } from '../../Core/execution/inputs'
+import { evalTemplate } from '../../Core/execution/inputs'
 import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
 import { routeNodeExecution } from '../handlers/NodeDispatch'
 import { executeCLINode } from '../node-runners/run-cli'
 import { executeIfElseNode } from '../node-runners/run-if-else'
 import { executeInputNode } from '../node-runners/run-input'
 import { executeLLMNode } from '../node-runners/run-llm'
+import { executeLoopEndNode } from '../node-runners/run-loop-end'
+import { executeLoopStartNode } from '../node-runners/run-loop-start'
 import { executePreviewNode } from '../node-runners/run-preview'
 
 export async function runSubflowWrapper(
@@ -189,9 +191,8 @@ export async function runSubflowWrapper(
                 runIfElse: (..._args: any[]) => executeIfElseNode(ctx, node),
                 runAccumulator: async (..._args: any[]) => {
                     const vals = combineParentOutputsByConnectionOrder(node.id, ctx)
-                    const content = node.data.content
-                        ? replaceIndexedInputs(node.data.content, vals, ctx)
-                        : ''
+                    const template = ((node as any).data?.content || '').toString()
+                    const content = evalTemplate(template, vals, ctx)
                     const variableName = (node as any).data.variableName as string
                     const initialValue = (node as any).data.initialValue as string | undefined
                     let accumulatedValue = ctx.accumulatorValues?.get(variableName) || initialValue || ''
@@ -201,9 +202,8 @@ export async function runSubflowWrapper(
                 },
                 runVariable: async (..._args: any[]) => {
                     const vals = combineParentOutputsByConnectionOrder(node.id, ctx)
-                    const text = node.data.content
-                        ? replaceIndexedInputs(node.data.content, vals, ctx)
-                        : ''
+                    const template = ((node as any).data?.content || '').toString()
+                    const text = evalTemplate(template, vals, ctx)
                     const variableName = (node as any).data.variableName as string
                     const initialValue = (node as any).data.initialValue as string | undefined
                     let variableValue = ctx.variableValues?.get(variableName) || initialValue || ''
@@ -211,8 +211,8 @@ export async function runSubflowWrapper(
                     ctx.variableValues?.set(variableName, variableValue)
                     return variableValue
                 },
-                runLoopStart: undefined,
-                runLoopEnd: undefined,
+                runLoopStart: async (..._args: any[]) => executeLoopStartNode(node, ctx),
+                runLoopEnd: async (..._args: any[]) => executeLoopEndNode(node, ctx),
                 runSubflowOutput: async (..._args: any[]) => {
                     const vals = combineParentOutputsByConnectionOrder(node.id, ctx)
                     return (vals || []).join('\n').trim()
