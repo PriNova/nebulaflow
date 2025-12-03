@@ -505,7 +505,9 @@ export function extractAssistantTimeline(thread: any): AssistantContentItem[] {
             }
         } else if (msg.role === 'user') {
             for (const block of msg.content || []) {
-                if (block.type === 'tool_result') {
+                if (block.type === 'text') {
+                    items.push({ type: 'user_message', text: block.text || '' })
+                } else if (block.type === 'tool_result') {
                     const run = block.run || {}
                     const resultJSON = safeSafeStringify(run)
                     items.push({ type: 'tool_result', toolUseID: block.toolUseID, resultJSON })

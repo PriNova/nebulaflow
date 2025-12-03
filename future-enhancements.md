@@ -333,6 +333,28 @@ Recommended improvements and optimizations for future implementation.
 - Document that any active Loop Start/End node currently causes the engine to fall back to a sequential executor for the entire graph, and that parallel-specific options (like `concurrency` and `perType`) are effectively ignored in this mode.
 - Emit a low-noise debug or telemetry signal when the scheduler detects loop nodes and chooses sequential fallback so performance characteristics are diagnosable in complex workflows.
 - Align or explicitly document the relationship between static iteration overrides used at graph-composition time (via `getLoopIterations`) and runtime overrides consumed by `executeLoopStartNode`, especially when the override source is dynamic rather than a simple Text node.
+
+### LLM Node Timeline – User Messages and Multimodal Input Follow-ups
+
+- Goal: Make user messages first-class in the assistant timeline for all content types and keep spacing and rendering logic maintainable.
+- What:
+-   - Extend `extractAssistantTimeline` to log or otherwise surface unhandled user `content` block types (e.g., images, files) rather than silently dropping them, and decide whether to represent them via new `AssistantContentItem` variants once multimodal user input is supported.
+-   - Optionally filter or avoid emitting empty `user_message` items when `block.text` is missing to reduce noise in the timeline.
+-   - Consolidate the duplicated rendering for `text` and `user_message` in `RightSidebar.tsx` (both in the accordion detail view and in the inside-timeline segments) into small shared helpers so typography and spacing stay in sync over time.
+-   - Align vertical spacing rules between assistant and user message blocks (e.g., reuse the `assistantMarginTop` logic or a shared spacing helper) so sequences of `thinking`, `text`, and `user_message` items have consistent rhythm.
+- Why: Prepares the LLM node timeline for future multimodal user content, avoids silently losing information, and keeps the user/assistant block rendering simple and consistent to maintain.
+
+### Tool Safety and Resolver Hygiene
+
+- Goal: Prevent future drift in Bash detection and reduce runtime overhead in tool name normalization.
+- What:
+- Extract a shared helper `isBash(name: string): boolean` used by both settings and runtime guards to centralize case/trim normalization.
+- Remove unnecessary `as string` cast in normalization path in [llm-settings.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/llm-settings.ts#L12-L18) to tighten types.
+- Cache SDK resolver availability from `safeRequireSDK()` in [llm-settings.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Application/handlers/llm-settings.ts#L21-L28) to avoid repeated try/catch on frequent normalization calls.
+- Why: A single source of truth for Bash checks prevents subtle mismatches; minor type cleanup improves safety; caching avoids unnecessary overhead during frequent operations.
+- Priority: P3 (code quality/robustness)
+
+### Loop/Parallel Visualization – Follow-ups
 - Decide and document whether iteration overrides are intended to be static (node content) or dynamic (runtime output), and adjust validation or configuration constraints accordingly.
 - Consider extracting the embedded `executeWorkflowSequential` implementation in `parallel-scheduler.ts` into a dedicated module for reuse and to avoid future duplication if additional entrypoints require sequential execution.
   - Clarify and, if needed, adjust semantics for nested loops so inner `LOOP_START` nodes either drive their own `maxIterations` via a nested `runLoopBlock` or are explicitly unsupported and rejected at validation time; add targeted nested-loop tests to lock in the chosen policy.

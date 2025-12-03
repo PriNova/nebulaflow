@@ -4,9 +4,10 @@
 // Basic model descriptor
 export type Model = { id: string; title?: string }
 
-// Assistant content blocks streamed during LLM node execution
+// Assistant/user/tool content blocks streamed during LLM node execution
 export type AssistantContentItem =
     | { type: 'text'; text: string }
+    | { type: 'user_message'; text: string }
     | { type: 'thinking'; thinking: string }
     | { type: 'tool_use'; id: string; name: string; inputJSON?: string }
     | { type: 'tool_result'; toolUseID: string; resultJSON?: string }

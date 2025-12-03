@@ -263,7 +263,8 @@ Why: Aligns with Vertical Slice Architecture, reduces duplicate handling and dri
 - Added: Tracked per-node LLM `threadID` and assistant content snapshots in the webview (Flow/messageHandling/RightSidebar slices) and surfaced a lightweight chat panel in the Right Sidebar Playbox that lets users send follow-up messages for nodes with an active thread, including Ctrl/Cmd-Enter shortcut and disabled states while paused, executing, or awaiting approval.
 - Fixed: Scoped Playbox chat drafts to the current execution run and workflow/results state by resetting the per-node `chatDrafts` map when `executionRunId` changes and when `nodeThreadIDs` are cleared via `resetResultsState`, preventing stale unsent text from leaking across runs or after clearing/deleting a workflow.
 - Changed: Simplified the LLM assistant history renderer in the Right Sidebar to always show the full Amp assistant timeline (including the last assistant text that may also appear in the Result panel) and refreshed the vendored `@prinova/amp-sdk` bundle so NebulaFlow consumes the SDK version that correctly returns the latest assistant turn for thread continuations.
-- Why: Enables per-node conversational refinement on top of existing LLM nodes without altering workflow contracts, while keeping chat drafts and assistant history lifecycle explicit and predictable across workflow runs and resets.
+- Changed: Introduced a `user_message` content-block kind in the shared `AssistantContentItem` union and wired it through guards, `extractAssistantTimeline`, and the RightSidebar timeline so user chat messages render as full-width, theme-aware blocks aligned with assistant messages but with a distinct VS Code sidebar background instead of button styling.
+- Why: Enables per-node conversational refinement on top of existing LLM nodes without altering workflow contracts, while keeping chat drafts and assistant history lifecycle explicit and predictable across workflow runs and resets and making user messages first-class citizens in the LLM node timeline.
 
 ### Goal: LLM Assistant Fullscreen Auto-Scroll Consistency
  - Fixed: Auto-scrolling now re-applies when the assistant pane mounts or resizes (including fullscreen toggles) as long as auto-follow is not paused, so the view stays pinned to the latest assistant output without user intervention.
@@ -318,6 +319,7 @@ Why: Aligns with Vertical Slice Architecture, reduces duplicate handling and dri
   - Updated both the main workflow runner (`executeLLMNode`) and the single-node handler (`executeSingleLLMNode`) to resolve attachments and pass `images` into `amp.runJSONL({ prompt, images })`, so vision prompts work consistently in full runs and single-node runs.
 - Why: Enables NebulaFlow LLM nodes to send prompts with associated images through the Amp SDK in both execution modes, using a shared, data-first attachment model and explicit path resolution so image inputs are debuggable and maintainable.
 
+## [NebulaFlow 0.2.13]
 ## [NebulaFlow 0.2.13]
 
 ### Goal: Tool Safety and Normalization Alignment with Upstream

@@ -541,6 +541,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             case 'text':
                 title = '📝 Assistance Message'
                 break
+            case 'user_message':
+                title = '👤 You'
+                break
             case 'thinking':
                 title = '🧠 Thinking'
                 break
@@ -626,6 +629,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         {(() => {
                             switch (item.type) {
                                 case 'text':
+                                    return (
+                                        <p className="tw-text-xs tw-text-[var(--vscode-foreground)] tw-whitespace-pre-wrap">
+                                            {item.text}
+                                        </p>
+                                    )
+                                case 'user_message':
                                     return (
                                         <p className="tw-text-xs tw-text-[var(--vscode-foreground)] tw-whitespace-pre-wrap">
                                             {item.text}
@@ -973,6 +982,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                                     content={it.text}
                                                                     className="tw-text-xs"
                                                                 />
+                                                            </div>
+                                                        )
+                                                    } else if (it.type === 'user_message') {
+                                                        flushNonTextAccordion()
+                                                        segments.push(
+                                                            <div
+                                                                key={`${node.id}:user:${i}`}
+                                                                className="tw-bg-[var(--vscode-sideBar-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] tw-mt-2"
+                                                            >
+                                                                <p className="tw-text-xs tw-text-[var(--vscode-foreground)] tw-whitespace-pre-wrap">
+                                                                    {it.text}
+                                                                </p>
                                                             </div>
                                                         )
                                                     } else if (it.type !== 'tool_result') {

@@ -284,6 +284,8 @@ function isAssistantContentItem(value: unknown): boolean {
     switch (t) {
         case 'text':
             return isString((value as any).text)
+        case 'user_message':
+            return isString((value as any).text)
         case 'thinking':
             return isString((value as any).thinking)
         case 'tool_use':

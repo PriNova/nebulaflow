@@ -1,96 +1,72 @@
-## High-level summary  
-A single file (`RightSidebar.tsx`) was updated.  
-The change introduces a new helper `getAssistantDisplayItems()` that decides whether the *last* assistant “text” item should be hidden from the timeline when it is identical to the node’s final “Result”. The main render path for assistant messages now calls this helper instead of always showing all items.
+## High-level summary
+The patch introduces a new `user_message` content-block kind into the streaming/timeline model (`AssistantContentItem`).  
+All layers are updated accordingly:
 
-## Tour of changes  
-Start with the **new helper function** (`getAssistantDisplayItems`) because it contains the actual filtering logic; everything else is wiring this function into the existing render flow. Once that logic is understood, the small change in the render branch is trivial to follow.
+1. **Contract / types** – add the new union member.
+2. **Runtime guard** – validate the new variant.
+3. **Execution layer** (`extractAssistantTimeline`) – emit `user_message` items when replaying a Thread.
+4. **UI** (`RightSidebar`) – display the new block with its own icon and timeline style.
+
+No code has been removed; all changes are additive.
+
+## Tour of changes
+Begin with `workflow/Core/Contracts/Protocol.ts`.  
+The type change there is the lynchpin: every other diff chunk only makes sense once the new union member is understood. Afterwards follow the stack downward to the guard, then execution, then UI.
+
+1. `Protocol.ts` ‑ defines the new variant.  
+2. `guards.ts` ‑ keeps runtime validation in sync.  
+3. `run-llm.ts` ‑ produces the new objects at execution time.  
+4. `RightSidebar.tsx` ‑ consumes and renders them.
 
 ## File level review
 
+### `workflow/Core/Contracts/Protocol.ts`
+Changes  
+• Added union member `{ type: 'user_message'; text: string }` in `AssistantContentItem`.  
+• Clarified comment header.
+
+Review  
+✔ Correctly typed; optional fields not necessary.  
+⚠️ You may now need to revisit every `switch (item.type)` in the code base to avoid uncovered “exhaustive-switch” TypeScript errors suppressed by `default:`. Some files were updated; others might still miss the case.
+
+### `workflow/Core/Contracts/guards.ts`
+Changes  
+• `isAssistantContentItem` switch now validates `'user_message'` by checking `.text`.
+
+Review  
+✔ Logic mirrors `'text'` branch; looks correct.  
+✔ No performance impact.  
+⚠️ Consider extracting the shared `return isString((value as any).text)` to reduce duplication.
+
 ### `workflow/Web/components/sidebar/RightSidebar.tsx`
+Changes  
+• Timeline title logic: new case renders “👤 You”.  
+• Content renderers:  
+  – Simple paragraph inside accordions.  
+  – Full-width block style in the inside timeline builder (`segments` array).  
 
-#### 1. New helper `getAssistantDisplayItems`
+Review  
+✔ UI consistency with other message types.  
+✔ Uses existing colour variables; no new CSS leakage.  
+❗ Security: unlike `thinking`, no sanitisation is done (`thinking` runs an explicit `sanitizeThinking`). `user_message` is rendered with `whitespace-pre-wrap` directly. If user-supplied text may contain `<script>` or other markup, React will still escape it by default, so this is safe **unless** you switch to `dangerouslySetInnerHTML` elsewhere. Document this assumption.  
+💡 Potential duplication: both `'text'` and `'user_message'` share identical rendering code. Could unify to reduce maintenance.
 
-```ts
-function getAssistantDisplayItems(
-    items: AssistantContentItem[],
-    options: { isExecuting: boolean; resultText: string | undefined }
-): AssistantContentItem[] { … }
-```
+### `workflow/WorkflowExecution/Application/node-runners/run-llm.ts`
+Changes  
+• When iterating through `thread.messages`, now maps user role’s `content` blocks:
+  – If `block.type === 'text'` ⇒ emit `{type: 'user_message', text: …}`.  
+  – Existing handling for `tool_result` unchanged.
 
-Correctness & edge-cases  
-• Early exits (`isExecuting`, missing `resultText`) look fine.  
-• `normalize` uses only `.trim()`. That will ignore leading/trailing whitespace but still require
-  – identical casing  
-  – identical internal whitespace (multiple spaces, newlines within the answer, etc.)  
-  Depending on how `Result` is produced, this might be too strict (e.g., a trailing newline inside a
-  fenced code block will break the match). Consider a more robust equality test (e.g., collapse all whitespace or a checksum that matches the input path).  
-• The algorithm finds the *last* **text** item, not necessarily the last item overall.  
-  If the last timeline item is a non-text block (e.g., code, image), but the penultimate is text that matches the result, we will still hide it. Is that intentional? If you want to hide *only if it is the very last item of any type*, filter should check `i === items.length - 1` as well.  
-• Time complexity is O(n) but lists are tiny; fine.  
-• The function is pure and does not mutate its inputs – good.  
+Review  
+✔ Business logic matches the new spec.  
+⚠️ Edge cases:  
+ 1. OpenAI / other provider may send `user` messages that contain **non-text blocks** (images, files). They will now be silently dropped. Document this or add fallback logging.  
+ 2. Uses `block.text || ''`; may produce empty strings (fine, but maybe warn).  
+ 3. Existing assistant flow remains untouched.
 
-Type safety  
-• Uses `Extract<AssistantContentItem, { type: 'text' }>` to narrow the item type. 👍  
-• The return type is correctly stated as `AssistantContentItem[]`.  
+Performance/security OK.
 
-Performance  
-• Will run on every render. Cost is negligible, but if items grow large, memoization could help.  
-
-Naming / readability  
-• Name clearly describes purpose; doc-comment is thorough.  
-
-#### 2. Integration into render path
-
-Old:
-
-```ts
-const displayItems = items
-```
-
-New:
-
-```ts
-const displayItems = getAssistantDisplayItems(items, {
-    isExecuting: executingNodeIds.has(node.id),
-    resultText: nodeResults.get(node.id),
-})
-```
-
-Correctness  
-• `executingNodeIds` and `nodeResults` pre-exist; arguments are passed correctly.  
-• Behaviour while streaming (`isExecuting = true`) remains unchanged (always show).  
-
-Potential UX issues  
-• Users might find the answer “jumping” from the timeline to the Result panel abruptly when execution finishes. Consider an animation or placeholder to reduce jank.  
-
-Other observations  
-• `pairedMap` is still populated with the original `items` (not `displayItems`). If later logic
-  relies on `pairedMap` and the removed text, this can lead to inconsistencies. Double-check where
-  `pairedMap` is used; maybe it should iterate over `displayItems` as well.  
-
-Security  
-• No user-supplied HTML is inserted; filtering logic cannot introduce XSS. No new surface area.  
-
-#### 3. Comments / documentation  
-Good descriptive comments were added next to both the helper and its call-site, explaining the rationale.  
-
----
-
-### Recommendations / possible improvements  
-1. Robustness of equality check  
-   ```ts
-   const normalize = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase()
-   ```  
-   would ignore extra internal whitespace and casing differences.
-
-2. Ensure we only hide if the matching text is truly the *last* item overall:  
-   ```ts
-   if (lastTextIndex !== items.length - 1) return items
-   ```
-
-3. Consider feeding `displayItems` (not `items`) into any subsequent processing to avoid hidden items re-appearing elsewhere (see `pairedMap`).
-
-4. Minor optimisation: if `items.length === 0` return early.
-
-Overall, the change is small, safe and improves UX, but verify the edge-cases above before merging.
+## Overall remarks
+• Change set is coherent and additive; minimal risk.  
+• Audit other switch statements & reducers for completeness.  
+• Consider consolidating render logic for text-like items and sanitising consistently.
