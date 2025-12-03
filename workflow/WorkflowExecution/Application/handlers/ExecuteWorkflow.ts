@@ -117,7 +117,7 @@ export async function executeWorkflow(
 
         const options = {
             onError: 'fail-fast',
-            perType: { [NodeType.LLM]: 2, [NodeType.CLI]: 2 },
+            perType: { [NodeType.LLM]: 8, [NodeType.CLI]: 8 },
             seeds: resume?.seeds,
             pause: pauseRef,
         } as const
