@@ -101,6 +101,20 @@ function isWorkflowStateDTO(value: unknown): value is WorkflowStateDTO {
             if (!['true', 'false'].includes(decision as string)) return false
         }
     }
+    if ('nodeAssistantContent' in (value as any) && (value as any).nodeAssistantContent !== undefined) {
+        const content = (value as any).nodeAssistantContent
+        if (!isObject(content)) return false
+        for (const [, items] of Object.entries(content)) {
+            if (!Array.isArray(items)) return false
+        }
+    }
+    if ('nodeThreadIDs' in (value as any) && (value as any).nodeThreadIDs !== undefined) {
+        const threads = (value as any).nodeThreadIDs
+        if (!isObject(threads)) return false
+        for (const [, id] of Object.entries(threads)) {
+            if (!isString(id)) return false
+        }
+    }
     return true
 }
 

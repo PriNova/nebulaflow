@@ -36,6 +36,20 @@
 
 Recommended improvements and optimizations for future implementation.
 
+### Cross-Workflow Copy/Paste – Node State & LLM History Follow-ups
+
+- Goal: Preserve full node state semantics and improve robustness for assistant timelines, thread IDs, and clipboard payloads without changing current UX.
+- What:
+  - Preserve the richer `NodeSavedState` shape when building clipboard `nodeResults` (status, error, and `tokenCount`) or explicitly document that clipboard state intentionally only carries outputs.
+  - Tighten `nodeAssistantContent` validation in `isWorkflowStateDTO` so each item is structurally compatible with `AssistantContentItem` (at minimum: an object with a string `type` field, or ideally via a dedicated `isAssistantContentItem` guard).
+  - Decide whether assistant timelines are treated as immutable; if mutation is or may become necessary, use a deep copy (for example, `structuredClone` or a JSON round-trip) instead of `items.slice()` when pasting to avoid shared nested references between original and copied nodes.
+  - Monitor and, if needed, bound clipboard payload size for long LLM histories (for example, truncating to the most recent N messages or logging when payloads exceed a threshold), and document that full assistant history is currently copied.
+  - Clarify whether copied nodes should share the original LLM `threadID` or fork into a new backend thread; if independent forks are desired, design a thread-cloning flow that still rehydrates the visible timeline.
+  - Replace `any[]` uses around `nodeAssistantContent` and clipboard `assistantEntries` with `AssistantContentItem[]`-based types to surface mismatches at compile time.
+  - Route new copy/paste logging through a dev-guarded logger or flag so production consoles are not flooded with payload diagnostics by default.
+  - Consider extracting a small helper for hydrating `WorkflowStateDTO` into the webview `Map` structures and reuse it for both `workflow_loaded` and clipboard paste paths to keep future state fields in sync.
+- Why: Keeps cross-workflow copy/paste behavior semantically accurate as the protocol evolves, hardens the clipboard path against malformed or huge payloads, and improves type safety and maintainability around assistant content and thread tracking.
+
 ### Default LLM Model – Migration Semantics and Provider Validation
 
 ### Electron Workspace & Storage Scope – Follow-ups

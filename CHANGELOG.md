@@ -238,6 +238,11 @@ Why: Aligns with Vertical Slice Architecture, reduces duplicate handling and dri
 - Fixed: Updated `applyClipboardPayload` in [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx) so pasting nodes now clones `nodeResults`, `nodeAssistantContent`, and `nodeThreadIDs` for each remapped node id, ensuring duplicated nodes retain their prior outputs, assistant timelines, and LLM chat threads.
 - Why: Keeps copy/paste behavior aligned with node execution state so duplicating an Agent node (or other nodes with results) does not discard existing results or break ongoing LLM conversations.
 
+### Goal: Cross-Workflow Copy/Paste – Persist Node Results and LLM History Across Panels
+
+- Changed: Extended `WorkflowStateDTO` in [Protocol.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/Contracts/Protocol.ts) and its guards in [guards.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Core/Contracts/guards.ts) with optional `nodeAssistantContent` and `nodeThreadIDs` fields, and updated [Flow.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Flow.tsx) clipboard handling so `copy_selection` now serializes selected nodes’ `nodeResults`, assistant timelines, and thread IDs into the payload while `applyClipboardPayload` rehydrates them using the new id map when pasting.
+- Why: Ensures copying nodes between workflows, panels, or windows preserves their execution outputs and full LLM chat context using an explicit, protocol-backed state model rather than relying on a single panel’s in-memory maps.
+
 ### Goal: Normalize Parallel Group Numbering in RightSidebar
 
 - What: Updated the RightSidebar Playbox parallel execution view to derive `parallelGroups` and `sequentialItems` from `parallelSteps`, then label only true parallel waves using a contiguous `parallelGroupIndex` so sequential-only steps no longer increment the displayed parallel step number. See [RightSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/RightSidebar.tsx).

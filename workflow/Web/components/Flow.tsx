@@ -7,7 +7,12 @@ import { useReactFlow } from '@xyflow/react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import type { ExtensionToWorkflow, WorkflowPayloadDTO, WorkflowToExtension } from '../services/Protocol'
+import type {
+    ExtensionToWorkflow,
+    NodeSavedState,
+    WorkflowPayloadDTO,
+    WorkflowToExtension,
+} from '../services/Protocol'
 import { toWorkflowNodeDTO } from '../utils/nodeDto'
 import { pruneEdgesForMissingNodes } from '../utils/pruneEdges'
 import type { GenericVSCodeWrapper } from '../utils/vscode'
@@ -533,12 +538,30 @@ export const Flow: React.FC<{
             setNodeResults(prev => {
                 if (idMap.size === 0) return prev
                 const next = new Map(prev)
+
+                // Preserve results when copying within the same workflow by
+                // remapping existing runtime nodeResults using the old->new id map.
                 for (const [oldId, newId] of idMap.entries()) {
                     const value = prev.get(oldId)
                     if (value !== undefined) {
                         next.set(newId, value)
                     }
                 }
+
+                // Also hydrate results from clipboard state so cross-workflow
+                // copy/paste can preserve execution outputs.
+                const state = payload.state
+                if (state?.nodeResults) {
+                    for (const [oldId, saved] of Object.entries(state.nodeResults)) {
+                        const newId = idMap.get(oldId)
+                        if (!newId) continue
+                        const output = saved.output
+                        if (typeof output === 'string') {
+                            next.set(newId, output)
+                        }
+                    }
+                }
+
                 return next
             })
 
@@ -551,6 +574,20 @@ export const Flow: React.FC<{
                         next.set(newId, items.slice())
                     }
                 }
+
+                // Also hydrate assistant timelines from clipboard state so
+                // cross-workflow copy/paste can preserve LLM chat history.
+                const state = payload.state
+                if (state?.nodeAssistantContent) {
+                    for (const [oldId, items] of Object.entries(state.nodeAssistantContent)) {
+                        const newId = idMap.get(oldId)
+                        if (!newId) continue
+                        if (Array.isArray(items)) {
+                            next.set(newId, items.slice())
+                        }
+                    }
+                }
+
                 return next
             })
 
@@ -563,6 +600,19 @@ export const Flow: React.FC<{
                         next.set(newId, threadId)
                     }
                 }
+
+                // Also hydrate LLM thread IDs from clipboard state.
+                const state = payload.state
+                if (state?.nodeThreadIDs) {
+                    for (const [oldId, threadId] of Object.entries(state.nodeThreadIDs)) {
+                        const newId = idMap.get(oldId)
+                        if (!newId) continue
+                        if (typeof threadId === 'string' && threadId) {
+                            next.set(newId, threadId)
+                        }
+                    }
+                }
+
                 return next
             })
 
@@ -672,6 +722,7 @@ export const Flow: React.FC<{
 
     const handleCopySelection = useCallback(() => {
         if (selectedNodes.length === 0) return
+
         const selectedIds = new Set(selectedNodes.map(node => node.id))
         const nodeDTOs = selectedNodes.map(node => toWorkflowNodeDTO(node))
         const edgeDTOs = edges
@@ -683,21 +734,69 @@ export const Flow: React.FC<{
                 sourceHandle: (edge as any).sourceHandle,
                 targetHandle: (edge as any).targetHandle,
             }))
+
+        const nodeStateEntries: [string, NodeSavedState][] = []
+        for (const [nodeId, output] of nodeResults.entries()) {
+            if (!selectedIds.has(nodeId)) continue
+            nodeStateEntries.push([
+                nodeId,
+                {
+                    status: 'completed',
+                    output,
+                },
+            ])
+        }
+
+        const assistantEntries: [string, any[]][] = []
+        const threadEntries: [string, string][] = []
+        for (const nodeId of selectedIds) {
+            const items = nodeAssistantContent.get(nodeId)
+            if (items && Array.isArray(items) && items.length > 0) {
+                assistantEntries.push([nodeId, items])
+            }
+            const threadID = nodeThreadIDs.get(nodeId)
+            if (typeof threadID === 'string' && threadID) {
+                threadEntries.push([nodeId, threadID])
+            }
+        }
+
+        let state: WorkflowPayloadDTO['state']
+        if (nodeStateEntries.length > 0 || assistantEntries.length > 0 || threadEntries.length > 0) {
+            state = {
+                nodeResults: Object.fromEntries(nodeStateEntries),
+                ...(assistantEntries.length > 0
+                    ? { nodeAssistantContent: Object.fromEntries(assistantEntries) }
+                    : {}),
+                ...(threadEntries.length > 0
+                    ? { nodeThreadIDs: Object.fromEntries(threadEntries) }
+                    : {}),
+            }
+        }
+
         const payload: WorkflowPayloadDTO = {
             nodes: nodeDTOs as any,
             edges: edgeDTOs as any,
+            state,
         }
         console.log('[Flow] copy_selection payload', {
             nodeCount: payload.nodes?.length ?? 0,
             edgeCount: payload.edges?.length ?? 0,
             nodeIds: payload.nodes?.map(n => n.id) ?? [],
+            hasState: !!payload.state,
+            stateNodeCount: Object.keys(payload.state?.nodeResults ?? {}).length,
+            stateAssistantNodeCount: payload.state?.nodeAssistantContent
+                ? Object.keys(payload.state.nodeAssistantContent).length
+                : 0,
+            stateThreadNodeCount: payload.state?.nodeThreadIDs
+                ? Object.keys(payload.state.nodeThreadIDs).length
+                : 0,
         })
         try {
             vscodeAPI.postMessage({ type: 'copy_selection', data: payload } as any)
         } catch (err) {
             console.error('[Flow] Failed to post copy_selection message', err)
         }
-    }, [selectedNodes, edges, vscodeAPI])
+    }, [selectedNodes, edges, nodeResults, nodeAssistantContent, nodeThreadIDs, vscodeAPI])
 
     const handleRequestPasteAtPosition = useCallback(
         (position: { x: number; y: number }) => {

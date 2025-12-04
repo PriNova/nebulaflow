@@ -59,6 +59,15 @@ export interface NodeSavedState {
 export interface WorkflowStateDTO {
     nodeResults: Record<string, NodeSavedState>
     ifElseDecisions?: Record<string, 'true' | 'false'>
+    /**
+     * Optional persisted assistant timelines per node.
+     * Used for LLM node chat history, including tool calls and results.
+     */
+    nodeAssistantContent?: Record<string, AssistantContentItem[]>
+    /**
+     * Optional persisted thread identifiers per node for LLM chat.
+     */
+    nodeThreadIDs?: Record<string, string>
 }
 
 // Subflows
