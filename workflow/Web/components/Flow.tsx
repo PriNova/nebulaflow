@@ -530,12 +530,56 @@ export const Flow: React.FC<{
                 newNodeIds: newNodes.map(n => n.id),
             })
 
+            setNodeResults(prev => {
+                if (idMap.size === 0) return prev
+                const next = new Map(prev)
+                for (const [oldId, newId] of idMap.entries()) {
+                    const value = prev.get(oldId)
+                    if (value !== undefined) {
+                        next.set(newId, value)
+                    }
+                }
+                return next
+            })
+
+            setNodeAssistantContent(prev => {
+                if (idMap.size === 0) return prev
+                const next = new Map(prev)
+                for (const [oldId, newId] of idMap.entries()) {
+                    const items = prev.get(oldId)
+                    if (items && Array.isArray(items)) {
+                        next.set(newId, items.slice())
+                    }
+                }
+                return next
+            })
+
+            setNodeThreadIDs(prev => {
+                if (idMap.size === 0) return prev
+                const next = new Map(prev)
+                for (const [oldId, newId] of idMap.entries()) {
+                    const threadId = prev.get(oldId)
+                    if (typeof threadId === 'string' && threadId) {
+                        next.set(newId, threadId)
+                    }
+                }
+                return next
+            })
+
             setNodes(prev => [...prev, ...newNodes])
             setEdges(prev => [...prev, ...newEdges])
             setSelectedNodes(newNodes)
             setActiveNode(newNodes[newNodes.length - 1] ?? null)
         },
-        [setNodes, setEdges, setSelectedNodes, setActiveNode]
+        [
+            setNodes,
+            setEdges,
+            setSelectedNodes,
+            setActiveNode,
+            setNodeResults,
+            setNodeAssistantContent,
+            setNodeThreadIDs,
+        ]
     )
 
     useMessageHandler(

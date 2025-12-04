@@ -452,7 +452,11 @@ Recommended improvements and optimizations for future implementation.
 -  - Consolidate the clipboard graph cloning logic into a single helper that remaps node/edge IDs and applies offsets, and reuse it across webview clipboard handlers to avoid drift between different copy/paste paths.
 -  - Clarify and, if needed, extend clipboard precedence semantics so users have predictable behavior when the system clipboard contains non-NebulaFlow content (e.g., explicit rules for when in-memory vs system clipboard wins).
 -  - Add small dev-only logging and optional visual hints around context-menu copy/paste actions to aid debugging without increasing noise in normal usage.
-- Why: Keeps the clipboard flow data-oriented and robust as the protocol evolves, reduces duplication in cloning helpers, makes behavior predictable across panels, and leaves room for UX polish without complicating the core implementation.
+-  - Extend paste-time `nodeResults` cloning to include derived keys such as `${nodeId}_tokens` (or other per-node result metadata) so PREVIEW and LLM nodes preserve token-count and related metadata alongside their main output when duplicated.
+-  - Optionally collapse the three `idMap` iteration loops in `applyClipboardPayload` into a single pass that updates `nodeResults`, `nodeAssistantContent`, and `nodeThreadIDs` together, and simplify redundant runtime guards/type checks once the involved maps remain type-safe.
+-  - Document or, if needed, strengthen the immutability assumption for `nodeAssistantContent` items (or replace `items.slice()` with a slightly deeper clone) so future in-place mutations cannot leak between original and pasted nodes.
+-  - Keep the `applyClipboardPayload` `useCallback` comment and dependency array in sync by either relying on setter stability (omitting them from deps) or updating the comment to describe the current exhaustive-deps strategy.
+- Why: Keeps the clipboard flow data-oriented and robust as the protocol evolves, reduces duplication in cloning helpers, makes behavior predictable across panels, and leaves room for UX and code polish around copy/paste state cloning without complicating the core implementation.
 
 ### Right Sidebar Min-Width Flexibility
 

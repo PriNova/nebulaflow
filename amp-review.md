@@ -1,72 +1,57 @@
 ## High-level summary
-The patch introduces a new `user_message` content-block kind into the streaming/timeline model (`AssistantContentItem`).  
-All layers are updated accordingly:
+The patch fixes an incompleteness in node duplication / paste in `Flow.tsx`.  
+When nodes are copied the component already clones `nodes` and `edges`; it now also clones three per-node side-tables:
 
-1. **Contract / types** – add the new union member.
-2. **Runtime guard** – validate the new variant.
-3. **Execution layer** (`extractAssistantTimeline`) – emit `user_message` items when replaying a Thread.
-4. **UI** (`RightSidebar`) – display the new block with its own icon and timeline style.
+* `nodeResults`
+* `nodeAssistantContent`
+* `nodeThreadIDs`
 
-No code has been removed; all changes are additive.
+Each is updated with a functional `setState` call that remaps the old-ID → new-ID pairs found in `idMap`.  
+Because new hooks appear inside the body of a `useCallback`, the dependency list is expanded accordingly.  
+The rest of the diff is the self-review file (`amp-review.md`) and contains no runtime code.
 
 ## Tour of changes
-Begin with `workflow/Core/Contracts/Protocol.ts`.  
-The type change there is the lynchpin: every other diff chunk only makes sense once the new union member is understood. Afterwards follow the stack downward to the guard, then execution, then UI.
-
-1. `Protocol.ts` ‑ defines the new variant.  
-2. `guards.ts` ‑ keeps runtime validation in sync.  
-3. `run-llm.ts` ‑ produces the new objects at execution time.  
-4. `RightSidebar.tsx` ‑ consumes and renders them.
+Begin with `workflow/Web/components/Flow.tsx`, **just above the existing `setNodes` call (≈ line 530)**.  
+This is where the new state cloning happens and explains every other snippet (extra dependencies, early returns, etc.).  
+`amp-review.md` is documentation and can be skimmed afterwards.
 
 ## File level review
 
-### `workflow/Core/Contracts/Protocol.ts`
-Changes  
-• Added union member `{ type: 'user_message'; text: string }` in `AssistantContentItem`.  
-• Clarified comment header.
+### `workflow/Web/components/Flow.tsx`
 
-Review  
-✔ Correctly typed; optional fields not necessary.  
-⚠️ You may now need to revisit every `switch (item.type)` in the code base to avoid uncovered “exhaustive-switch” TypeScript errors suppressed by `default:`. Some files were updated; others might still miss the case.
+Changes made  
+1. Inserted three `setState` blocks that clone `nodeResults`, `nodeAssistantContent`, and `nodeThreadIDs` for each `(oldId, newId)` entry in `idMap`.  
+2. Added the three setter functions to the `useCallback` dependency array.
 
-### `workflow/Core/Contracts/guards.ts`
-Changes  
-• `isAssistantContentItem` switch now validates `'user_message'` by checking `.text`.
+Correctness  
+✔ Guards (`idMap.size===0`) avoid needless work / re-renders.  
+✔ Functional updates (`prev => { … }`) are safe with concurrent React.  
+✔ `new Map(prev)` keeps immutability while preserving object identity for unaltered entries.  
+✔ Original IDs are left intact, so references from the original nodes remain valid.
 
-Review  
-✔ Logic mirrors `'text'` branch; looks correct.  
-✔ No performance impact.  
-⚠️ Consider extracting the shared `return isString((value as any).text)` to reduce duplication.
+Edge-cases & potential improvements  
+1. Triple iteration: currently loops over `idMap` three times. For large pastes you could iterate once and build the three “next” maps in one sweep, but the data set is usually tiny.  
+2. Shallow copy of `items.slice()`: duplicates the array shell but not inner objects. If future code mutates items in-place this could cause cross-node bleeding; document the assumption of immutability or perform a deeper copy.  
+3. Runtime checks (`Array.isArray`, `typeof threadId === 'string'`) are unnecessary given the Map’s declared types and can be removed to slightly reduce noise.  
+4. Dependency array: setter functions are stable by React contract; including them is not harmful but also not needed. Confirm ESLint config; you may prefer `// eslint-disable-line react-hooks/exhaustive-deps` rather than growing arrays with stable refs.  
+5. Duplicate newId: if `idMap` ever contained two old IDs mapping to the same new ID the last winner silently overwrites the first. Consider an assertion or an early check (`if (next.has(newId)) warn(...)`).  
 
-### `workflow/Web/components/sidebar/RightSidebar.tsx`
-Changes  
-• Timeline title logic: new case renders “👤 You”.  
-• Content renderers:  
-  – Simple paragraph inside accordions.  
-  – Full-width block style in the inside timeline builder (`segments` array).  
+Security  
+No external data is parsed or emitted; operations are pure in-memory transformations. No new attack surface.
 
-Review  
-✔ UI consistency with other message types.  
-✔ Uses existing colour variables; no new CSS leakage.  
-❗ Security: unlike `thinking`, no sanitisation is done (`thinking` runs an explicit `sanitizeThinking`). `user_message` is rendered with `whitespace-pre-wrap` directly. If user-supplied text may contain `<script>` or other markup, React will still escape it by default, so this is safe **unless** you switch to `dangerouslySetInnerHTML` elsewhere. Document this assumption.  
-💡 Potential duplication: both `'text'` and `'user_message'` share identical rendering code. Could unify to reduce maintenance.
+Performance  
+O(N) over `idMap` with trivial constant factors; acceptable. Memory copy via `new Map` is required for React-style immutability.
 
-### `workflow/WorkflowExecution/Application/node-runners/run-llm.ts`
-Changes  
-• When iterating through `thread.messages`, now maps user role’s `content` blocks:
-  – If `block.type === 'text'` ⇒ emit `{type: 'user_message', text: …}`.  
-  – Existing handling for `tool_result` unchanged.
+Testing recommendations  
+• Unit-test node duplication with results / assistant content / thread IDs populated.  
+• Verify paste-undo redo stacks if present.  
+• Manually duplicate a node with large assistant-content arrays to ensure UI remains in sync.
 
-Review  
-✔ Business logic matches the new spec.  
-⚠️ Edge cases:  
- 1. OpenAI / other provider may send `user` messages that contain **non-text blocks** (images, files). They will now be silently dropped. Document this or add fallback logging.  
- 2. Uses `block.text || ''`; may produce empty strings (fine, but maybe warn).  
- 3. Existing assistant flow remains untouched.
+### `amp-review.md`
 
-Performance/security OK.
+This file is only the internal code-review document.  
+No runtime impact; changes simply describe the modifications now introduced in `Flow.tsx`.
 
 ## Overall remarks
-• Change set is coherent and additive; minimal risk.  
-• Audit other switch statements & reducers for completeness.  
-• Consider consolidating render logic for text-like items and sanitising consistently.
+The patch closes a real state-consistency gap and is implemented in a clear, idiomatic way.  
+Nothing is blocking; the only actionable items are minor polish (single-pass loop, possible deep clone, dependency list clean-up) and adding a brief comment above the three blocks to signal why they must stay in sync with `setNodes`.
