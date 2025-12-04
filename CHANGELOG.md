@@ -277,8 +277,13 @@ Why: Aligns with Vertical Slice Architecture, reduces duplicate handling and dri
 - Why: Enables per-node conversational refinement on top of existing LLM nodes without altering workflow contracts, while keeping chat drafts and assistant history lifecycle explicit and predictable across workflow runs and resets and making user messages first-class citizens in the LLM node timeline.
 
 ### Goal: LLM Assistant Fullscreen Auto-Scroll Consistency
- - Fixed: Auto-scrolling now re-applies when the assistant pane mounts or resizes (including fullscreen toggles) as long as auto-follow is not paused, so the view stays pinned to the latest assistant output without user intervention.
- 
+- Fixed: Auto-scrolling now re-applies when the assistant pane mounts or resizes (including fullscreen toggles) as long as auto-follow is not paused, so the view stays pinned to the latest assistant output without user intervention.
+
+### Goal: LLM Node Prompt Card in RightSidebar Timeline
+
+- Added: Surfaced each LLM node’s current `data.content` as a "Prompt" card at the top of the RightSidebar assistant timeline, mounting the assistant area whenever an LLM node has a non-empty prompt so users can see and edit the prompt even before any run results exist; the card reuses existing `nebula-edit-node` modal wiring via a double-click handler and stays in sync as the node content changes.
+- Why: Makes the effective LLM prompt visible and editable from the execution context, aligning the RightSidebar timeline with the node’s configured behavior and reducing context switching between canvas, properties, and assistant results.
+
 ### Goal: LLM Assistant Result Dedup in RightSidebar Playbox
 
 - Fixed: Updated the RightSidebar LLM assistant renderer to use a pure `getAssistantDisplayItems` helper that, after execution completes, hides the last assistant `text` item from the Playbox timeline when its trimmed content exactly matches the node’s current Result string, so the latest answer appears only in the Result block instead of being duplicated.

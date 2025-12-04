@@ -358,6 +358,17 @@ Recommended improvements and optimizations for future implementation.
 -   - Align vertical spacing rules between assistant and user message blocks (e.g., reuse the `assistantMarginTop` logic or a shared spacing helper) so sequences of `thinking`, `text`, and `user_message` items have consistent rhythm.
 - Why: Prepares the LLM node timeline for future multimodal user content, avoids silently losing information, and keeps the user/assistant block rendering simple and consistent to maintain.
 
+### LLM Prompt Card in RightSidebar – Follow-ups
+
+- Goal: Tighten accessibility, small UX semantics, and minor code duplication around the new LLM Prompt card without changing current behavior.
+- What:
+-   - Make the Prompt card keyboard-activatable by adding `role="button"`, `tabIndex={0}`, and an `onKeyDown` handler for Enter/Space that triggers the existing `nebula-edit-node` start event, so keyboard and assistive-technology users can edit the prompt from the RightSidebar.
+-   - Consolidate prompt detection by computing the trimmed `prompt` string once in `renderNodeItem` and deriving `hasPrompt` from `prompt.length > 0`, avoiding duplicated `node.data.content.trim()` logic in the timeline renderer.
+-   - Optionally gate the RightSidebar Result section on `nodeResults.has(node.id)` again so LLM nodes with a prompt but no results don’t show an empty "Result" header, while still mounting the Prompt/timeline container when a prompt exists.
+-   - Consider adding `tw-break-words` to the Prompt body `<p>` in `RightSidebar.tsx` to handle extremely long unbroken tokens (URLs, base64 strings) without stretching the sidebar layout.
+-   - If/when the rest of the UI is localized, route the hard-coded "Prompt" label through the existing i18n mechanism so the card title participates in localization.
+- Why: Brings the Prompt card up to the same a11y and polish bar as the rest of the RightSidebar assistant UI, keeps prompt detection logic DRY and predictable, and leaves room for future localization and layout hardening.
+
 ### Tool Safety and Resolver Hygiene
 
 - Goal: Prevent future drift in Bash detection and reduce runtime overhead in tool name normalization.

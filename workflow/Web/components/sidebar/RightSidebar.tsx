@@ -760,6 +760,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
     const renderNodeItem = (node: WorkflowNodes, isInParallelGroup = false) => {
         const isFullscreen = fullscreenNodeId === node.id
+        const hasPrompt =
+            node.type === NodeType.LLM &&
+            typeof node.data?.content === 'string' &&
+            node.data.content.trim().length > 0
+
         return (
             <div
                 className={clsx(
@@ -885,7 +890,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                             )}
                         >
                             {(nodeResults.has(node.id) ||
-                                (node.type === NodeType.LLM && nodeAssistantContent.has(node.id))) && (
+                                (node.type === NodeType.LLM &&
+                                    (nodeAssistantContent.has(node.id) || hasPrompt))) && (
                                 <div
                                     className={clsx(
                                         'tw-mt-1 tw-space-y-4',
@@ -894,119 +900,163 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                             : ''
                                     )}
                                 >
-                                    {node.type === NodeType.LLM && nodeAssistantContent.has(node.id) && (
-                                        <div
-                                            className={clsx(
-                                                'tw-overflow-y-auto',
-                                                // In fullscreen, keep the scrollbar on the inner container as well,
-                                                // just allow a taller max height instead of flexing to fill.
-                                                isFullscreen ? 'tw-max-h-[60vh]' : 'tw-max-h-64'
-                                            )}
-                                            ref={el => {
-                                                if (el) {
-                                                    assistantScrollRefs.current.set(node.id, el)
-                                                    if (!pausedAutoScroll.has(node.id)) {
-                                                        // Keep auto-following when the container mounts or resizes
-                                                        el.scrollTop = el.scrollHeight
+                                    {node.type === NodeType.LLM &&
+                                        (nodeAssistantContent.has(node.id) || hasPrompt) && (
+                                            <div
+                                                className={clsx(
+                                                    'tw-overflow-y-auto',
+                                                    // In fullscreen, keep the scrollbar on the inner container as well,
+                                                    // just allow a taller max height instead of flexing to fill.
+                                                    isFullscreen ? 'tw-max-h-[60vh]' : 'tw-max-h-64'
+                                                )}
+                                                ref={el => {
+                                                    if (el) {
+                                                        assistantScrollRefs.current.set(node.id, el)
+                                                        if (!pausedAutoScroll.has(node.id)) {
+                                                            // Keep auto-following when the container mounts or resizes
+                                                            el.scrollTop = el.scrollHeight
+                                                        }
+                                                    } else {
+                                                        assistantScrollRefs.current.delete(node.id)
                                                     }
-                                                } else {
-                                                    assistantScrollRefs.current.delete(node.id)
+                                                }}
+                                                onScroll={e =>
+                                                    handleAssistantScroll(node.id, e.currentTarget)
                                                 }
-                                            }}
-                                            onScroll={e =>
-                                                handleAssistantScroll(node.id, e.currentTarget)
-                                            }
-                                        >
-                                            {(() => {
-                                                const items = nodeAssistantContent.get(node.id) || []
+                                            >
+                                                {(() => {
+                                                    const items = nodeAssistantContent.get(node.id) || []
 
-                                                // When a node finishes a round, hide the last assistant text when it
-                                                // exactly matches the Result so the latest answer only appears in the
-                                                // Result. On the next run (e.g., follow-up chat), that text becomes
-                                                // part of the timeline again because it is no longer the last
-                                                // assistant message.
-                                                const displayItems = getAssistantDisplayItems(items, {
-                                                    isExecuting: executingNodeIds.has(node.id),
-                                                    resultText: nodeResults.get(node.id),
-                                                })
-
-                                                const pairedMap = new Map<string, string | undefined>()
-                                                for (const it of items) {
-                                                    if (it.type === 'tool_result' && it.toolUseID) {
-                                                        pairedMap.set(it.toolUseID, it.resultJSON)
-                                                    }
-                                                }
-
-                                                const segments: React.ReactNode[] = []
-                                                const pendingNonText: AssistantContentItem[] = []
-
-                                                const flushNonTextAccordion = () => {
-                                                    if (pendingNonText.length === 0) return
-                                                    const baseIndex = segments.length
-                                                    segments.push(
-                                                        <Accordion
-                                                            key={`${node.id}:accordion:${baseIndex}`}
-                                                            type="multiple"
-                                                        >
-                                                            {pendingNonText.map((it, idx) =>
-                                                                renderAssistantAccordionItem(
-                                                                    it,
-                                                                    idx,
-                                                                    node.id,
-                                                                    executingNodeIds.has(node.id),
-                                                                    it.type === 'tool_use'
-                                                                        ? pairedMap.get(it.id)
-                                                                        : undefined
-                                                                )
-                                                            )}
-                                                        </Accordion>
+                                                    // When a node finishes a round, hide the last assistant text when it
+                                                    // exactly matches the Result so the latest answer only appears in the
+                                                    // Result. On the next run (e.g., follow-up chat), that text becomes
+                                                    // part of the timeline again because it is no longer the last
+                                                    // assistant message.
+                                                    const displayItems = getAssistantDisplayItems(
+                                                        items,
+                                                        {
+                                                            isExecuting: executingNodeIds.has(node.id),
+                                                            resultText: nodeResults.get(node.id),
+                                                        }
                                                     )
-                                                    pendingNonText.length = 0
-                                                }
 
-                                                for (let i = 0; i < displayItems.length; i++) {
-                                                    const it = displayItems[i]
-                                                    if (it.type === 'text') {
-                                                        flushNonTextAccordion()
-                                                        const prev = i > 0 ? displayItems[i - 1] : null
-                                                        const assistantMarginTop =
-                                                            prev && prev.type === 'thinking'
-                                                                ? ''
-                                                                : 'tw-mt-2'
+                                                    const pairedMap = new Map<
+                                                        string,
+                                                        string | undefined
+                                                    >()
+                                                    for (const it of items) {
+                                                        if (it.type === 'tool_result' && it.toolUseID) {
+                                                            pairedMap.set(it.toolUseID, it.resultJSON)
+                                                        }
+                                                    }
+
+                                                    const segments: React.ReactNode[] = []
+                                                    const pendingNonText: AssistantContentItem[] = []
+
+                                                    const prompt =
+                                                        node.type === NodeType.LLM &&
+                                                        typeof node.data?.content === 'string'
+                                                            ? node.data.content.trim()
+                                                            : ''
+
+                                                    if (prompt.length > 0) {
                                                         segments.push(
                                                             <div
-                                                                key={`${node.id}:text:${i}`}
-                                                                className={`tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] ${assistantMarginTop}`}
+                                                                key={`${node.id}:prompt`}
+                                                                className="tw-bg-[var(--vscode-sideBar-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]"
+                                                                onDoubleClick={e => {
+                                                                    e.stopPropagation()
+                                                                    window.dispatchEvent(
+                                                                        new CustomEvent(
+                                                                            'nebula-edit-node',
+                                                                            {
+                                                                                detail: {
+                                                                                    id: node.id,
+                                                                                    action: 'start',
+                                                                                },
+                                                                            }
+                                                                        )
+                                                                    )
+                                                                }}
                                                             >
-                                                                <Markdown
-                                                                    content={it.text}
-                                                                    className="tw-text-xs"
-                                                                />
-                                                            </div>
-                                                        )
-                                                    } else if (it.type === 'user_message') {
-                                                        flushNonTextAccordion()
-                                                        segments.push(
-                                                            <div
-                                                                key={`${node.id}:user:${i}`}
-                                                                className="tw-bg-[var(--vscode-sideBar-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] tw-mt-2"
-                                                            >
+                                                                <div className="tw-text-[0.7rem] tw-font-semibold tw-uppercase tw-mb-1 tw-text-[var(--vscode-descriptionForeground)]">
+                                                                    Prompt
+                                                                </div>
                                                                 <p className="tw-text-xs tw-text-[var(--vscode-foreground)] tw-whitespace-pre-wrap">
-                                                                    {it.text}
+                                                                    {prompt}
                                                                 </p>
                                                             </div>
                                                         )
-                                                    } else if (it.type !== 'tool_result') {
-                                                        pendingNonText.push(it)
                                                     }
-                                                }
 
-                                                flushNonTextAccordion()
+                                                    const flushNonTextAccordion = () => {
+                                                        if (pendingNonText.length === 0) return
+                                                        const baseIndex = segments.length
+                                                        segments.push(
+                                                            <Accordion
+                                                                key={`${node.id}:accordion:${baseIndex}`}
+                                                                type="multiple"
+                                                            >
+                                                                {pendingNonText.map((it, idx) =>
+                                                                    renderAssistantAccordionItem(
+                                                                        it,
+                                                                        idx,
+                                                                        node.id,
+                                                                        executingNodeIds.has(node.id),
+                                                                        it.type === 'tool_use'
+                                                                            ? pairedMap.get(it.id)
+                                                                            : undefined
+                                                                    )
+                                                                )}
+                                                            </Accordion>
+                                                        )
+                                                        pendingNonText.length = 0
+                                                    }
 
-                                                return <>{segments}</>
-                                            })()}
-                                        </div>
-                                    )}
+                                                    for (let i = 0; i < displayItems.length; i++) {
+                                                        const it = displayItems[i]
+                                                        if (it.type === 'text') {
+                                                            flushNonTextAccordion()
+                                                            const prev =
+                                                                i > 0 ? displayItems[i - 1] : null
+                                                            const assistantMarginTop =
+                                                                prev && prev.type === 'thinking'
+                                                                    ? ''
+                                                                    : 'tw-mt-2'
+                                                            segments.push(
+                                                                <div
+                                                                    key={`${node.id}:text:${i}`}
+                                                                    className={`tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] ${assistantMarginTop}`}
+                                                                >
+                                                                    <Markdown
+                                                                        content={it.text}
+                                                                        className="tw-text-xs"
+                                                                    />
+                                                                </div>
+                                                            )
+                                                        } else if (it.type === 'user_message') {
+                                                            flushNonTextAccordion()
+                                                            segments.push(
+                                                                <div
+                                                                    key={`${node.id}:user:${i}`}
+                                                                    className="tw-bg-[var(--vscode-sideBar-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)] tw-mt-2"
+                                                                >
+                                                                    <p className="tw-text-xs tw-text-[var(--vscode-foreground)] tw-whitespace-pre-wrap">
+                                                                        {it.text}
+                                                                    </p>
+                                                                </div>
+                                                            )
+                                                        } else if (it.type !== 'tool_result') {
+                                                            pendingNonText.push(it)
+                                                        }
+                                                    }
+
+                                                    flushNonTextAccordion()
+
+                                                    return <>{segments}</>
+                                                })()}
+                                            </div>
+                                        )}
 
                                     <div className="tw-mt-1 tw-mb-1 tw-border-t tw-border-[var(--vscode-panel-border)]" />
                                     <div>
