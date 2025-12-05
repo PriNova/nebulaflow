@@ -348,6 +348,17 @@ Recommended improvements and optimizations for future implementation.
 - Emit a low-noise debug or telemetry signal when the scheduler detects loop nodes and chooses sequential fallback so performance characteristics are diagnosable in complex workflows.
 - Align or explicitly document the relationship between static iteration overrides used at graph-composition time (via `getLoopIterations`) and runtime overrides consumed by `executeLoopStartNode`, especially when the override source is dynamic rather than a simple Text node.
 
+### LLM Node Assistant Timeline Mode and Normalization – Follow-ups
+
+- Goal: Make LLM assistant timeline normalization explicit, mode-aware, and strongly typed while preserving the current UX fix.
+- What:
+-   - Document the invariant that the earliest `user_message` in a thread represents the workflow prompt in current flows, both near `filterInitialUserMessage` in `workflow/Web/components/hooks/messageHandling.ts` and (optionally) alongside assistant-content event docs in `workflow/Core/Contracts/Protocol.ts`, so future features understand why that item is filtered.
+-   - Consider gating `filterInitialUserMessage` behind the new `mode` hint (for example, only filtering when `mode !== 'single-node'` or when a thread started from a workflow run) if future pure-chat entrypoints are added that start threads without a workflow prompt.
+-   - Introduce a shared `ExecutionMode = 'workflow' | 'single-node'` type (and small `isExecutionMode` helper) in `workflow/Core/Contracts/Protocol.ts` and reuse it across protocol, guards, and `LLMRunArgs` instead of repeating the literal union and manual checks.
+-   - Tighten the `nodeAssistantContent` map typing in the webview (e.g., `Map<string, AssistantContentItem[]>` in `messageHandling.ts` and related hooks) to align with the protocol and the `filterInitialUserMessage` helper, reducing `any[]` usage.
+-   - Clarify in `LLMRunArgs` and/or the LLM runner docs that `mode` is a diagnostic/UI hint carried through logs and assistant-content events and does not currently alter Amp SDK behavior, to prevent accidental behavioral divergence between modes.
+- Why: Keeps the sidebar timeline fix robust as new entrypoints and content types are added, reduces duplication and drift around execution modes, and strengthens type safety around assistant content without changing current behavior.
+
 ### LLM Node Timeline – User Messages and Multimodal Input Follow-ups
 
 - Goal: Make user messages first-class in the assistant timeline for all content types and keep spacing and rendering logic maintainable.

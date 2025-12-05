@@ -1,88 +1,86 @@
-## High-level summary  
-A single component (`workflow/Web/components/sidebar/RightSidebar.tsx`) was modified to surface an LLM-node’s textual prompt in the right sidebar.  
-• A helper flag `hasPrompt` is computed per node.  
-• The content-rendering branch now mounts when the node has (a) results, (b) assistant chat history, **or (c) a prompt**.  
-• Inside the assistant-timeline renderer, the prompt (if any) is rendered as a fixed “Prompt” card that appears above the existing accordion/timeline.  
-• Double-clicking the card dispatches a `nebula-edit-node` custom event to start inline editing.
+## High-level summary
+The change introduces an optional `mode` hint (`'workflow' | 'single-node'`) to assistant-content events flowing between the extension process and the workflow webview.  
+All type contracts, run-time guards, event emitters and consumers were updated accordingly.  
+On the web side an additional normalisation step now removes the initial “user” message from assistant timelines before they are stored in component state.  
+A pre-built vendor tarball (`amp-sdk.tgz`) was also replaced.
 
-No other files were touched.
+No API surface other than the optional `mode` field is affected, therefore existing producers/consumers continue to work.
 
----
+## Tour of changes
+Start with `workflow/Core/Contracts/Protocol.ts` – it explains the new `mode` property and sets the foundation for everything else.  
+From there, the logical order is:
 
-## Tour of changes  
-Start at the main render block that begins around original line 885 (now ~900). This is where:  
-1. The new mount-condition is introduced.  
-2. The scrollable container is reused to hold both the timeline and the new prompt card.  
-3. The “Prompt” card is injected into `segments` before any non-text items are flushed—understanding this explains every subsequent diff hunk.
+1. `workflow/Core/Contracts/guards.ts` – run-time gatekeeping for the new field.  
+2. `workflow/WorkflowExecution/Application/node-runners/run-llm.ts` and `workflow/WorkflowExecution/Application/subflow/run-subflow.ts` – event emitters now populate `mode`.  
+3. `workflow/Web/components/hooks/messageHandling.ts` – the consumer of the new events; also contains the “filter initial user message” logic.  
 
----
+The vendor tarball is opaque and can be safely skipped during code review.
 
-## File level review  
+## File level review
 
-### `workflow/Web/components/sidebar/RightSidebar.tsx`
+### `workflow/Core/Contracts/Protocol.ts`
+Changes  
+• Added optional `mode?: 'workflow' | 'single-node'` to:
+  - `NodeAssistantContentEvent.data`
+  - `SubflowNodeAssistantContentEvent.data`
 
-1. New flag   
-   ```ts
-   const hasPrompt =
-       node.type === NodeType.LLM &&
-       typeof node.data?.content === 'string' &&
-       node.data.content.trim().length > 0
-   ```
-   ✓ Defensive type/whitespace checks.  
-   ✻ Minor duplication: the same logic is re-run later to obtain the `prompt` string; consider re-using the earlier result.
+Review  
+✓  The field is optional → backward compatible.  
+✓  JSDoc clearly explains meaning.  
+⚠  Consider promoting the literal union to a named type (`ExecutionMode`) to avoid repetition and future drift.
 
-2. Mount condition  
-   ```tsx
-   (nodeResults.has(node.id) ||
-    (node.type === NodeType.LLM &&
-        (nodeAssistantContent.has(node.id) || hasPrompt))) && …
-   ```
-   ✓ Ensures the sidebar opens if the node has just a prompt but no history yet.  
-   ⚠️ Side-effect: if a prompt exists but neither history nor results, the scrollable container mounts with an **empty** list except for the prompt. That is intended, but be aware that `assistantScrollRefs.current.set()` etc. now run in that case.
+### `workflow/Core/Contracts/guards.ts`
+Changes  
+• Extended both `case 'node_assistant_content'` and `case 'subflow_node_assistant_content'` paths with an OR-chain validating the new `mode` values.
 
-3. Scrollable container  
-   – Max-height rules (`tw-max-h-64` or `60vh`) still apply, so a very long prompt will scroll, preventing sidebar growth.  
-   ✓ Overflow handled.  
-   ✻ If prompts can be extremely large, consider `tw-break-words` to avoid a single unbroken token stretching the container.
+Review  
+✓  Validation logic is correct and still short-circuits for `undefined`.  
+✗  Repeated string literals – see suggestion above to reuse a shared `const executionModes = new Set(['workflow','single-node'])` or a type guard `isExecutionMode()` to centralise logic.  
+✓  No performance or security concerns.
 
-4. Prompt card insertion  
-   ```tsx
-   if (prompt.length > 0) {
-       segments.push(
-           <div key={`${node.id}:prompt`} … onDoubleClick={…}>
-               <div className="…uppercase…">Prompt</div>
-               <p className="tw-text-xs …pre-wrap">{prompt}</p>
-           </div>
-       )
-   }
-   ```
-   • Uses a stable React key.  
-   • Renders as literal text (`<p>`), so no XSS exposure.  
-   • Card background color intentionally matches side-bar (contrasts with assistant answer cards).  
-   • Double-click handler stops propagation then dispatches a global custom event.  
-     – Coupling to `window` is acceptable but a React context callback would be cleaner and testable.  
-     – No keyboard alternative: add `role="button"`, `tabIndex={0}`, and `onKeyDown` for accessibility.
+### `workflow/Web/components/hooks/messageHandling.ts`
+Changes  
+1. Imported `AssistantContentItem`.  
+2. Added helper `filterInitialUserMessage()` to drop the first `user_message` item.  
+3. Applied helper when processing both `node_assistant_content` and `subflow_node_assistant_content` events.
 
-5. Auto-scroll logic  
-   The prompt is added **before** any accordion flush; therefore the initial scroll position still ends at the bottom of the assistant timeline, not the prompt. That seems fine because the prompt is static; just confirm UX expectations.
+Review  
+Logic  
+• The helper searches for the *first* item whose `type === 'user_message'` and removes it (only that one).  
+• Behaviour is gated by simple array length checks – fine.
 
-6. Performance  
-   – Two `trim()` calls per render are negligible.  
-   – `segments` allocation is unchanged except for one extra node.  
-   – Event dispatch is synchronous but rare (double-click only).
+Edge cases / bugs  
+1. If the first user message is **not** at index 0 (e.g. assistant system message precedes it) the code still removes the *first* user message, not necessarily the “initial” one. Confirm the intended semantics.  
+2. The helper is run every time new content arrives; if the sender already removed the user message, the consumer now removes the *next* user message, leading to message loss. Both sides must share the same contract – clarify in docstring or protocol comments.  
+3. No memoisation is required – complexity is O(n) for small n.
 
-7. Internationalisation  
-   String “Prompt” is hard-coded; if the rest of the UI is localised, extract to the i18n utility.
+Type safety  
+✓  Correct use of `AssistantContentItem[]` for the helper return type.
 
-8. Tests / stories  
-   None were updated. Recommend:  
-   • Snapshot-test that the prompt card appears when expected.  
-   • Event test that double-click fires the correct custom event.
+Performance  
+✓  Negligible.
 
-9. Miscellaneous  
-   • `hasPrompt` computed but never used outside the first JSX condition; acceptable but could be inlined there to avoid an extra variable.  
-   • No changes to type definitions, so TypeScript still compiles.
+### `workflow/WorkflowExecution/Application/node-runners/run-llm.ts`
+Changes  
+• When emitting `node_assistant_content`, now includes `mode`.
 
----
+Review  
+✓  Propagates the value already available in local scope.  
+✓  No functional side-effects.  
+›  Consider using an enum or constant for mode strings.
 
-### No other files changed.
+### `workflow/WorkflowExecution/Application/subflow/run-subflow.ts`
+Changes  
+• Forwards `mode` from inner node event to outer `subflow_node_assistant_content`.
+
+Review  
+✓  Ensures the hint is preserved through the subflow layer.  
+✓  Correctly uses spread pattern; types align.
+
+### `vendor/amp-sdk/amp-sdk.tgz`
+Binary replacement – cannot be reviewed here. Ensure checksum verification and licence compliance outside of code review.
+
+## Overall assessment
+The change set is small, coherent and backward compatible.  
+The only risk is double-filtering of the initial user message; confirm the producer side does **not** perform a similar removal.  
+Minor maintainability improvements (dedicated `ExecutionMode` type/guard) would reduce repetition.

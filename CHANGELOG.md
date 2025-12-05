@@ -334,6 +334,13 @@ Why: Aligns with Vertical Slice Architecture, reduces duplicate handling and dri
   - Updated both the main workflow runner (`executeLLMNode`) and the single-node handler (`executeSingleLLMNode`) to resolve attachments and pass `images` into `amp.runJSONL({ prompt, images })`, so vision prompts work consistently in full runs and single-node runs.
 - Why: Enables NebulaFlow LLM nodes to send prompts with associated images through the Amp SDK in both execution modes, using a shared, data-first attachment model and explicit path resolution so image inputs are debuggable and maintainable.
 
+### Goal: LLM Node Assistant Timeline Normalization and Execution Mode Hint
+
+- Changed: Extended the shared workflow protocol in `workflow/Core/Contracts/Protocol.ts` so `node_assistant_content` and `subflow_node_assistant_content` events carry an optional `mode?: 'workflow' | 'single-node'` hint, wired through runtime guards in `workflow/Core/Contracts/guards.ts`, the core LLM runner in `workflow/WorkflowExecution/Application/node-runners/run-llm.ts`, and the subflow wrapper in `workflow/WorkflowExecution/Application/subflow/run-subflow.ts` so both full-workflow and single-node/chat executions expose their execution mode to the webview.
+- Changed: Updated the webview message handler in `workflow/Web/components/hooks/messageHandling.ts` to normalize assistant timelines by removing the earliest `user_message` item from each LLM node timeline snapshot before storing it, keeping the initial workflow prompt represented only by the Prompt card in the RightSidebar while preserving subsequent user chat turns and tool events.
+- Changed: Refreshed the vendored Amp SDK bundle in `vendor/amp-sdk/amp-sdk.tgz` so NebulaFlow consumes the SDK build used by the unified LLM runner (`runLLMCore`) for both workflow and single-node/chat paths.
+- Why: Fixes the duplicated-prompt UX in the RightSidebar for LLM nodes, keeps workflow and single-node/chat paths in sync around assistant timeline semantics, and makes execution mode explicit in contracts and logs without changing how prompts are sent to the underlying Amp SDK.
+
 ## [NebulaFlow 0.2.13]
 ## [NebulaFlow 0.2.13]
 

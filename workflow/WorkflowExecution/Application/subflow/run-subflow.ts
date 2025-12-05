@@ -155,6 +155,7 @@ export async function runSubflowWrapper(
                             nodeId: innerMsg.data.nodeId,
                             threadID: innerMsg.data.threadID,
                             content: innerMsg.data.content,
+                            mode: innerMsg.data.mode,
                         },
                     } as any)
                 }

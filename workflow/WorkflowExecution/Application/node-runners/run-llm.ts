@@ -262,6 +262,7 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
                                 nodeId: node.id,
                                 threadID: thread.id,
                                 content: items,
+                                mode,
                             },
                         } as ExtensionToWorkflow)
 

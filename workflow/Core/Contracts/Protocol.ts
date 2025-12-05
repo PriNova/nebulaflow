@@ -245,7 +245,17 @@ interface TokenCountEvent extends BaseWorkflowMessage {
 
 interface NodeAssistantContentEvent extends BaseWorkflowMessage {
     type: 'node_assistant_content'
-    data: { nodeId: string; threadID?: string; content: AssistantContentItem[] }
+    data: {
+        nodeId: string
+        threadID?: string
+        content: AssistantContentItem[]
+        /**
+         * Optional execution mode hint for LLM nodes.
+         * "workflow" is used for full workflow runs (including subflows),
+         * "single-node" for single-node executions and chat turns.
+         */
+        mode?: 'workflow' | 'single-node'
+    }
 }
 
 // Subflow-scoped node events (forwarded when viewing a subflow)
@@ -256,7 +266,17 @@ interface SubflowNodeExecutionStatusEvent extends BaseWorkflowMessage {
 
 interface SubflowNodeAssistantContentEvent extends BaseWorkflowMessage {
     type: 'subflow_node_assistant_content'
-    data: { subflowId: string; nodeId: string; threadID?: string; content: AssistantContentItem[] }
+    data: {
+        subflowId: string
+        nodeId: string
+        threadID?: string
+        content: AssistantContentItem[]
+        /**
+         * Mirrors the execution mode from the inner node event so the webview
+         * can distinguish workflow runs from single-node/chat executions.
+         */
+        mode?: 'workflow' | 'single-node'
+    }
 }
 
 interface NodeApprovalCommand extends BaseWorkflowMessage {

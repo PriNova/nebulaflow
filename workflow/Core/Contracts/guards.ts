@@ -364,6 +364,9 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
                 isObject(msg.data) &&
                 isString((msg.data as any).nodeId) &&
                 ((msg.data as any).threadID === undefined || isString((msg.data as any).threadID)) &&
+                ((msg.data as any).mode === undefined ||
+                    (msg.data as any).mode === 'workflow' ||
+                    (msg.data as any).mode === 'single-node') &&
                 Array.isArray((msg.data as any).content) &&
                 (msg.data as any).content.every(isAssistantContentItem)
             )
@@ -379,6 +382,9 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
                 isString((msg.data as any).subflowId) &&
                 isString((msg.data as any).nodeId) &&
                 ((msg.data as any).threadID === undefined || isString((msg.data as any).threadID)) &&
+                ((msg.data as any).mode === undefined ||
+                    (msg.data as any).mode === 'workflow' ||
+                    (msg.data as any).mode === 'single-node') &&
                 Array.isArray((msg.data as any).content) &&
                 (msg.data as any).content.every(isAssistantContentItem)
             )

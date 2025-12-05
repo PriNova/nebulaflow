@@ -1,6 +1,7 @@
 import type { Edge } from '@graph/CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '@nodes/Nodes'
 import { useCallback, useEffect, useRef } from 'react'
+import type { AssistantContentItem } from '../../../Core/models'
 import type {
     ExtensionToWorkflow,
     WorkflowPayloadDTO,
@@ -70,6 +71,13 @@ const computePreviewContent = (
     }
 
     return contents.join('\n')
+}
+
+const filterInitialUserMessage = (items: AssistantContentItem[]): AssistantContentItem[] => {
+    if (!Array.isArray(items) || items.length === 0) return items
+    const firstUserIndex = items.findIndex(it => it?.type === 'user_message')
+    if (firstUserIndex === -1) return items
+    return items.filter((_it, index) => index !== firstUserIndex)
 }
 
 // Migration: normalize old workflows to dynamic fan-in inputs.
@@ -372,8 +380,9 @@ export const useMessageHandler = (
                             setNodeThreadIDs(prev => new Map(prev).set(nodeId, threadID))
                         }
                     }
+                    const normalizedContent: AssistantContentItem[] = filterInitialUserMessage(content)
                     // Latest snapshot from SDK becomes the current assistant timeline for this node
-                    setNodeAssistantContent(prev => new Map(prev).set(nodeId, content))
+                    setNodeAssistantContent(prev => new Map(prev).set(nodeId, normalizedContent))
                     break
                 }
                 case 'subflow_node_assistant_content': {
@@ -385,7 +394,9 @@ export const useMessageHandler = (
                             next.add(nodeId)
                             return next
                         })
-                        setNodeAssistantContent(prev => new Map(prev).set(nodeId, content))
+                        const normalizedContent: AssistantContentItem[] =
+                            filterInitialUserMessage(content)
+                        setNodeAssistantContent(prev => new Map(prev).set(nodeId, normalizedContent))
                         if (typeof threadID === 'string' && threadID) {
                             setNodeThreadIDs(prev => new Map(prev).set(nodeId, threadID))
                         }
