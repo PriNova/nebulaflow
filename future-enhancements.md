@@ -52,6 +52,18 @@ Recommended improvements and optimizations for future implementation.
 
 ### Default LLM Model – Migration Semantics and Provider Validation
 
+### Workspace Amp Settings & OpenRouter Integration – Follow-ups
+
+- Goal: Harden workspace-level Amp/OpenRouter configuration semantics and reduce noise while keeping current behavior.
+- What:
+  - Add runtime type guards around `internal.primaryModel` when reading from `.nebulaflow/settings.json` (both in the LLMIntegration model loader and the LLM runner) so only non-empty strings are accepted and malformed values are ignored instead of throwing.
+  - Decide whether workspace-level `amp.dangerouslyAllowAll` should be able to override node-level Bash gating; if not, clear or ignore this flag in merged settings when Bash tools are disabled so the safety posture remains consistent.
+  - Treat missing `.nebulaflow/settings.json` (ENOENT) as a non-warning condition in `readAmpSettingsFromRoot`, reserving warnings for malformed JSON or structurally invalid configs to keep dev logs focused on real misconfigurations.
+  - Optionally cache parsed workspace settings per process (or per settings path) to avoid repeated disk reads on every `get_models` and LLM node run, keeping the implementation simple but reducing I/O churn in large workflows.
+  - Consider a more compact or highlighted label for the synthetic "Workspace default" model entry (and optional group-top ordering) so it remains visible and readable in narrow model selectors.
+  - Tighten the helper’s return type by introducing a lightweight `AmpSettings` type (e.g., a `Partial` with known keys like `'internal.primaryModel'` and `'openrouter.key'`) while still allowing forward-compatible keys via an index signature.
+- Why: Makes workspace-scoped LLM configuration more robust to user error, clarifies how global allow-all interacts with per-node safety toggles, keeps logs and I/O efficient, and improves type safety and UI clarity around workspace defaults.
+
 ### Electron Workspace & Storage Scope – Follow-ups
 
 - Goal: Tighten robustness and semantics around the Electron workspace folder feature and storage-scope signaling without changing current behavior.

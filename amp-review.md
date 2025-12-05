@@ -1,86 +1,136 @@
-## High-level summary
-The change introduces an optional `mode` hint (`'workflow' | 'single-node'`) to assistant-content events flowing between the extension process and the workflow webview.  
-All type contracts, run-time guards, event emitters and consumers were updated accordingly.  
-On the web side an additional normalisation step now removes the initial “user” message from assistant timelines before they are stored in component state.  
-A pre-built vendor tarball (`amp-sdk.tgz`) was also replaced.
+## High-level summary  
+This patch adds **workspace-wide Amp SDK configuration** that lives in `.nebulaflow/settings.json`.  
+Two runtime areas now consume that file:  
 
-No API surface other than the optional `mode` field is affected, therefore existing producers/consumers continue to work.
+1. Model picker in the editor (`register.ts`) – injects the workspace default model into the combobox.  
+2. Workflow execution (`run-llm.ts`) – merges workspace settings with node-level overrides, re-implements model–selection precedence and fixes auto-approve handling.
 
-## Tour of changes
-Start with `workflow/Core/Contracts/Protocol.ts` – it explains the new `mode` property and sets the foundation for everything else.  
-From there, the logical order is:
+Supporting code (`amp-settings.ts`) was introduced to locate / read / validate the JSON.  
+Documentation (README) and the vendored SDK tarball were updated accordingly.
 
-1. `workflow/Core/Contracts/guards.ts` – run-time gatekeeping for the new field.  
-2. `workflow/WorkflowExecution/Application/node-runners/run-llm.ts` and `workflow/WorkflowExecution/Application/subflow/run-subflow.ts` – event emitters now populate `mode`.  
-3. `workflow/Web/components/hooks/messageHandling.ts` – the consumer of the new events; also contains the “filter initial user message” logic.  
+No public API contracts changed; impact is internal to LLM invocation and UI model listing.
 
-The vendor tarball is opaque and can be safely skipped during code review.
+---
 
-## File level review
+## Tour of changes  
+Begin with  
+`workflow/WorkflowExecution/Application/node-runners/run-llm.ts`  
 
-### `workflow/Core/Contracts/Protocol.ts`
-Changes  
-• Added optional `mode?: 'workflow' | 'single-node'` to:
-  - `NodeAssistantContentEvent.data`
-  - `SubflowNodeAssistantContentEvent.data`
+This file shows the new precedence order and the way workspace settings are combined with node-level settings – once that is clear, the supporting helper (`amp-settings.ts`) and UI change (`register.ts`) are straightforward.
 
-Review  
-✓  The field is optional → backward compatible.  
-✓  JSDoc clearly explains meaning.  
-⚠  Consider promoting the literal union to a named type (`ExecutionMode`) to avoid repetition and future drift.
+---
 
-### `workflow/Core/Contracts/guards.ts`
-Changes  
-• Extended both `case 'node_assistant_content'` and `case 'subflow_node_assistant_content'` paths with an OR-chain validating the new `mode` values.
+## File level review  
 
-Review  
-✓  Validation logic is correct and still short-circuits for `undefined`.  
-✗  Repeated string literals – see suggestion above to reuse a shared `const executionModes = new Set(['workflow','single-node'])` or a type guard `isExecutionMode()` to centralise logic.  
-✓  No performance or security concerns.
+### `README.md`  
++ Adds thorough explanation of `.nebulaflow/settings.json`, precedence rules, and an example.  
+✓ Clear and actionable.  
+✓ Mentions environment variable fallback.  
+No issues.
 
-### `workflow/Web/components/hooks/messageHandling.ts`
-Changes  
-1. Imported `AssistantContentItem`.  
-2. Added helper `filterInitialUserMessage()` to drop the first `user_message` item.  
-3. Applied helper when processing both `node_assistant_content` and `subflow_node_assistant_content` events.
+---
 
-Review  
-Logic  
-• The helper searches for the *first* item whose `type === 'user_message'` and removes it (only that one).  
-• Behaviour is gated by simple array length checks – fine.
+### `amp-review.md`  
+Internal meta-document – no runtime impact.
 
-Edge cases / bugs  
-1. If the first user message is **not** at index 0 (e.g. assistant system message precedes it) the code still removes the *first* user message, not necessarily the “initial” one. Confirm the intended semantics.  
-2. The helper is run every time new content arrives; if the sender already removed the user message, the consumer now removes the *next* user message, leading to message loss. Both sides must share the same contract – clarify in docstring or protocol comments.  
-3. No memoisation is required – complexity is O(n) for small n.
+---
 
-Type safety  
-✓  Correct use of `AssistantContentItem[]` for the helper return type.
+### `vendor/amp-sdk/amp-sdk.tgz`  
+Binary bump only. Verify checksum and licence outside of code review.
+
+---
+
+### `workflow/Shared/Infrastructure/amp-settings.ts`  
+New helper that:  
+• Builds workspace path `<root>/.nebulaflow/settings.json`.  
+• Reads/JSON-parses it, extracts `amp.settings` object.  
+• Emits warnings when `warnOnError` is true.  
+
+Correctness & robustness  
+✓ Guards against missing folders, malformed JSON, absent keys.  
+✓ Warn helper adds context tag.  
+✓ Exported functions for *single root*, *workspace roots*, and *Host*.
+
+Suggestions  
+1. Cache result per `settingsPath` + mtime to avoid re-reading on every LLM run / palette open.  
+2. `Record<string, unknown>` return type forces callers to use `[key: string]` – consider `Partial<AmpSdkSettings>` for type-safety.  
+3. Only first workspace root is examined; document this clearly or iterate over roots until a file is found.  
+4. Minor: trim path only once at API surface, not inside both public helpers.
+
+Security  
+✓ Reads inside workspace root only, no user-supplied path join.  
+✓ No write operations.
+
+---
+
+### `workflow/LLMIntegration/Application/register.ts`  
+Changes revolve around model-picker population.
+
+Core logic  
+1. Calls `readAmpSettingsFromHost` (good reuse).  
+2. Extracts `internal.primaryModel` if present.  
+3. If the model is not in SDK `listModels()` result, injects synthetic option  
+   `title: "Workspace default: …"`.  
+4. Sends combined list to webview.
+
+Correctness  
+✓ Keeps original SDK list unchanged.  
+✓ Title prefix makes source of model explicit.  
+✓ Functionally idempotent (no duplicates on second open).
 
 Performance  
-✓  Negligible.
+• Reads settings file every time handler runs; insignificant for small files but can be cached.
 
-### `workflow/WorkflowExecution/Application/node-runners/run-llm.ts`
-Changes  
-• When emitting `node_assistant_content`, now includes `mode`.
+Developer UX  
+• `warnOnError` is wired to `env.isDev` – good.  
+• Consider shortening label (`★ Default: …`) to avoid overflow.
 
-Review  
-✓  Propagates the value already available in local scope.  
-✓  No functional side-effects.  
-›  Consider using an enum or constant for mode strings.
+---
 
-### `workflow/WorkflowExecution/Application/subflow/run-subflow.ts`
-Changes  
-• Forwards `mode` from inner node event to outer `subflow_node_assistant_content`.
+### `workflow/WorkflowExecution/Application/node-runners/run-llm.ts`  
+Key behavioural change.
 
-Review  
-✓  Ensures the hint is preserved through the subflow layer.  
-✓  Correctly uses spread pattern; types align.
+Model resolution  
+• `selectedKey` initialised to *node-level* `modelId`.  
+• Tries `ampSdk.resolveModel`; on failure keeps original id (does NOT silently fall back to default – good).  
 
-### `vendor/amp-sdk/amp-sdk.tgz`
-Binary replacement – cannot be reviewed here. Ensure checksum verification and licence compliance outside of code review.
+Workspace merge  
+```
+const ampWorkspaceSettings = readAmpSettingsFromWorkspaceRoots(...)
+const mergedSettings = { ...ampWorkspaceSettings, ...llmSettings }
+const configuredPrimary = ampWorkspaceSettings['internal.primaryModel']
+const primaryModelKey = selectedKey ?? configuredPrimary ?? defaultModelKey
+```
+✓ Precedence order: node > workspace > built-in.  
+✓ Node-level values overwrite workspace duplicates.  
+✓ `internal.primaryModel` is re-written after the spread so it always matches `primaryModelKey`.
 
-## Overall assessment
-The change set is small, coherent and backward compatible.  
-The only risk is double-filtering of the initial user message; confirm the producer side does **not** perform a similar removal.  
-Minor maintainability improvements (dedicated `ExecutionMode` type/guard) would reduce repetition.
+Auto-approve  
+✓ Calculated from **merged** settings – fixes earlier omission.
+
+Error handling  
+✓ All read / resolve errors are swallowed; controlled via env flag for workspace read.  
+• Consider logging model-resolution failures in dev mode.
+
+Performance  
+• Same caching observation as above.
+
+Edge cases  
+• Workspace file exists but empty: merge harmlessly yields `{}` – fine.  
+• If user sets `internal.primaryModel: ''`, `trim()` turns it into `undefined`, falling back correctly.  
+• Still only first workspace folder examined.
+
+Security  
+✓ No path traversal.  
+✓ `dangerouslyAllowAll` is honoured only when `allowBash` is true – preserves existing sandbox guarantee.
+
+---
+
+## Overall recommendations  
+1. **Caching** – memoise parsed settings keyed by `settingsPath` + mtime to avoid redundant IO.  
+2. **Multiple workspace folders** – optionally iterate until the first file is found instead of hard-coding `[0]`.  
+3. **Developer feedback** – replace silent catches with `console.warn` in dev builds to aid debugging.  
+4. **Type safety** – introduce `type AmpSettings = Partial<...>` instead of `Record<string, unknown>`.  
+5. **UI polish** – shorten synthetic model label and maybe group it at top with a separator.
+
+Implementation is solid, backward-compatible, and isolates new capability behind a non-breaking optional file.

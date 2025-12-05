@@ -9,6 +9,7 @@ import {
 } from '../../../Core/models'
 import { computeLLMAmpSettings } from '../../../LLMIntegration/Application/llm-settings'
 import type { IMessagePort } from '../../../Shared/Host/index'
+import { readAmpSettingsFromWorkspaceRoots } from '../../../Shared/Infrastructure/amp-settings'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
 import { DEFAULT_LLM_MODEL_ID } from '../../../Shared/LLM/default-model'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
@@ -159,17 +160,26 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
         const defaultModelKey = DEFAULT_LLM_MODEL_ID
         const modelId = (node as any)?.data?.model?.id as string | undefined
 
-        let selectedKey: string | undefined
+        // Prefer the node-level model ID; normalize via SDK when possible, but never
+        // silently ignore a user-selected model and fall back to the hardcoded default.
+        let selectedKey: string | undefined = modelId
         try {
             const resolveModel:
                 | ((args: { key: string } | { displayName: string; provider?: any }) => { key: string })
                 | undefined = ampSdk?.resolveModel
             if (modelId && typeof resolveModel === 'function') {
-                const { key } = resolveModel({ key: modelId })
-                selectedKey = key
+                try {
+                    const { key } = resolveModel({ key: modelId })
+                    if (key) {
+                        selectedKey = key
+                    }
+                } catch {
+                    // If resolution fails, fall back to the raw modelId
+                    selectedKey = modelId
+                }
             }
         } catch {
-            // Ignore and fall back
+            // Keep whatever selectedKey we already have (modelId or undefined)
         }
 
         const { settings: llmSettings, debug: llmDebug } = computeLLMAmpSettings(node)
@@ -181,7 +191,21 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
                 '[ExecuteWorkflow] Bash is disabled; ignoring dangerouslyAllowAll flag for safety'
             )
         }
-        const autoApprove = Boolean((llmSettings as any)['amp.dangerouslyAllowAll'])
+
+        const ampWorkspaceSettings = await readAmpSettingsFromWorkspaceRoots(workspaceRoots, {
+            warnOnError: process.env.NEBULAFLOW_DEBUG_LLM === '1',
+            debugTag: 'WorkflowExecution/run-llm',
+        })
+        const mergedSettings: Record<string, unknown> = {
+            ...ampWorkspaceSettings,
+            ...llmSettings,
+        }
+
+        const configuredPrimary =
+            (ampWorkspaceSettings['internal.primaryModel'] as string | undefined)?.trim() || undefined
+        const primaryModelKey = selectedKey ?? configuredPrimary ?? defaultModelKey
+
+        const autoApprove = Boolean((mergedSettings as any)['amp.dangerouslyAllowAll'])
 
         const rawSystemPrompt = ((node as any).data?.systemPromptTemplate ?? '').toString()
         const trimmedSystemPrompt = rawSystemPrompt.trim()
@@ -193,8 +217,8 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
             workspaceRoots,
             systemPromptTemplate,
             settings: {
-                'internal.primaryModel': selectedKey ?? defaultModelKey,
-                ...llmSettings,
+                ...mergedSettings,
+                'internal.primaryModel': primaryModelKey,
             },
         })
 
