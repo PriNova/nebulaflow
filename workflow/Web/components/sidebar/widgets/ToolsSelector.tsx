@@ -1,6 +1,12 @@
 import type React from 'react'
 import { getAllToolNames } from '../../../services/toolNames'
-import { Button } from '../../../ui/shadcn/ui/button'
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from '../../../ui/shadcn/ui/accordion'
+import { Checkbox } from '../../../ui/shadcn/ui/checkbox'
 import { Label } from '../../../ui/shadcn/ui/label'
 import type { LLMNode } from '../../nodes/LLM_Node'
 
@@ -26,31 +32,74 @@ export const ToolsSelector: React.FC<ToolsSelectorProps> = ({ node, onUpdate }) 
         onUpdate(node.id, updates)
     }
 
+    const allEnabled = toolNames.every(tool => !disabled.includes(tool))
+
+    const onToggleAll = (enabled: boolean) => {
+        const updates: Partial<LLMNode['data']> = {
+            disabledTools: enabled ? [] : [...toolNames],
+        }
+
+        if (!enabled && (node.data.dangerouslyAllowAll ?? false)) {
+            updates.dangerouslyAllowAll = false
+        }
+
+        onUpdate(node.id, updates)
+    }
+
     return (
         <div className="tw-mt-2">
-            <Label>Tools</Label>
-            <div className="tw-flex tw-flex-wrap tw-gap-1.5 tw-mt-2">
-                {toolNames.map(tool => {
-                    const isDisabled = disabled.includes(tool)
-                    const enabled = !isDisabled
-                    return (
-                        <Button
-                            key={tool}
-                            type="button"
-                            size="sm"
-                            variant={enabled ? 'secondary' : 'outline'}
-                            aria-pressed={enabled}
-                            onClick={() => onToggle(tool, !enabled)}
-                            className="tw-h-7 tw-text-xs tw-rounded-full tw-px-2 tw-whitespace-nowrap tw-max-w-full tw-overflow-hidden tw-text-ellipsis"
-                            title={tool}
-                        >
-                            <span className={enabled ? '' : 'tw-line-through tw-opacity-70'}>
-                                {tool}
-                            </span>
-                        </Button>
-                    )
-                })}
-            </div>
+            <Accordion type="single" collapsible defaultValue="builtin-tools">
+                <AccordionItem
+                    value="builtin-tools"
+                    className="tw-border tw-border-[var(--vscode-panel-border)] tw-rounded"
+                >
+                    <AccordionTrigger className="tw-px-2 tw-py-1">
+                        <div className="tw-flex tw-items-center tw-justify-between tw-w-full tw-gap-2">
+                            <div className="tw-flex tw-items-center tw-gap-2">
+                                <Checkbox
+                                    id={`llm-tools-all-${node.id}`}
+                                    checked={allEnabled}
+                                    onCheckedChange={checked => onToggleAll(checked === true)}
+                                    onClick={event => event.stopPropagation()}
+                                />
+                                <Label
+                                    htmlFor={`llm-tools-all-${node.id}`}
+                                    className="tw-text-sm tw-cursor-pointer"
+                                >
+                                    Builtin tools
+                                </Label>
+                            </div>
+                        </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="tw-pt-1 tw-pb-2 tw-px-2">
+                        <div className="tw-flex tw-flex-col tw-gap-1 tw-mt-1">
+                            {toolNames.map(tool => {
+                                const isDisabled = disabled.includes(tool)
+                                const enabled = !isDisabled
+                                return (
+                                    <div
+                                        key={tool}
+                                        className="tw-flex tw-items-center tw-gap-2 tw-text-xs"
+                                    >
+                                        <Checkbox
+                                            id={`llm-tool-${node.id}-${tool}`}
+                                            checked={enabled}
+                                            onCheckedChange={checked => onToggle(tool, checked === true)}
+                                        />
+                                        <Label
+                                            htmlFor={`llm-tool-${node.id}-${tool}`}
+                                            className="tw-cursor-pointer tw-truncate"
+                                            title={tool}
+                                        >
+                                            {tool}
+                                        </Label>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
         </div>
     )
 }

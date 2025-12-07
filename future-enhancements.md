@@ -29,13 +29,23 @@
 
 - Goal: Refine alias behavior and webview tool listing now that tool-name metadata is sourced from the Amp SDK.
 - What:
-  - Clarify or adjust alias precedence between SDK and NebulaFlow-local aliases in [toolNames.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/services/toolNames.ts), documenting that SDK resolution wins when both define the same alias (e.g., `GitDiff`).
-  - Decide whether to keep or remove redundant local aliases that duplicate SDK entries (such as `GitDiff`), or clearly mark them as defensive back-compat shims.
-  - If future UX requires hiding or reordering tools in the LLM node "Tools" selector, introduce a thin filtering/ordering layer on top of the SDK-provided `getAllToolNames()` output so the UI retains control without forking canonical metadata.
-- Why: Keeps alias semantics explicit and maintainable as the SDK evolves, avoids silent override assumptions, and preserves flexibility to shape the UI tool list while still using the SDK as the single source of truth.
+- Clarify or adjust alias precedence between SDK and NebulaFlow-local aliases in [toolNames.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/services/toolNames.ts), documenting that SDK resolution wins when both define the same alias (e.g., `GitDiff`).
+- Decide whether to keep or remove redundant local aliases that duplicate SDK entries (such as `GitDiff`), or clearly mark them as defensive back-compat shims.
+- If future UX requires hiding or reordering tools in the LLM node "Tools" selector, introduce a thin filtering/ordering layer on top of the SDK-provided `getAllToolNames()` output so the UI retains control without forking canonical metadata.
+  - Consider normalizing any legacy `disabledTools` entries that still contain raw aliases (for example, `bash` instead of `Bash`) to canonical tool names when workflows are loaded in the webview, and document that behavior so UI state and backend normalization stay aligned for older flows.
+ - Why: Keeps alias semantics explicit and maintainable as the SDK evolves, avoids silent override assumptions, and preserves flexibility to shape the UI tool list while still using the SDK as the single source of truth.
 
 Recommended improvements and optimizations for future implementation.
 
+### LLM Tools Selector – Accordion UX & State Follow-ups
+
+ - Goal: Capture UX, accessibility, and state-management follow-ups for the new builtin tools accordion and master checkbox in the LLM Property Editor.
+ - What:
+   - Refine accordion header interaction so toggling the master checkbox or its label does not unintentionally expand/collapse the section (for example, by stopping propagation on the label or separating the expand/collapse trigger from the checkbox area) to keep bulk-enable/disable actions predictable.
+   - Consider using the shadcn `CheckedState` indeterminate mode for the master checkbox when only some tools are disabled, so partial-selection state is visually communicated instead of appearing simply unchecked.
+   - Revisit keyboard and focus behavior inside the accordion header to ensure the nested checkbox and the trigger work intuitively for keyboard users, potentially separating the trigger region (chevron/summary) from the checkbox region for clearer tab stops.
+ - Why: Improves the ergonomics and accessibility of the builtin tools accordion while keeping the current `disabledTools` data model and safety semantics unchanged.
+ 
 ### Cross-Workflow Copy/Paste – Node State & LLM History Follow-ups
 
 - Goal: Preserve full node state semantics and improve robustness for assistant timelines, thread IDs, and clipboard payloads without changing current UX.

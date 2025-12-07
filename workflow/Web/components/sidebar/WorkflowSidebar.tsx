@@ -40,7 +40,7 @@ const accordionTriggerNode = clsx(
     styles['sidebar-accordion-trigger']
 )
 const libraryButton =
-    'tw-w-full tw-text-left tw-px-2 tw-py-1 tw-rounded tw-truncate hover:tw-bg-[var(--vscode-button-secondaryHoverBackground)]'
+    'tw-text-sm tw-w-full tw-text-left tw-px-2 tw-py-1 tw-rounded tw-truncate hover:tw-bg-[var(--vscode-button-secondaryHoverBackground)]'
 const innerListContainer =
     'tw-bg-[var(--vscode-editor-background)] tw-p-2 tw-rounded tw-border tw-border-[var(--vscode-panel-border)]'
 
