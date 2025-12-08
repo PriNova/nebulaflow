@@ -35,11 +35,11 @@ export async function resolveLLMAttachmentsToImages(
 ): Promise<any[] | undefined> {
     const data = (node as any)?.data
     const attachments = (data?.attachments ?? []) as AttachmentRef[]
-    console.debug(
+    /* console.debug(
         '[ExecuteWorkflow] LLM attachments for node %s: %s',
         node.id,
         JSON.stringify(attachments ?? [], null, 2)
-    )
+    ) */
 
     if (!Array.isArray(attachments) || attachments.length === 0) {
         return undefined
@@ -57,12 +57,12 @@ export async function resolveLLMAttachmentsToImages(
 
         if (attachment.source === 'file' && attachment.path) {
             const filePath = resolveAttachmentFilePath(attachment.path, workspaceRoots)
-            console.debug(
+            /* console.debug(
                 '[ExecuteWorkflow] Resolving file attachment for node %s: %s -> %s',
                 node.id,
                 attachment.path,
                 filePath
-            )
+            ) */
             try {
                 const image = await ampSdk.imageFromFile({ path: filePath })
                 images.push(image)
@@ -73,11 +73,11 @@ export async function resolveLLMAttachmentsToImages(
                 )
             }
         } else if (attachment.source === 'url' && attachment.url) {
-            console.debug(
+            /*  console.debug(
                 '[ExecuteWorkflow] Resolving URL attachment for node %s: %s',
                 node.id,
                 attachment.url
-            )
+            ) */
             try {
                 const image = await ampSdk.imageFromURL({ url: attachment.url })
                 images.push(image)
@@ -90,11 +90,11 @@ export async function resolveLLMAttachmentsToImages(
         }
     }
 
-    console.debug(
+    /* console.debug(
         '[ExecuteWorkflow] Resolved %d image attachment(s) for node %s',
         images.length,
         node.id
-    )
+    ) */
 
     return images.length > 0 ? images : undefined
 }
@@ -253,11 +253,11 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
                     runOptions.threadID = existingThreadID
                 }
 
-                console.debug(
+                /* console.debug(
                     `${logPrefix} Starting amp.runJSONL for node %s with images=%s`,
                     node.id,
                     images && images.length > 0 ? String(images.length) : '0'
-                )
+                ) */
 
                 for await (const event of amp.runJSONL(runOptions)) {
                     abortSignal.throwIfAborted()
@@ -270,11 +270,11 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
                                 (m: any) => m.role === 'user'
                             )
                             const types = (firstUser?.content || []).map((b: any) => b.type)
-                            console.debug(
+                            /* console.debug(
                                 `${logPrefix} First user message block types for node %s: %s`,
                                 node.id,
                                 JSON.stringify(types)
-                            )
+                            ) */
                         } catch {
                             // best-effort only
                         }
