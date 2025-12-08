@@ -28,8 +28,6 @@ interface RightSidebarContainerProps {
     nodes: WorkflowNodes[]
     setRightCollapsed: React.Dispatch<React.SetStateAction<boolean>>
     handleNodeApproval: (nodeId: string, approved: boolean, modifiedCommand?: string) => void
-    onRunFromHere: (nodeId: string) => void
-    onResume: (nodeId: string, outputs: Record<string, string>) => void
     handleResultUpdate: (nodeId: string, value: string) => void
     handleRightSidebarMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void
     onChat?: (args: { nodeId: string; threadID: string; message: string }) => void
@@ -58,8 +56,6 @@ export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
     nodes,
     setRightCollapsed,
     handleNodeApproval,
-    onRunFromHere,
-    onResume,
     handleResultUpdate,
     handleRightSidebarMouseDown,
     onChat,
@@ -106,16 +102,6 @@ export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
                         nodeThreadIDs={nodeThreadIDs}
                         executionRunId={executionRunId}
                         isPaused={isPaused}
-                        onRunFromHere={(nodeId: string) => {
-                            const outputs: Record<string, string> = {}
-                            const nodeIdSet = new Set(nodes.map(n => n.id))
-                            for (const [k, v] of nodeResults) {
-                                if (nodeIdSet.has(k) && k !== nodeId) {
-                                    outputs[k] = v
-                                }
-                            }
-                            onResume(nodeId, outputs)
-                        }}
                         selection={selectionSummary}
                         parallelSteps={parallelSteps}
                         parallelStepByNodeId={parallelStepByNodeId}

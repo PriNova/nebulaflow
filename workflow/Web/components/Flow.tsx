@@ -1156,8 +1156,6 @@ export const Flow: React.FC<{
                         nodes={nodes}
                         setRightCollapsed={setRightCollapsed}
                         handleNodeApproval={handleNodeApproval}
-                        onRunFromHere={() => {}}
-                        onResume={onResume}
                         handleResultUpdate={handleResultUpdate}
                         handleRightSidebarMouseDown={handleRightSidebarMouseDown}
                         onChat={handleChat}

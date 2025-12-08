@@ -136,7 +136,6 @@ interface RightSidebarProps {
     nodeThreadIDs: Map<string, string>
     executionRunId: number
     isPaused?: boolean
-    onRunFromHere?: (nodeId: string) => void
     selection?: SelectionSummary
     parallelSteps?: string[][]
     parallelStepByNodeId?: Map<string, number>
@@ -158,7 +157,6 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     nodeThreadIDs,
     executionRunId,
     isPaused,
-    onRunFromHere,
     selection,
     parallelSteps,
     parallelStepByNodeId,
@@ -871,14 +869,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                     }
                                                 />
                                             )}
-                                            {onRunFromHere && (
-                                                <RunFromHereButton
-                                                    nodeId={node.id}
-                                                    className="tw-w-[1.75rem] tw-h-[1.75rem]"
-                                                    disabled={isPaused || executingNodeIds.size > 0}
-                                                    onClick={() => onRunFromHere(node.id)}
-                                                />
-                                            )}
+                                            <RunFromHereButton
+                                                nodeId={node.id}
+                                                className="tw-w-[1.75rem] tw-h-[1.75rem]"
+                                                disabled={isPaused || executingNodeIds.size > 0}
+                                            />
                                         </div>
                                     )
                                 })()}
