@@ -9,7 +9,7 @@ import {
     type BaseNodeProps,
     NodeType,
     type WorkflowNode,
-    getBorderColor,
+    getNodeHeaderStyle,
     getNodeStyle,
 } from './Nodes'
 
@@ -79,23 +79,14 @@ export const PreviewNode: React.FC<BaseNodeProps & { data: BaseNodeData }> = ({
                 <div className="tw-flex tw-flex-col">
                     <div
                         className="tw-text-center tw-mb-1 tw-rounded-t-sm tw-font-bold"
-                        style={{
-                            background: `linear-gradient(to top, #1e1e1e, ${getBorderColor(
-                                NodeType.PREVIEW,
-                                {
-                                    error: data.error,
-                                    executing: data.executing,
-                                    moving: data.moving,
-                                    selected,
-                                    interrupted: data.interrupted,
-                                    active: data.active,
-                                }
-                            )})`,
-                            color: 'var(--vscode-dropdown-foreground)',
-                            marginLeft: '-0.5rem',
-                            marginRight: '-0.5rem',
-                            marginTop: '-0.5rem',
-                        }}
+                        style={getNodeHeaderStyle(NodeType.PREVIEW, {
+                            error: data.error,
+                            executing: data.executing,
+                            moving: data.moving,
+                            selected,
+                            interrupted: data.interrupted,
+                            active: data.active,
+                        })}
                     >
                         PREVIEW
                     </div>

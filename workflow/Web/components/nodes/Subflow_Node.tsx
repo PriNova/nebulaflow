@@ -10,7 +10,7 @@ import {
     type BaseNodeProps,
     NodeType,
     type WorkflowNode,
-    getBorderColor,
+    getNodeHeaderStyle,
     getNodeStyle,
 } from './Nodes'
 
@@ -75,23 +75,14 @@ export const SubflowNode: React.FC<BaseNodeProps & { data: SubflowNode['data'] }
             <div className="tw-flex tw-flex-col">
                 <div
                     className="tw-flex tw-items-center tw-mb-1 tw-rounded-t-sm tw-font-bold tw-pl-1 tw-pr-1"
-                    style={{
-                        background: `linear-gradient(to top, #1e1e1e, ${getBorderColor(
-                            NodeType.SUBFLOW,
-                            {
-                                error: data.error,
-                                executing: data.executing,
-                                moving: data.moving,
-                                selected,
-                                interrupted: data.interrupted,
-                                active: data.active,
-                            }
-                        )})`,
-                        color: '#1e1e1e',
-                        marginLeft: '-0.5rem',
-                        marginRight: '-0.5rem',
-                        marginTop: '-0.5rem',
-                    }}
+                    style={getNodeHeaderStyle(NodeType.SUBFLOW, {
+                        error: data.error,
+                        executing: data.executing,
+                        moving: data.moving,
+                        selected,
+                        interrupted: data.interrupted,
+                        active: data.active,
+                    })}
                 >
                     <div className="tw-flex-grow tw-text-center">SUBFLOW</div>
                     <button

@@ -298,6 +298,40 @@ export const getNodeStyle = (
     } as const
 }
 
+export const getNodeHeaderStyle = (
+    type: NodeType,
+    {
+        error,
+        executing,
+        moving,
+        selected,
+        interrupted,
+        active,
+    }: {
+        error?: boolean
+        executing?: boolean
+        moving?: boolean
+        selected?: boolean
+        interrupted?: boolean
+        active?: boolean
+    }
+) =>
+    ({
+        background: 'transparent',
+        borderBottom: `2px solid ${getBorderColor(type, {
+            error,
+            executing,
+            moving,
+            selected,
+            interrupted,
+            active,
+        })}`,
+        color: 'var(--vscode-dropdown-foreground)',
+        marginLeft: '-0.5rem',
+        marginRight: '-0.5rem',
+        marginTop: '-0.5rem',
+    }) as const
+
 export const nodeTypes = {
     [NodeType.CLI]: CLINode,
     [NodeType.LLM]: LLMNode,

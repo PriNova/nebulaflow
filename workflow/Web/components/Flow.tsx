@@ -2,7 +2,6 @@ import type { Edge } from '@graph/CustomOrderedEdge'
 import { isValidEdgeConnection } from '@graph/utils/edgeValidation'
 import { NodeType } from '@nodes/Nodes'
 import { type WorkflowNodes, defaultWorkflow } from '@nodes/Nodes'
-import { NebulaSpinningLogo } from '@shared/NebulaSpinningLogo'
 import { useReactFlow } from '@xyflow/react'
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -1095,17 +1094,6 @@ export const Flow: React.FC<{
                             onClose={() => setContextMenuPosition(null)}
                         />
 
-                        {/* Background: NebulaFlow spinner */}
-                        {centerSize.w > 0 && centerSize.h > 0 ? (
-                            <NebulaSpinningLogo
-                                width={centerSize.w}
-                                height={centerSize.h}
-                                scale={2.5}
-                                axis="y"
-                                opacity={0.12}
-                                className="tw-z-0"
-                            />
-                        ) : null}
                         {/* ReactFlow overlay */}
                         <FlowCanvas
                             sortedNodes={sortedNodes}
