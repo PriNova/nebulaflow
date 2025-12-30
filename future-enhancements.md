@@ -15,6 +15,16 @@
 
 ### Tool Catalog Alignment – Alias and UI Polish
 
+### OpenRouter Model Display Formatting Follow-ups
+
+- Goal: Improve robustness, documentation, and consistency for OpenRouter model display formatting.
+- What:
+  - Add input validation for empty model IDs in `getOpenRouterDisplayTitle()` to prevent producing `OR: ` with no model name.
+  - Update README.md to document the new display format for OpenRouter models.
+  - Ensure consistency with other provider prefixes (e.g., `W:`) by checking if the transformation logic should be generalized or kept isolated.
+  - Consider adding unit tests for `getOpenRouterDisplayTitle()` when test infrastructure is introduced.
+- Why: Prevents silent failures, improves user-facing documentation, and maintains consistent prefix handling across providers, making the feature more maintainable.
+
 ### LLM System Prompt Override – Follow-ups
 
 - Goal: Tighten SDK contract assumptions, typing, and reuse around the new per-node `systemPromptTemplate` feature.

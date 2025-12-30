@@ -11,6 +11,22 @@ export type SliceEnv = {
 }
 export type Router = Map<string, (message: any, env: SliceEnv) => Promise<void> | void>
 
+/**
+ * Transforms an OpenRouter model ID (e.g., "openrouter/anthropic/claude-3-5-sonnet")
+ * into a display title (e.g., "claude-3-5-sonnet").
+ * If the model ID does not start with "openrouter/", returns the original ID as-is.
+ */
+function getOpenRouterDisplayTitle(modelId: string): string {
+    // If it doesn't start with "openrouter/", return the full ID as-is
+    if (!modelId.startsWith('openrouter/')) {
+        return modelId
+    }
+    // Remove 'openrouter/' prefix and extract just the model name
+    const withoutPrefix = modelId.slice('openrouter/'.length)
+    const modelName = withoutPrefix.split('/').pop() ?? withoutPrefix
+    return modelName
+}
+
 export function registerHandlers(router: Router): void {
     router.set('get_models', async (_message: any, env: SliceEnv) => {
         try {
@@ -35,12 +51,6 @@ export function registerHandlers(router: Router): void {
                 | undefined
 
             const extraModels: { id: string; title?: string }[] = []
-            if (configuredPrimary && !baseModels.some(m => m.id === configuredPrimary)) {
-                extraModels.push({
-                    id: configuredPrimary,
-                    title: `W: ${configuredPrimary}`,
-                })
-            }
 
             if (Array.isArray(openrouterModels)) {
                 for (const entry of openrouterModels) {
@@ -52,7 +62,7 @@ export function registerHandlers(router: Router): void {
                         ) {
                             extraModels.push({
                                 id: modelId,
-                                title: `OR: ${modelId}`,
+                                title: getOpenRouterDisplayTitle(modelId),
                             })
                         }
                     }

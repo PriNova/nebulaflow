@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 - Added: Documentation for new `openrouter.models` configuration options in README.md, including example with `provider`, `maxOutputTokens`, `contextWindow`, `isReasoning`, and `reasoning_effort` fields
 - Why: Supports the Amp SDK's updated OpenRouter model configuration (per-model provider routing, token limits, reasoning effort) without breaking existing workflows
 
+### Goal: OpenRouter Model Display Formatting
+
+- Changed: OpenRouter model IDs are now displayed in the dropdown and model selection with a simplified `OR:` prefix, showing only the model name (e.g., `OR: claude-3-5-sonnet` instead of `openrouter/anthropic/claude-3-5-sonnet`).
+- Added: Helper function `getOpenRouterDisplayTitle()` in `workflow/LLMIntegration/Application/register.ts` to transform model IDs for display while preserving full slugs for execution.
+- Why: Improves readability of model names in the UI while keeping full model IDs for runtime execution, and addresses user request for cleaner display.
+
 ### Goal: LoopStart Sidebar – Loop Mode and While-Variable Configuration
 
 - Added: Surfaced the new LoopStart `loopMode` data model in the webview sidebar via a two-button toggle ("Fixed iterations" vs "While variable not empty") and while-mode-only inputs for `collectionVariable` and optional `maxSafeIterations`, wired through `LoopStartProperties` so legacy workflows default to fixed loops while advanced behavior is opt-in and data-driven.
