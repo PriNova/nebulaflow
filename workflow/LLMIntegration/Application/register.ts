@@ -30,6 +30,9 @@ export function registerHandlers(router: Router): void {
             })
             const configuredPrimary =
                 (ampSettings['internal.primaryModel'] as string | undefined)?.trim() || undefined
+            const openrouterModels = ampSettings['openrouter.models'] as
+                | Array<{ model: string }>
+                | undefined
 
             const extraModels: { id: string; title?: string }[] = []
             if (configuredPrimary && !baseModels.some(m => m.id === configuredPrimary)) {
@@ -37,6 +40,23 @@ export function registerHandlers(router: Router): void {
                     id: configuredPrimary,
                     title: `W: ${configuredPrimary}`,
                 })
+            }
+
+            if (Array.isArray(openrouterModels)) {
+                for (const entry of openrouterModels) {
+                    if (entry && typeof entry.model === 'string') {
+                        const modelId = entry.model
+                        if (
+                            !baseModels.some(m => m.id === modelId) &&
+                            !extraModels.some(m => m.id === modelId)
+                        ) {
+                            extraModels.push({
+                                id: modelId,
+                                title: `OR: ${modelId}`,
+                            })
+                        }
+                    }
+                }
             }
 
             const models = [...baseModels, ...extraModels]

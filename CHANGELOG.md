@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Goal: OpenRouter Model Configuration Support
+
+- Added: Extended model-discovery handler in `workflow/LLMIntegration/Application/register.ts` to read `openrouter.models` from workspace settings and include each configured OpenRouter model in the Model Selector dropdown with `OR:` prefix
+- Added: Documentation for new `openrouter.models` configuration options in README.md, including example with `provider`, `maxOutputTokens`, `contextWindow`, `isReasoning`, and `reasoning_effort` fields
+- Why: Supports the Amp SDK's updated OpenRouter model configuration (per-model provider routing, token limits, reasoning effort) without breaking existing workflows
+
 ### Goal: LoopStart Sidebar – Loop Mode and While-Variable Configuration
 
 - Added: Surfaced the new LoopStart `loopMode` data model in the webview sidebar via a two-button toggle ("Fixed iterations" vs "While variable not empty") and while-mode-only inputs for `collectionVariable` and optional `maxSafeIterations`, wired through `LoopStartProperties` so legacy workflows default to fixed loops while advanced behavior is opt-in and data-driven.

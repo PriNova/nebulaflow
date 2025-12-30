@@ -34,8 +34,32 @@ Example:
 
 - `openrouter.key` configures the OpenRouter API key used by the SDK (the SDK will also read the `OPENROUTER_API_KEY` environment variable if set).
 - `internal.primaryModel` provides a workspace-wide default model for LLM nodes.
+- `openrouter.models` can be used to specify per-model configuration including `provider` for routing, `maxOutputTokens`, `contextWindow`, `isReasoning`, and `reasoning_effort`:
+
+```jsonc
+{
+  "amp": {
+    "settings": {
+      "openrouter.models": [
+        {
+          "model": "anthropic/claude-3-5-sonnet-20241022",
+          "provider": "anthropic",
+          "maxOutputTokens": 8192,
+          "contextWindow": 200000
+        },
+        {
+          "model": "openai/o1-preview",
+          "provider": "openai",
+          "isReasoning": true,
+          "reasoning_effort": "medium"
+        }
+      ]
+    }
+  }
+}
+```
 - Per-node model selection in the Property Editor (Model combobox) always wins over the workspace default. If a node has no model, NebulaFlow falls back to `amp.settings["internal.primaryModel"]`, and if that is unset it falls back to the built-in default (`openai/gpt-5.1`).
-- The Model combobox is populated from the Amp SDK `listModels()` API and also includes the configured workspace default (if not already present), grouped by provider prefix (for example `openrouter/...`).
+- The Model combobox is populated from the Amp SDK `listModels()` API and also includes the configured workspace default (if not already present) and any OpenRouter models defined in `openrouter.models` settings, grouped by provider prefix (for example `openrouter/...`).
 
 - **Category Label Display**: User-facing category names map to improved labels in the sidebar node palette ([WorkflowSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/WorkflowSidebar.tsx#L44-L50)):
   - `llm` → `Agents`
