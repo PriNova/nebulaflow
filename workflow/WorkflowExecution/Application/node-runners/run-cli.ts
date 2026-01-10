@@ -230,9 +230,14 @@ export async function executeCLINode(
     // Determine mode (command | script). Default to command for back-compat.
     const mode = ((node as any).data?.mode as 'command' | 'script') || 'command'
 
-    // Base content after templating
+    // Determine shell type for proper escaping
+    const shell =
+        ((node as any).data?.shell as 'bash' | 'sh' | 'zsh' | 'pwsh' | 'cmd') ||
+        (process.platform === 'win32' ? 'pwsh' : 'bash')
+
+    // Base content after templating (with shell-aware escaping)
     const baseContent = (
-        node.data.content ? replaceIndexedInputs(node.data.content, inputs, context) : ''
+        node.data.content ? replaceIndexedInputs(node.data.content, inputs, context, { shell }) : ''
     ).toString()
 
     const { output, exitCode } = await runCLICore({

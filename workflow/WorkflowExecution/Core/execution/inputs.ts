@@ -1,14 +1,22 @@
 import type { IndexedExecutionContext } from '../../Application/handlers/ExecuteWorkflow'
+import { type ShellType, escapeForShell } from './sanitize'
+
+export interface ReplaceOptions {
+    shell?: ShellType
+}
 
 export function replaceIndexedInputs(
     template: string,
     parentOutputs: string[],
-    context?: IndexedExecutionContext
+    context?: IndexedExecutionContext,
+    options?: ReplaceOptions
 ): string {
+    const escapeFn = options?.shell ? (v: string) => escapeForShell(v, options.shell!) : (v: string) => v
+
     let result = template.replace(/\${(\d+)}(?!\w)/g, (_match, index) => {
         const adjustedIndex = Number.parseInt(index, 10) - 1
         return adjustedIndex >= 0 && adjustedIndex < parentOutputs.length
-            ? parentOutputs[adjustedIndex]
+            ? escapeFn(parentOutputs[adjustedIndex])
             : ''
     })
 
@@ -17,7 +25,7 @@ export function replaceIndexedInputs(
             for (const [, loopState] of context.loopStates) {
                 result = result.replace(
                     new RegExp(`\\$\{${loopState.variable}}(?!\\w)`, 'g'),
-                    String(loopState.currentIteration)
+                    escapeFn(String(loopState.currentIteration))
                 )
             }
         }
@@ -27,14 +35,14 @@ export function replaceIndexedInputs(
         for (const varName of accumulatorVars) {
             result = result.replace(
                 new RegExp(`\\$\{${varName}}(?!\\w)`, 'g'),
-                context.accumulatorValues?.get(varName) || ''
+                escapeFn(context.accumulatorValues?.get(varName) || '')
             )
         }
         const variableVars = context.variableValues ? Array.from(context.variableValues.keys()) : []
         for (const varName of variableVars) {
             result = result.replace(
                 new RegExp(`\\$\{${varName}}(?!\\w)`, 'g'),
-                context.variableValues?.get(varName) || ''
+                escapeFn(context.variableValues?.get(varName) || '')
             )
         }
     }
