@@ -86,12 +86,46 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
                 },
                 position: { x: 0, y: 0 },
             } as any)
-            for (const targetNodeId of inp.targets) {
+
+            // Check if the external source is a Variable or Accumulator Node (preserve variable semantics)
+            const sourceNode = nodes.find(n => n.id === inp.sourceId)
+            const isVarOrAccum =
+                sourceNode?.type === NodeType.VARIABLE || sourceNode?.type === NodeType.ACCUMULATOR
+
+            if (isVarOrAccum && sourceNode) {
+                // Create a Variable/Accumulator node inside the subflow to preserve variable semantics
+                const varNodeId = `var-${uuidv4()}`
+                // Copy source node data (includes variableName, initialValue, etc.)
+                const varNodeData = { ...sourceNode.data, active: true }
+                innerNodes.push({
+                    id: varNodeId,
+                    type: sourceNode.type,
+                    data: varNodeData,
+                    position: { x: 0, y: 0 },
+                } as any)
+                // Connect SUBFLOW_INPUT to Variable/Accumulator node
                 innerEdges.push({
                     id: uuidv4(),
                     source: inputNodeId,
-                    target: targetNodeId,
+                    target: varNodeId,
                 } as any)
+                // Connect Variable/Accumulator node to all targets
+                for (const targetNodeId of inp.targets) {
+                    innerEdges.push({
+                        id: uuidv4(),
+                        source: varNodeId,
+                        target: targetNodeId,
+                    } as any)
+                }
+            } else {
+                // Default behavior: connect SUBFLOW_INPUT directly to targets
+                for (const targetNodeId of inp.targets) {
+                    innerEdges.push({
+                        id: uuidv4(),
+                        source: inputNodeId,
+                        target: targetNodeId,
+                    } as any)
+                }
             }
         }
 
