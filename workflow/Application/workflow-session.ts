@@ -1,5 +1,11 @@
 import { isWorkflowPayloadDTO, isWorkflowToExtension } from '../Core/Contracts/guards'
-import { AbortedError, type ApprovalResult, type ExtensionToWorkflow } from '../Core/models'
+import {
+    AbortedError,
+    type ApprovalResult,
+    type ExtensionToWorkflow,
+    NodeType,
+    type WorkflowNodes,
+} from '../Core/models'
 import {
     type SliceEnv,
     registerHandlers as registerLLMHandlers,
@@ -14,6 +20,23 @@ import { executeLLMChatTurn } from '../WorkflowExecution/Application/node-runner
 import { registerHandlers as registerPersistenceHandlers } from '../WorkflowPersistence/Application/register'
 import { fromProtocolPayload } from './messaging/converters'
 
+// Helper to count LLM nodes in a list of nodes
+function countLlmNodes(nodes: WorkflowNodes[]): number {
+    return nodes.filter(n => n.type === NodeType.LLM).length
+}
+
+// Global LLM cap (must match the per‑type cap in ExecuteWorkflow.ts)
+const LLM_CAP = 8
+
+// Compute total currently running LLM nodes across all active executions in a session
+function getTotalLlmRunning(context: ExecutionContext): number {
+    let total = 0
+    for (const count of Array.from(context.activeExecutions.values())) {
+        total += count
+    }
+    return total
+}
+
 interface ExecutionContext {
     abortController: AbortController | null
     pauseRequested: boolean
@@ -23,6 +46,7 @@ interface ExecutionContext {
         removeAbortListener?: () => void
     } | null
     subflowCache: Map<string, Record<string, string>>
+    activeExecutions: Map<AbortController, number>
 }
 
 // Use IMessagePort as the key for session state
@@ -39,13 +63,17 @@ function getOrCreateSessionContext(port: IMessagePort): ExecutionContext {
             pauseRequested: false,
             pendingApproval: null,
             subflowCache: new Map<string, Record<string, string>>(),
+            activeExecutions: new Map<AbortController, number>(),
         }
         sessionRegistry.set(port, context)
     }
     return context
 }
 
-function createWaitForApproval(port: IMessagePort): (nodeId: string) => Promise<ApprovalResult> {
+function createWaitForApproval(
+    port: IMessagePort,
+    signal?: AbortSignal
+): (nodeId: string) => Promise<ApprovalResult> {
     return (_nodeId: string): Promise<ApprovalResult> => {
         return new Promise((resolve, reject) => {
             const context = getOrCreateSessionContext(port)
@@ -58,8 +86,9 @@ function createWaitForApproval(port: IMessagePort): (nodeId: string) => Promise<
                 reject: (error: unknown) => void
                 removeAbortListener?: () => void
             } = { resolve, reject }
-            const signal = context.abortController?.signal
-            if (signal) {
+            // Use provided signal, fallback to context.abortController?.signal for backward compatibility
+            const sig = signal ?? context.abortController?.signal
+            if (sig) {
                 const onAbort = () => {
                     current.resolve({ type: 'aborted' })
                     if (context.pendingApproval === current) {
@@ -67,8 +96,8 @@ function createWaitForApproval(port: IMessagePort): (nodeId: string) => Promise<
                     }
                     current.removeAbortListener = undefined
                 }
-                signal.addEventListener('abort', onAbort, { once: true })
-                current.removeAbortListener = () => signal.removeEventListener('abort', onAbort)
+                sig.addEventListener('abort', onAbort, { once: true })
+                current.removeAbortListener = () => sig.removeEventListener('abort', onAbort)
             }
             context.pendingApproval = current
         })
@@ -83,7 +112,13 @@ export function cleanupSession(port: IMessagePort) {
             context.pendingApproval.resolve({ type: 'aborted' })
             context.pendingApproval = null
         }
-        if (context.abortController) {
+        if (context.activeExecutions.size > 0) {
+            for (const [controller] of Array.from(context.activeExecutions)) {
+                controller.abort()
+                activeAbortControllers.delete(controller)
+            }
+            context.activeExecutions.clear()
+        } else if (context.abortController) {
             context.abortController.abort()
             context.abortController = null
         }
@@ -131,88 +166,96 @@ export function setupWorkflowMessageHandling(
             }
             case 'execute_workflow': {
                 const ctx = getOrCreateSessionContext(port)
-                if (ctx.abortController) {
-                    void host.window.showInformationMessage(
-                        'NebulaFlow Workflow Editor: execution already in progress'
-                    )
-                    await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
-                        strict: isDev,
-                    })
-                    break
-                }
+
                 const data = (message as any).data
                 if (data?.nodes && data?.edges) {
-                    ctx.abortController = new AbortController()
-                    activeAbortControllers.add(ctx.abortController)
-                    try {
-                        const { nodes, edges } = fromProtocolPayload(data)
-                        const resume = data.resume
-                        const approvalHandler = createWaitForApproval(port)
+                    // Parse nodes and edges
+                    const { nodes, edges } = fromProtocolPayload(data)
+                    const resume = data.resume
 
-                        ctx.pauseRequested = false
+                    // Compute filtered nodes and edges based on resume (if any)
+                    let filteredResume = resume
+                    let execNodes = nodes
+                    let execEdges = edges
 
-                        let filteredResume = resume
-                        let execNodes = nodes
-                        let execEdges = edges
-
-                        // Resume logic (simplified copy)
-                        if (resume?.fromNodeId) {
-                            // ... (same pruning logic as before)
-                            // For brevity, I'll include the full logic or import it?
-                            // It's better to keep it here.
-                            const allowed = new Set<string>()
-                            const bySource = new Map<string, typeof edges>()
-                            for (const e of edges) {
-                                const arr = bySource.get(e.source) || []
-                                arr.push(e)
-                                bySource.set(e.source, arr)
-                            }
-                            const q: string[] = [resume.fromNodeId]
-                            while (q.length) {
-                                const cur = q.shift()!
-                                if (allowed.has(cur)) continue
-                                allowed.add(cur)
-                                for (const e of bySource.get(cur) || []) {
-                                    q.push(e.target)
-                                }
-                            }
-                            execNodes = nodes.filter(n => allowed.has(n.id))
-                            execEdges = edges.filter(e => allowed.has(e.target))
-                            // ... seeds filtering ...
-                            const allowedIds = allowed
-                            const bypassIds = new Set(
-                                execNodes.filter(n => (n as any)?.data?.bypass === true).map(n => n.id)
-                            )
-                            const outputs = Object.entries(
-                                (resume?.seeds?.outputs as Record<string, string>) || {}
-                            ).filter(([id]) => !allowedIds.has(id) || bypassIds.has(id))
-                            const decisions = Object.entries(
-                                (resume?.seeds?.decisions as Record<string, 'true' | 'false'>) || {}
-                            ).filter(([id]) => !allowedIds.has(id) || bypassIds.has(id))
-                            filteredResume = {
-                                ...resume,
-                                seeds: {
-                                    outputs: Object.fromEntries(outputs),
-                                    decisions: Object.fromEntries(decisions),
-                                    variables: (resume?.seeds as any)?.variables,
-                                },
-                            }
-                        } else if (resume?.seeds?.outputs && process.env.NEBULAFLOW_FILTER_PAUSE_SEEDS) {
-                            const bypassIds = new Set(
-                                nodes.filter(n => (n as any)?.data?.bypass === true).map(n => n.id)
-                            )
-                            const outputs = Object.entries(
-                                (resume?.seeds?.outputs as Record<string, string>) || {}
-                            ).filter(([id]) => bypassIds.has(id))
-                            filteredResume = {
-                                ...resume,
-                                seeds: {
-                                    outputs: Object.fromEntries(outputs),
-                                    decisions: (resume?.seeds as any)?.decisions,
-                                    variables: (resume?.seeds as any)?.variables,
-                                },
+                    if (resume?.fromNodeId) {
+                        // ... (same pruning logic as before)
+                        const allowed = new Set<string>()
+                        const bySource = new Map<string, typeof edges>()
+                        for (const e of edges) {
+                            const arr = bySource.get(e.source) || []
+                            arr.push(e)
+                            bySource.set(e.source, arr)
+                        }
+                        const q: string[] = [resume.fromNodeId]
+                        while (q.length) {
+                            const cur = q.shift()!
+                            if (allowed.has(cur)) continue
+                            allowed.add(cur)
+                            for (const e of bySource.get(cur) || []) {
+                                q.push(e.target)
                             }
                         }
+                        execNodes = nodes.filter(n => allowed.has(n.id))
+                        execEdges = edges.filter(e => allowed.has(e.target))
+                        // ... seeds filtering ...
+                        const allowedIds = allowed
+                        const bypassIds = new Set(
+                            execNodes.filter(n => (n as any)?.data?.bypass === true).map(n => n.id)
+                        )
+                        const outputs = Object.entries(
+                            (resume?.seeds?.outputs as Record<string, string>) || {}
+                        ).filter(([id]) => !allowedIds.has(id) || bypassIds.has(id))
+                        const decisions = Object.entries(
+                            (resume?.seeds?.decisions as Record<string, 'true' | 'false'>) || {}
+                        ).filter(([id]) => !allowedIds.has(id) || bypassIds.has(id))
+                        filteredResume = {
+                            ...resume,
+                            seeds: {
+                                outputs: Object.fromEntries(outputs),
+                                decisions: Object.fromEntries(decisions),
+                                variables: (resume?.seeds as any)?.variables,
+                            },
+                        }
+                    } else if (resume?.seeds?.outputs && process.env.NEBULAFLOW_FILTER_PAUSE_SEEDS) {
+                        const bypassIds = new Set(
+                            nodes.filter(n => (n as any)?.data?.bypass === true).map(n => n.id)
+                        )
+                        const outputs = Object.entries(
+                            (resume?.seeds?.outputs as Record<string, string>) || {}
+                        ).filter(([id]) => bypassIds.has(id))
+                        filteredResume = {
+                            ...resume,
+                            seeds: {
+                                outputs: Object.fromEntries(outputs),
+                                decisions: (resume?.seeds as any)?.decisions,
+                                variables: (resume?.seeds as any)?.variables,
+                            },
+                        }
+                    }
+
+                    // Count LLM nodes that will actually be executed
+                    const newLlmCount = countLlmNodes(execNodes)
+                    const currentTotal = getTotalLlmRunning(ctx)
+                    if (currentTotal + newLlmCount > LLM_CAP) {
+                        void host.window.showInformationMessage(
+                            `Cannot start workflow: LLM node limit of ${LLM_CAP} would be exceeded (currently ${currentTotal}, requested ${newLlmCount})`
+                        )
+                        await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
+                            strict: isDev,
+                        })
+                        break
+                    }
+
+                    // Create abort controller for this execution
+                    const abortController = new AbortController()
+                    ctx.activeExecutions.set(abortController, newLlmCount)
+                    activeAbortControllers.add(abortController)
+                    ctx.abortController = null
+
+                    try {
+                        const approvalHandler = createWaitForApproval(port, abortController.signal)
+                        ctx.pauseRequested = false
 
                         const pauseRef = { isPaused: () => ctx.pauseRequested === true }
                         await executeWorkflow(
@@ -220,16 +263,15 @@ export function setupWorkflowMessageHandling(
                             execEdges,
                             port,
                             host,
-                            ctx.abortController.signal,
+                            abortController.signal,
                             approvalHandler,
                             filteredResume,
                             pauseRef,
                             ctx.subflowCache
                         )
                     } finally {
-                        const controller = ctx.abortController
-                        ctx.abortController = null
-                        if (controller) activeAbortControllers.delete(controller)
+                        ctx.activeExecutions.delete(abortController)
+                        activeAbortControllers.delete(abortController)
                     }
                 }
                 break
@@ -240,14 +282,37 @@ export function setupWorkflowMessageHandling(
                     void host.window.showInformationMessage('Cannot run node while paused')
                     break
                 }
-                if (ctx.abortController) {
-                    void host.window.showInformationMessage('Execution already in progress')
+                // Parse node
+                const nodeDTO = (message as any).data.node
+                if (!nodeDTO) {
+                    void host.window.showErrorMessage('No node data provided')
                     break
                 }
-                ctx.abortController = new AbortController()
-                activeAbortControllers.add(ctx.abortController)
+                // Convert to internal node representation to get type
+                const { nodes } = fromProtocolPayload({ nodes: [nodeDTO], edges: [] })
+                const node = nodes[0]
+                if (!node) {
+                    void host.window.showErrorMessage('Node not found')
+                    break
+                }
+                const newLlmCount = node.type === NodeType.LLM ? 1 : 0
+                const currentTotal = getTotalLlmRunning(ctx)
+                if (currentTotal + newLlmCount > LLM_CAP) {
+                    void host.window.showInformationMessage(
+                        `Cannot start node: LLM node limit of ${LLM_CAP} would be exceeded (currently ${currentTotal}, requested ${newLlmCount})`
+                    )
+                    await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
+                        strict: isDev,
+                    })
+                    break
+                }
+                // Create abort controller for this execution
+                const abortController = new AbortController()
+                ctx.activeExecutions.set(abortController, newLlmCount)
+                activeAbortControllers.add(abortController)
+                ctx.abortController = null
                 try {
-                    const approvalHandler = createWaitForApproval(port)
+                    const approvalHandler = createWaitForApproval(port, abortController.signal)
                     await safePost(port, { type: 'execution_started' } as ExtensionToWorkflow, {
                         strict: isDev,
                     })
@@ -255,16 +320,15 @@ export function setupWorkflowMessageHandling(
                         (message as any).data,
                         port,
                         host,
-                        ctx.abortController.signal,
+                        abortController.signal,
                         approvalHandler
                     )
                 } finally {
                     await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
                         strict: isDev,
                     })
-                    const controller = ctx.abortController
-                    ctx.abortController = null
-                    if (controller) activeAbortControllers.delete(controller)
+                    ctx.activeExecutions.delete(abortController)
+                    activeAbortControllers.delete(abortController)
                 }
                 break
             }
@@ -274,20 +338,33 @@ export function setupWorkflowMessageHandling(
                     void host.window.showInformationMessage('Cannot start chat while paused')
                     break
                 }
-                if (ctx.abortController) {
-                    void host.window.showInformationMessage('Execution already in progress')
+                const data = (message as any).data
+                // Parse node to count LLM nodes (should be 1)
+                const { nodes } = fromProtocolPayload({ nodes: [data.node], edges: [] })
+                const newLlmCount = countLlmNodes(nodes)
+                const currentTotal = getTotalLlmRunning(ctx)
+                if (currentTotal + newLlmCount > LLM_CAP) {
+                    void host.window.showInformationMessage(
+                        `Cannot start chat: LLM node limit of ${LLM_CAP} would be exceeded (currently ${currentTotal}, requested ${newLlmCount})`
+                    )
+                    await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
+                        strict: isDev,
+                    })
                     break
                 }
-                const data = (message as any).data
-                ctx.abortController = new AbortController()
-                activeAbortControllers.add(ctx.abortController)
+
+                // Create abort controller for this execution
+                const abortController = new AbortController()
+                ctx.activeExecutions.set(abortController, newLlmCount)
+                activeAbortControllers.add(abortController)
+                ctx.abortController = null
+
                 let nodeId: string | undefined
                 try {
-                    const approvalHandler = createWaitForApproval(port)
+                    const approvalHandler = createWaitForApproval(port, abortController.signal)
                     await safePost(port, { type: 'execution_started' } as ExtensionToWorkflow, {
                         strict: isDev,
                     })
-                    const { nodes } = fromProtocolPayload({ nodes: [data.node], edges: [] })
                     const node = nodes[0] as any
                     if (!node) {
                         void host.window.showErrorMessage('LLM chat failed: node not found')
@@ -304,7 +381,7 @@ export function setupWorkflowMessageHandling(
                             node,
                             data.threadID as string,
                             data.message as string,
-                            ctx.abortController.signal,
+                            abortController.signal,
                             port,
                             approvalHandler
                         )
@@ -313,8 +390,7 @@ export function setupWorkflowMessageHandling(
                             data: { nodeId, status: 'completed', result: result ?? '' },
                         } as ExtensionToWorkflow)
                     } catch (error) {
-                        const aborted =
-                            ctx.abortController?.signal.aborted || error instanceof AbortedError
+                        const aborted = abortController.signal.aborted || error instanceof AbortedError
                         const msg = error instanceof Error ? error.message : String(error)
                         if (aborted) {
                             await safePost(port, {
@@ -337,9 +413,8 @@ export function setupWorkflowMessageHandling(
                     await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
                         strict: isDev,
                     })
-                    const controller = ctx.abortController
-                    ctx.abortController = null
-                    if (controller) activeAbortControllers.delete(controller)
+                    ctx.activeExecutions.delete(abortController)
+                    activeAbortControllers.delete(abortController)
                 }
                 break
             }
@@ -350,7 +425,13 @@ export function setupWorkflowMessageHandling(
                     ctx.pendingApproval.resolve({ type: 'aborted' })
                     ctx.pendingApproval = null
                 }
-                if (ctx.abortController) {
+                if (ctx.activeExecutions.size > 0) {
+                    for (const [controller] of Array.from(ctx.activeExecutions)) {
+                        controller.abort()
+                        activeAbortControllers.delete(controller)
+                    }
+                    ctx.activeExecutions.clear()
+                } else if (ctx.abortController) {
                     const c = ctx.abortController
                     ctx.abortController = null
                     c.abort()
@@ -438,7 +519,7 @@ export function setupWorkflowMessageHandling(
 }
 
 export function cancelAllActiveWorkflows() {
-    for (const controller of activeAbortControllers) {
+    for (const controller of Array.from(activeAbortControllers)) {
         controller.abort()
     }
     activeAbortControllers.clear()
