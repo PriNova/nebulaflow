@@ -1,5 +1,5 @@
 import { fromProtocolPayload } from '../../../Application/messaging/converters'
-import { NodeType, type WorkflowNodes } from '../../../Core/models'
+import { NodeType, type SubflowNode, type WorkflowNodes } from '../../../Core/models'
 import { loadSubflow } from '../../../DataAccess/fs'
 import type { IHostEnvironment, IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
@@ -24,7 +24,7 @@ export async function runSubflowWrapper(
     host: IHostEnvironment,
     subflowCache?: Map<string, Record<string, string>>
 ): Promise<string[]> {
-    const subflowId = (wrapperNode as any)?.data?.subflowId as string | undefined
+    const subflowId = (wrapperNode as SubflowNode).data.subflowId
     if (!subflowId) throw new Error('Subflow node missing subflowId')
 
     const def = await loadSubflow(subflowId)

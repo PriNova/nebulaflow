@@ -324,8 +324,8 @@ export const useMessageHandler = (
                 }
                 case 'subflow_node_execution_status': {
                     const { subflowId, payload } = (event.data as any).data || {}
-                    // Only apply when viewing this subflow
-                    if (payload && subflowId && activeSubflowIdRef?.current === subflowId) {
+                    // Apply regardless of active subflow view; filtering is done by applyNodeExecutionStatus which uses nodes array
+                    if (payload && subflowId) {
                         applyNodeExecutionStatus(
                             payload.nodeId,
                             payload.status,
@@ -387,7 +387,7 @@ export const useMessageHandler = (
                 }
                 case 'subflow_node_assistant_content': {
                     const { subflowId, nodeId, content, threadID } = (event.data as any).data || {}
-                    if (subflowId && activeSubflowIdRef?.current === subflowId && nodeId) {
+                    if (subflowId && nodeId) {
                         // If assistant content arrives, mark node as executing (handles mid-run opens)
                         setExecutingNodeIds(prev => {
                             const next = new Set(prev)

@@ -2,7 +2,7 @@ import { fromProtocolPayload } from '../../../Application/messaging/converters'
 import type { ExtensionToWorkflow, WorkflowNodeDTO } from '../../../Core/Contracts/Protocol'
 import type { ApprovalResult } from '../../../Core/models'
 import { AbortedError } from '../../../Core/models'
-import type { WorkflowNodes } from '../../../Core/models'
+import type { SubflowNode, WorkflowNodes } from '../../../Core/models'
 import { NodeType } from '../../../Core/models'
 import { loadSubflow } from '../../../DataAccess/fs'
 import type { IHostEnvironment, IMessagePort } from '../../../Shared/Host/index'
@@ -242,7 +242,7 @@ async function runSingleSubflow(
     port: IMessagePort,
     host: IHostEnvironment
 ): Promise<string[]> {
-    const subflowId = (wrapperNode as any)?.data?.subflowId as string | undefined
+    const subflowId = (wrapperNode as SubflowNode).data.subflowId
     if (!subflowId) throw new Error('Subflow node missing subflowId')
     const def = await loadSubflow(subflowId)
     if (!def) throw new Error(`Subflow not found: ${subflowId}`)
