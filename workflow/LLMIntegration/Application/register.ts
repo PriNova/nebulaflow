@@ -1,7 +1,7 @@
 import type { ExtensionToWorkflow } from '../../Core/models'
 import type { IHostEnvironment, IMessagePort } from '../../Shared/Host/index'
-import { readAmpSettingsFromHost } from '../../Shared/Infrastructure/amp-settings'
 import { safePost } from '../../Shared/Infrastructure/messaging/safePost'
+import { readNebulaflowSettingsFromHost } from '../../Shared/Infrastructure/nebulaflow-settings'
 
 export type SliceEnv = {
     port: IMessagePort
@@ -40,13 +40,13 @@ export function registerHandlers(router: Router): void {
                     ? listModels().map((m: any) => ({ id: m.key, title: m.displayName }))
                     : []
 
-            const ampSettings = await readAmpSettingsFromHost(env.host, {
+            const nebulaflowSettings = await readNebulaflowSettingsFromHost(env.host, {
                 warnOnError: env.isDev,
                 debugTag: 'LLMIntegration/register',
             })
             const configuredPrimary =
-                (ampSettings['internal.primaryModel'] as string | undefined)?.trim() || undefined
-            const openrouterModels = ampSettings['openrouter.models'] as
+                (nebulaflowSettings['internal.primaryModel'] as string | undefined)?.trim() || undefined
+            const openrouterModels = nebulaflowSettings['openrouter.models'] as
                 | Array<{ model: string }>
                 | undefined
 

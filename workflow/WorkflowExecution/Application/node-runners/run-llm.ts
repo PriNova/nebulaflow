@@ -9,8 +9,8 @@ import {
 } from '../../../Core/models'
 import { computeLLMAmpSettings } from '../../../LLMIntegration/Application/llm-settings'
 import type { IMessagePort } from '../../../Shared/Host/index'
-import { readAmpSettingsFromWorkspaceRoots } from '../../../Shared/Infrastructure/amp-settings'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
+import { readNebulaflowSettingsFromWorkspaceRoots } from '../../../Shared/Infrastructure/nebulaflow-settings'
 import { DEFAULT_LLM_MODEL_ID } from '../../../Shared/LLM/default-model'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
 import { replaceIndexedInputs } from '../../Core/execution/inputs'
@@ -192,17 +192,21 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
             )
         }
 
-        const ampWorkspaceSettings = await readAmpSettingsFromWorkspaceRoots(workspaceRoots, {
-            warnOnError: process.env.NEBULAFLOW_DEBUG_LLM === '1',
-            debugTag: 'WorkflowExecution/run-llm',
-        })
+        const nebulaflowWorkspaceSettings = await readNebulaflowSettingsFromWorkspaceRoots(
+            workspaceRoots,
+            {
+                warnOnError: process.env.NEBULAFLOW_DEBUG_LLM === '1',
+                debugTag: 'WorkflowExecution/run-llm',
+            }
+        )
         const mergedSettings: Record<string, unknown> = {
-            ...ampWorkspaceSettings,
+            ...nebulaflowWorkspaceSettings,
             ...llmSettings,
         }
 
         const configuredPrimary =
-            (ampWorkspaceSettings['internal.primaryModel'] as string | undefined)?.trim() || undefined
+            (nebulaflowWorkspaceSettings['internal.primaryModel'] as string | undefined)?.trim() ||
+            undefined
         const primaryModelKey = selectedKey ?? configuredPrimary ?? defaultModelKey
 
         const autoApprove = Boolean((mergedSettings as any)['amp.dangerouslyAllowAll'])

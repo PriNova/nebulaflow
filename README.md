@@ -17,13 +17,13 @@ The LLM node runs via the Amp SDK. The editor acts as a visual wrapper around th
 ### Workspace LLM configuration (`.nebulaflow/settings.json`)
 
 - NebulaFlow can pass additional Amp SDK settings (including OpenRouter) via a workspace-local JSON file at `.nebulaflow/settings.json` in the first workspace folder.
-- The file should contain an `amp.settings` object that maps 1:1 to Amp SDK settings keys (see the Amp SDK README/API-REFERENCE in the upstream repo for the full list).
+- The file should contain an `nebulaflow.settings` object that maps 1:1 to Amp SDK settings keys (see the Amp SDK README/API-REFERENCE in the upstream repo for the full list).
 
 Example:
 
 ```jsonc
 {
-  "amp": {
+  "nebulaflow": {
     "settings": {
       "openrouter.key": "sk-or-...",
       "internal.primaryModel": "openrouter/kwaipilot/kat-coder-pro:free"
@@ -38,7 +38,7 @@ Example:
 
 ```jsonc
 {
-  "amp": {
+  "nebulaflow": {
     "settings": {
       "openrouter.models": [
         {
@@ -58,7 +58,7 @@ Example:
   }
 }
 ```
-- Per-node model selection in the Property Editor (Model combobox) always wins over the workspace default. If a node has no model, NebulaFlow falls back to `amp.settings["internal.primaryModel"]`, and if that is unset it falls back to the built-in default (`openai/gpt-5.1`).
+- Per-node model selection in the Property Editor (Model combobox) always wins over the workspace default. If a node has no model, NebulaFlow falls back to `nebulaflow.settings["internal.primaryModel"]`, and if that is unset it falls back to the built-in default (`openai/gpt-5.1`).
 - The Model combobox is populated from the Amp SDK `listModels()` API and also includes the configured workspace default (if not already present) and any OpenRouter models defined in `openrouter.models` settings, grouped by provider prefix (for example `openrouter/...`).
 
 - **Category Label Display**: User-facing category names map to improved labels in the sidebar node palette ([WorkflowSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/WorkflowSidebar.tsx#L44-L50)):
