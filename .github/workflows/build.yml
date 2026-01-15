@@ -25,7 +25,7 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci --no-integrity
+        run: npm ci
       
       - name: Run typecheck and lint
         run: npm run check
