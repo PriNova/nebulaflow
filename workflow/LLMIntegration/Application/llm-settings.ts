@@ -5,9 +5,9 @@ import { resolveToolName as resolveToolNameLocal } from '../../Core/toolUtils.js
  * Normalize a list of tool names to official names using the Amp SDK resolver.
  * Falls back to the raw value if the resolver is unavailable.
  */
-function normalizeDisabledTools(list: unknown): string[] {
+async function normalizeDisabledTools(list: unknown): Promise<string[]> {
     if (!Array.isArray(list)) return []
-    const sdk = safeRequireSDK()
+    const sdk = await safeRequireSDK()
     const resolveToolName: ((name: string) => string | undefined) | undefined = sdk?.resolveToolName
     const normalized = new Set<string>()
     for (const raw of list) {
@@ -18,10 +18,9 @@ function normalizeDisabledTools(list: unknown): string[] {
     return Array.from(normalized)
 }
 
-function safeRequireSDK(): any | undefined {
+async function safeRequireSDK(): Promise<any | undefined> {
     try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        return require('@prinova/amp-sdk')
+        return await import('@prinova/amp-sdk')
     } catch {
         return undefined
     }
@@ -31,13 +30,13 @@ function isBashDisabled(disabledTools: string[]): boolean {
     return disabledTools.some(t => typeof t === 'string' && t.trim().toLowerCase() === 'bash')
 }
 
-export function computeLLMAmpSettings(node: WorkflowNodes): {
+export async function computeLLMAmpSettings(node: WorkflowNodes): Promise<{
     settings: Record<string, unknown>
     debug: { disabledTools: string[]; dangerouslyAllowAll: boolean; reasoningEffort: string }
-} {
+}> {
     const data = (node as any)?.data ?? {}
 
-    const normalizedDisabled = normalizeDisabledTools(data.disabledTools)
+    const normalizedDisabled = await normalizeDisabledTools(data.disabledTools)
 
     const rawReasoningEffort: string | undefined = data.reasoningEffort
     const validEfforts = new Set(['minimal', 'low', 'medium', 'high'])

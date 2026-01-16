@@ -30,9 +30,8 @@ function getOpenRouterDisplayTitle(modelId: string): string {
 export function registerHandlers(router: Router): void {
     router.set('get_models', async (_message: any, env: SliceEnv) => {
         try {
-            // Dynamically require to avoid hard failure when SDK is not linked
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const sdk = require('@prinova/amp-sdk') as any
+            // Dynamically import to avoid hard failure when SDK is not linked
+            const sdk = (await import('@prinova/amp-sdk')) as any
             const listModels: (() => Array<{ key: string; displayName: string }>) | undefined =
                 sdk?.listModels
             const baseModels =
