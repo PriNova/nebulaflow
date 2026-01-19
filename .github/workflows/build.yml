@@ -1,0 +1,69 @@
+name: Build VS Code Extension
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  build:
+    # Only run if the pusher is the repository owner
+    if: ${{ github.actor == github.repository_owner }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required for creating releases
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run typecheck and lint
+        run: npm run check
+      
+      - name: Build and package extension
+        run: npm run package:vsix
+      
+      - name: Verify build artifacts
+        run: |
+          ls -la dist/
+          if [ ! -f dist/nebulaflow-*.vsix ]; then
+            echo "ERROR: .vsix file not found in dist/"
+            exit 1
+          fi
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebulaflow-extension-${{ github.sha }}
+          path: dist/
+          retention-days: 7
+      
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2.5.0
+        with:
+          files: dist/nebulaflow-*.vsix
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: NebulaFlow ${{ github.ref_name }}
+          body: |
+            ## NebulaFlow ${{ github.ref_name }}
+            
+            VS Code extension for designing and running LLM+CLI workflows as node graphs.
+            
+            ### Installation
+            1. Download the `.vsix` file below
+            2. Open VS Code
+            3. Go to Extensions → ... → Install from VSIX...
+            4. Select the downloaded file

@@ -144,8 +144,7 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
     try {
         let ampSdk: any
         try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            ampSdk = require('@prinova/amp-sdk')
+            ampSdk = await import('@prinova/amp-sdk')
         } catch (error) {
             throw new Error(
                 `Amp SDK not available: ${error instanceof Error ? error.message : String(error)}`
@@ -182,7 +181,7 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
             // Keep whatever selectedKey we already have (modelId or undefined)
         }
 
-        const { settings: llmSettings, debug: llmDebug } = computeLLMAmpSettings(node)
+        const { settings: llmSettings, debug: llmDebug } = await computeLLMAmpSettings(node)
         if (
             llmDebug.dangerouslyAllowAll &&
             llmDebug.disabledTools.some(t => typeof t === 'string' && t.toLowerCase() === 'bash')

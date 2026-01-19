@@ -6,7 +6,6 @@ dist/
 docs/
 tasks/
 scripts/update-amp-sdk.mjs
-vendor/amp-sdk/amp-sdk.tgz
 dist-tests/subflows.spec.cjs
 .dev-notes.md
 scripts/check-sdk-version.mjs

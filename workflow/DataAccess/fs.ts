@@ -188,10 +188,9 @@ function cryptoRandomId(): string {
 }
 
 // Normalize LLM node model IDs to SDK keys for save/load robustness
-function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): WorkflowPayloadDTO {
+async function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): Promise<WorkflowPayloadDTO> {
     try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const sdk = require('@prinova/amp-sdk') as any
+        const sdk = (await import('@prinova/amp-sdk')) as any
         const resolveModel:
             | ((args: { key: string } | { displayName: string; provider?: unknown }) => { key: string })
             | undefined = sdk?.resolveModel
@@ -323,7 +322,7 @@ async function readWorkflowFromUri(
             return null
         }
 
-        return normalizeModelsInWorkflow({ ...payloadData, state: (payloadData as any).state })
+        return await normalizeModelsInWorkflow({ ...payloadData, state: (payloadData as any).state })
     } catch (error) {
         if (opts.interactive) {
             const h = getHost()
@@ -361,7 +360,7 @@ export async function saveWorkflow(
                 void h.window.showErrorMessage('Failed to create workflow directory')
                 return { error: 'mkdir failed' }
             }
-            const normalized = normalizeModelsInWorkflow(data)
+            const normalized = await normalizeModelsInWorkflow(data)
             const version = '1.1.0'
             const content = Buffer.from(JSON.stringify({ ...normalized, version }, null, 2), 'utf-8')
             await h.fs.writeFile(result, content)

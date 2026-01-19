@@ -17,7 +17,7 @@ The LLM node runs via the Amp SDK. The editor acts as a visual wrapper around th
 ### Workspace LLM configuration (`.nebulaflow/settings.json`)
 
 - NebulaFlow can pass additional Amp SDK settings (including OpenRouter) via a workspace-local JSON file at `.nebulaflow/settings.json` in the first workspace folder.
-- The file should contain an `nebulaflow.settings` object that maps 1:1 to Amp SDK settings keys (see the Amp SDK README/API-REFERENCE in the upstream repo for the full list).
+- The file should contain an `nebulaflow.settings` object that maps 1:1 to Amp SDK settings keys.
 
 Example:
 
@@ -65,18 +65,6 @@ Example:
   - `llm` → `Agents`
   - `text-format` → `Text`
   - Unmapped categories pass through unchanged
-
-## Previous Changes (v0.1.5)
-
-- **Sidebar Resizing Improvements**:
-  - Handle thickness standardized to 4px (left and right resize handles); identical styling on both sides
-  - Right sidebar grows unbounded (`maxWidth` undefined); left sidebar retains a 600px max-width
-  - New center-aware clamp: a minimum 8px gap between handles is enforced during drag using `sidebarResizing.ts` options `{ minCenterGap, getCenterWidth }`
-  - Resize handlers retain cursor styling and proper hit areas
-
-## Previous Changes (v0.1.4)
-
-- **UI/UX Refinement**: Property Editor section in the sidebar now displays as a static header (consistent with category headers) rather than a collapsible accordion. The section always shows the PropertyEditor when a node is selected, or prompts "Select a node to edit its properties" when none is selected. This simplification removes collapsibility while maintaining visual consistency and reduces component re-render pressure.
 
 ## Features
 
