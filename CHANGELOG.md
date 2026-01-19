@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Changed
+
+### Removed
+
+## [NebulaFlow 0.2.14]
+
 ### Goal: OpenRouter Model Configuration Support
 
 - Added: Extended model-discovery handler in `workflow/LLMIntegration/Application/register.ts` to read `openrouter.models` from workspace settings and include each configured OpenRouter model in the Model Selector dropdown with `OR:` prefix
