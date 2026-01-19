@@ -4,6 +4,10 @@
     "version": "0.2.13",
     "publisher": "prinova",
     "author": "prinova",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/PriNova/nebulaflow.git"
+    },
     "engines": {
         "vscode": ">=1.90.0"
     },
