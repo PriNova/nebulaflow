@@ -7,6 +7,8 @@ A VS Code extension for visually designing and running developer workflows. Buil
 - Workflow runtime and messaging live under `workflow/Application` and `workflow/Core`
 - Persistence and shell execution adapters live under `workflow/DataAccess`
 
+![UI Screenshot](assets/screenshot.png)
+
 ## Project Focus: LLM Node
 
 The LLM node runs via the Amp SDK. The editor acts as a visual wrapper around the SDK: it builds prompts from upstream node outputs and executes them with the SDK.
