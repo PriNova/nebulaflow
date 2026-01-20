@@ -2,11 +2,6 @@
 
 A VS Code extension for visually designing and running developer workflows. Build graphs using node types (CLI, LLM, control-flow, preview, variables), execute them inside VS Code, and persist workflows/custom nodes per workspace.
 
-- Extension entry point: `src/extension.ts`
-- Webview app: `workflow/Web/` (React + Vite) outputs to `dist/webviews`
-- Workflow runtime and messaging live under `workflow/Application` and `workflow/Core`
-- Persistence and shell execution adapters live under `workflow/DataAccess`
-
 ![UI Screenshot](assets/screenshot.png)
 
 ## Project Focus: LLM Node
