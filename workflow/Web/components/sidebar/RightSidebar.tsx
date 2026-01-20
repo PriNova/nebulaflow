@@ -1117,10 +1117,22 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                 role="button"
                                                 title="Open Preview"
                                             >
-                                                <Markdown
-                                                    content={nodeResults.get(node.id) || ''}
-                                                    className="tw-text-xs"
-                                                />
+                                                {executingNodeIds.has(node.id) ? (
+                                                    <div>
+                                                        <div className="tw-text-xs tw-text-[var(--vscode-descriptionForeground)] tw-mb-1">
+                                                            Running... (live output)
+                                                        </div>
+                                                        <Markdown
+                                                            content={nodeResults.get(node.id) || ''}
+                                                            className="tw-text-xs"
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <Markdown
+                                                        content={nodeResults.get(node.id) || ''}
+                                                        className="tw-text-xs"
+                                                    />
+                                                )}
                                             </div>
                                         )}
                                     </div>

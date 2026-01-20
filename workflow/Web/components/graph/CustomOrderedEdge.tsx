@@ -30,30 +30,9 @@ export const CustomOrderedEdgeComponent: React.FC<OrderedEdgeProps> = ({
         [data?.edgeStyle]
     )
     const [edgePath] = strategy({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
-    const orderNumber = data?.orderNumber
     return (
         <>
             <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
-            <circle r="7" fill="rgb(255, 136, 0)">
-                <animateMotion dur="3s" repeatCount="indefinite" path={edgePath} calcMode="linear" />
-            </circle>
-            {typeof orderNumber === 'number' && (
-                <text
-                    x={0}
-                    y={0}
-                    style={{
-                        fontSize: 10,
-                        fontWeight: 'bold',
-                        dominantBaseline: 'central',
-                        textAnchor: 'middle',
-                        pointerEvents: 'none',
-                        fill: 'rgb(0, 0, 0)',
-                    }}
-                >
-                    <animateMotion dur="3s" repeatCount="indefinite" path={edgePath} calcMode="linear" />
-                    {orderNumber}
-                </text>
-            )}
         </>
     )
 }

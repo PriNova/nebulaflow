@@ -353,6 +353,14 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
             return true
         case 'node_execution_status':
             return isNodeExecutionPayload(msg.data)
+        case 'node_output_chunk':
+            return (
+                isObject(msg.data) &&
+                isString((msg.data as any).nodeId) &&
+                isString((msg.data as any).chunk) &&
+                (((msg.data as any).stream as any) === 'stdout' ||
+                    ((msg.data as any).stream as any) === 'stderr')
+            )
         case 'token_count':
             return (
                 isObject(msg.data) &&
@@ -429,12 +437,9 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
             if (!Array.isArray(arr)) return false
             for (const item of arr) {
                 if (!isObject(item)) return false
-                if (
-                    !isString((item as any).id) ||
-                    !isString((item as any).title) ||
-                    !isString((item as any).version)
-                )
-                    return false
+                if (!isString((item as any).id) || !isString((item as any).version)) return false
+                // title is optional, default to empty string if missing
+                if ('title' in item && !isString((item as any).title)) return false
             }
             return true
         }

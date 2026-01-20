@@ -36,6 +36,7 @@ export interface CLICoreArgs {
     host: IHostEnvironment
     approvalHandler: (nodeId: string) => Promise<ApprovalResult>
     context?: IndexedExecutionContext | Partial<IndexedExecutionContext>
+    onChunk?: (chunk: string, stream: 'stdout' | 'stderr') => void
 }
 
 export interface CLICoreResult {
@@ -54,6 +55,7 @@ export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
         host,
         approvalHandler,
         context,
+        onChunk,
     } = args
 
     abortSignal.throwIfAborted()
@@ -175,6 +177,7 @@ export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
                 cwd,
                 env: extraEnv,
                 abortSignal,
+                onChunk,
             })
             if (exitCode !== '0' && (node as any).data?.shouldAbort) {
                 throw new Error(output)
@@ -202,8 +205,18 @@ export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
     try {
         const userSpawn = Boolean((node as any).data?.streamOutput)
         const autoSpawn = !userSpawn && (filteredCommand.length > 200 || /[|><]/.test(filteredCommand))
-        const runner = userSpawn || autoSpawn ? shellExecuteCommandSpawn : shellExecute
-        const { output, exitCode } = await runner(filteredCommand, abortSignal, { cwd })
+        let output: string
+        let exitCode: string
+        if (userSpawn || autoSpawn) {
+            ;({ output, exitCode } = await shellExecuteCommandSpawn(
+                filteredCommand,
+                abortSignal,
+                { cwd },
+                onChunk
+            ))
+        } else {
+            ;({ output, exitCode } = await shellExecute(filteredCommand, abortSignal, { cwd }, onChunk))
+        }
         if (exitCode !== '0' && (node as any).data?.shouldAbort) {
             throw new Error(output)
         }
@@ -240,6 +253,17 @@ export async function executeCLINode(
         node.data.content ? replaceIndexedInputs(node.data.content, inputs, context, { shell }) : ''
     ).toString()
 
+    const onChunk = (chunk: string, stream: 'stdout' | 'stderr') => {
+        safePost(port, {
+            type: 'node_output_chunk',
+            data: {
+                nodeId: node.id,
+                chunk,
+                stream,
+            },
+        } as ExtensionToWorkflow)
+    }
+
     const { output, exitCode } = await runCLICore({
         node,
         baseCommandOrScript: baseContent,
@@ -250,6 +274,7 @@ export async function executeCLINode(
         host,
         approvalHandler,
         context,
+        onChunk,
     })
 
     context?.cliMetadata?.set(node.id, { exitCode })
