@@ -258,6 +258,15 @@ interface NodeAssistantContentEvent extends BaseWorkflowMessage {
     }
 }
 
+interface NodeOutputChunkEvent extends BaseWorkflowMessage {
+    type: 'node_output_chunk'
+    data: {
+        nodeId: string
+        chunk: string
+        stream: 'stdout' | 'stderr'
+    }
+}
+
 // Subflow-scoped node events (forwarded when viewing a subflow)
 interface SubflowNodeExecutionStatusEvent extends BaseWorkflowMessage {
     type: 'subflow_node_execution_status'
@@ -401,6 +410,7 @@ export type ExtensionToWorkflow =
     | NodeExecutionStatusEvent
     | TokenCountEvent
     | NodeAssistantContentEvent
+    | NodeOutputChunkEvent
     | SubflowNodeExecutionStatusEvent
     | SubflowNodeAssistantContentEvent
     | ProvideCustomModelsEvent

@@ -322,6 +322,16 @@ export const useMessageHandler = (
                     )
                     break
                 }
+                case 'node_output_chunk': {
+                    const { nodeId, chunk, stream } = event.data.data as any
+                    // Append chunk to node result
+                    setNodeResults(prev => {
+                        const current = prev.get(nodeId) || ''
+                        const separator = current.endsWith('\n') || current === '' ? '' : '\n'
+                        return new Map(prev).set(nodeId, current + separator + chunk)
+                    })
+                    break
+                }
                 case 'subflow_node_execution_status': {
                     const { subflowId, payload } = (event.data as any).data || {}
                     // Apply regardless of active subflow view; filtering is done by applyNodeExecutionStatus which uses nodes array

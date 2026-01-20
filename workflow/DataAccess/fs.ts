@@ -165,7 +165,9 @@ export async function getSubflows(): Promise<
                 const file = path.join(dir, filename)
                 const bytes = await h.fs.readFile(file)
                 const def = JSON.parse(Buffer.from(bytes).toString('utf-8')) as SubflowDefinitionDTO
-                out.push({ id: def.id, title: def.title, version: def.version })
+                // Handle missing title gracefully
+                const title = def.title || def.id || filename.replace('.json', '')
+                out.push({ id: def.id, title, version: def.version })
             } catch {}
         }
         return out

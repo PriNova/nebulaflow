@@ -1,4 +1,4 @@
-import { type ChildProcess, exec, spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
@@ -19,6 +19,8 @@ const RESERVED_ENV_UPPER = new Set([
     'OLDPWD',
     'PATHEXT',
 ])
+
+type StreamCallback = (chunk: string, stream: 'stdout' | 'stderr') => void
 
 function normalizeEnvKeys(env: Record<string, any>): Record<string, string> {
     const out: Record<string, string> = {}
@@ -65,43 +67,8 @@ export function expandHome(input: string): string {
 export function execute(
     command: string,
     abortSignal?: AbortSignal,
-    opts?: { cwd?: string }
-): Promise<{ output: string; exitCode: string }> {
-    return new Promise((resolve, reject) => {
-        const proc = exec(
-            command,
-            { env: process.env, shell: process.env.SHELL || undefined, cwd: opts?.cwd },
-            (error, stdout, stderr) => {
-                const code = error && (error as any).code != null ? String((error as any).code) : '0'
-                let out = stdout?.toString() + (stderr ? `\n${stderr.toString()}` : '')
-                if (out.length > MAX_OUTPUT_CHARS) {
-                    out = out.slice(0, MAX_OUTPUT_CHARS) + '\n... (truncated)'
-                }
-                resolve({ output: out, exitCode: code })
-            }
-        )
-        if (abortSignal) {
-            if (abortSignal.aborted) {
-                try {
-                    terminateProcess(proc as unknown as ChildProcess)
-                } catch {}
-                return reject(new Error('aborted'))
-            }
-            const onAbort = () => {
-                try {
-                    terminateProcess(proc as unknown as ChildProcess)
-                } catch {}
-                reject(new Error('aborted'))
-            }
-            abortSignal.addEventListener('abort', onAbort, { once: true })
-        }
-    })
-}
-
-export function executeCommandSpawn(
-    command: string,
-    abortSignal?: AbortSignal,
-    opts?: { cwd?: string }
+    opts?: { cwd?: string },
+    onChunk?: StreamCallback
 ): Promise<{ output: string; exitCode: string }> {
     return new Promise((resolve, reject) => {
         const isWindows = process.platform === 'win32'
@@ -116,6 +83,9 @@ export function executeCommandSpawn(
         let stdoutBuf = ''
         let stderrBuf = ''
         let truncated = false
+        // Line buffers for streaming
+        let stdoutLineBuffer = ''
+        let stderrLineBuffer = ''
 
         const onAbort = () => {
             try {
@@ -127,37 +97,218 @@ export function executeCommandSpawn(
             if (abortSignal.aborted) return onAbort()
             abortSignal.addEventListener('abort', onAbort, { once: true })
         }
+
+        const processChunk = (chunk: string, stream: 'stdout' | 'stderr') => {
+            // Append to line buffer
+            const lineBuffer = stream === 'stdout' ? stdoutLineBuffer : stderrLineBuffer
+            const fullData = lineBuffer + chunk
+            const lines = fullData.split('\n')
+            // The last element is the incomplete line (or empty if chunk ends with newline)
+            const incompleteLine = lines.pop() ?? ''
+            // Emit each complete line
+            for (const line of lines) {
+                if (onChunk) onChunk(line, stream)
+                // Also add to output buffer (subject to limit)
+                const targetBuf = stream === 'stdout' ? stdoutBuf : stderrBuf
+                const remain = MAX_OUTPUT_CHARS - targetBuf.length
+                if (remain > 0) {
+                    const lineWithNewline = line + '\n'
+                    if (lineWithNewline.length > remain) {
+                        if (stream === 'stdout') {
+                            stdoutBuf += lineWithNewline.slice(0, remain)
+                        } else {
+                            stderrBuf += lineWithNewline.slice(0, remain)
+                        }
+                        truncated = true
+                    } else {
+                        if (stream === 'stdout') {
+                            stdoutBuf += lineWithNewline
+                        } else {
+                            stderrBuf += lineWithNewline
+                        }
+                    }
+                } else {
+                    truncated = true
+                }
+            }
+            // Update line buffer
+            if (stream === 'stdout') {
+                stdoutLineBuffer = incompleteLine
+            } else {
+                stderrLineBuffer = incompleteLine
+            }
+        }
+
         child.stdout.on('data', chunk => {
             const s = chunk?.toString() ?? ''
-            const remain = MAX_OUTPUT_CHARS - stdoutBuf.length
-            if (remain > 0) {
-                if (s.length > remain) {
-                    stdoutBuf += s.slice(0, remain)
-                    truncated = true
-                } else {
-                    stdoutBuf += s
-                }
-            } else {
-                truncated = true
-            }
+            processChunk(s, 'stdout')
         })
         child.stderr.on('data', chunk => {
             const s = chunk?.toString() ?? ''
-            const remain = MAX_OUTPUT_CHARS - stderrBuf.length
-            if (remain > 0) {
-                if (s.length > remain) {
-                    stderrBuf += s.slice(0, remain)
-                    truncated = true
+            processChunk(s, 'stderr')
+        })
+        child.on('error', err => {
+            reject(err)
+        })
+        child.on('close', code => {
+            if (abortSignal) abortSignal.removeEventListener('abort', onAbort as any)
+            // Emit any remaining incomplete lines
+            if (stdoutLineBuffer.length > 0) {
+                if (onChunk) onChunk(stdoutLineBuffer, 'stdout')
+                // Add to stdoutBuf
+                const remain = MAX_OUTPUT_CHARS - stdoutBuf.length
+                if (remain > 0) {
+                    if (stdoutLineBuffer.length > remain) {
+                        stdoutBuf += stdoutLineBuffer.slice(0, remain)
+                        truncated = true
+                    } else {
+                        stdoutBuf += stdoutLineBuffer
+                    }
                 } else {
-                    stderrBuf += s
+                    truncated = true
                 }
-            } else {
-                truncated = true
             }
+            if (stderrLineBuffer.length > 0) {
+                if (onChunk) onChunk(stderrLineBuffer, 'stderr')
+                const remain = MAX_OUTPUT_CHARS - stderrBuf.length
+                if (remain > 0) {
+                    if (stderrLineBuffer.length > remain) {
+                        stderrBuf += stderrLineBuffer.slice(0, remain)
+                        truncated = true
+                    } else {
+                        stderrBuf += stderrLineBuffer
+                    }
+                } else {
+                    truncated = true
+                }
+            }
+            const exitCode = code == null ? '0' : String(code)
+            let output = stdoutBuf + (stderrBuf ? `\\n${stderrBuf}` : '')
+            if (truncated || output.length > MAX_OUTPUT_CHARS) {
+                if (output.length > MAX_OUTPUT_CHARS) output = output.slice(0, MAX_OUTPUT_CHARS)
+                output += '\\n... (truncated)'
+            }
+            resolve({ output, exitCode })
+        })
+    })
+}
+
+export function executeCommandSpawn(
+    command: string,
+    abortSignal?: AbortSignal,
+    opts?: { cwd?: string },
+    onChunk?: StreamCallback
+): Promise<{ output: string; exitCode: string }> {
+    return new Promise((resolve, reject) => {
+        const isWindows = process.platform === 'win32'
+        const cmd = isWindows ? process.env.ComSpec || 'cmd.exe' : process.env.SHELL || '/bin/sh'
+        const args = isWindows ? ['/d', '/s', '/c', command] : ['-c', command]
+        const child = spawn(cmd, args, {
+            cwd: opts?.cwd,
+            env: process.env,
+            stdio: ['ignore', 'pipe', 'pipe'],
+        })
+
+        let stdoutBuf = ''
+        let stderrBuf = ''
+        let truncated = false
+        // Line buffers for streaming
+        let stdoutLineBuffer = ''
+        let stderrLineBuffer = ''
+
+        const onAbort = () => {
+            try {
+                terminateProcess(child)
+            } catch {}
+            reject(new Error('aborted'))
+        }
+        if (abortSignal) {
+            if (abortSignal.aborted) return onAbort()
+            abortSignal.addEventListener('abort', onAbort, { once: true })
+        }
+
+        const processChunk = (chunk: string, stream: 'stdout' | 'stderr') => {
+            // Append to line buffer
+            const lineBuffer = stream === 'stdout' ? stdoutLineBuffer : stderrLineBuffer
+            const fullData = lineBuffer + chunk
+            const lines = fullData.split('\n')
+            // The last element is the incomplete line (or empty if chunk ends with newline)
+            const incompleteLine = lines.pop() ?? ''
+            // Emit each complete line
+            for (const line of lines) {
+                if (onChunk) onChunk(line, stream)
+                // Also add to output buffer (subject to limit)
+                const targetBuf = stream === 'stdout' ? stdoutBuf : stderrBuf
+                const remain = MAX_OUTPUT_CHARS - targetBuf.length
+                if (remain > 0) {
+                    const lineWithNewline = line + '\n'
+                    if (lineWithNewline.length > remain) {
+                        if (stream === 'stdout') {
+                            stdoutBuf += lineWithNewline.slice(0, remain)
+                        } else {
+                            stderrBuf += lineWithNewline.slice(0, remain)
+                        }
+                        truncated = true
+                    } else {
+                        if (stream === 'stdout') {
+                            stdoutBuf += lineWithNewline
+                        } else {
+                            stderrBuf += lineWithNewline
+                        }
+                    }
+                } else {
+                    truncated = true
+                }
+            }
+            // Update line buffer
+            if (stream === 'stdout') {
+                stdoutLineBuffer = incompleteLine
+            } else {
+                stderrLineBuffer = incompleteLine
+            }
+        }
+
+        child.stdout.on('data', chunk => {
+            const s = chunk?.toString() ?? ''
+            processChunk(s, 'stdout')
+        })
+        child.stderr.on('data', chunk => {
+            const s = chunk?.toString() ?? ''
+            processChunk(s, 'stderr')
         })
         child.on('error', err => reject(err))
         child.on('close', code => {
             if (abortSignal) abortSignal.removeEventListener('abort', onAbort as any)
+            // Emit any remaining incomplete lines
+            if (stdoutLineBuffer.length > 0) {
+                if (onChunk) onChunk(stdoutLineBuffer, 'stdout')
+                // Add to stdoutBuf
+                const remain = MAX_OUTPUT_CHARS - stdoutBuf.length
+                if (remain > 0) {
+                    if (stdoutLineBuffer.length > remain) {
+                        stdoutBuf += stdoutLineBuffer.slice(0, remain)
+                        truncated = true
+                    } else {
+                        stdoutBuf += stdoutLineBuffer
+                    }
+                } else {
+                    truncated = true
+                }
+            }
+            if (stderrLineBuffer.length > 0) {
+                if (onChunk) onChunk(stderrLineBuffer, 'stderr')
+                const remain = MAX_OUTPUT_CHARS - stderrBuf.length
+                if (remain > 0) {
+                    if (stderrLineBuffer.length > remain) {
+                        stderrBuf += stderrLineBuffer.slice(0, remain)
+                        truncated = true
+                    } else {
+                        stderrBuf += stderrLineBuffer
+                    }
+                } else {
+                    truncated = true
+                }
+            }
             const exitCode = code == null ? '0' : String(code)
             let output = stdoutBuf + (stderrBuf ? `\n${stderrBuf}` : '')
             if (truncated || output.length > MAX_OUTPUT_CHARS) {
@@ -184,6 +335,7 @@ export async function executeScript(params: {
     cwd?: string
     env?: Record<string, string>
     abortSignal?: AbortSignal
+    onChunk?: StreamCallback
 }): Promise<{ output: string; exitCode: string }> {
     const isWindows = process.platform === 'win32'
     const shell = params.shell || (isWindows ? 'pwsh' : 'bash')
@@ -243,6 +395,9 @@ export async function executeScript(params: {
         let stdoutBuf = ''
         let stderrBuf = ''
         let truncated = false
+        // Line buffers for streaming
+        let stdoutLineBuffer = ''
+        let stderrLineBuffer = ''
 
         const onAbort = () => {
             try {
@@ -250,6 +405,47 @@ export async function executeScript(params: {
             } catch {}
             reject(new Error('aborted'))
         }
+        const processChunk = (chunk: string, stream: 'stdout' | 'stderr') => {
+            // Append to line buffer
+            const lineBuffer = stream === 'stdout' ? stdoutLineBuffer : stderrLineBuffer
+            const fullData = lineBuffer + chunk
+            const lines = fullData.split('\n')
+            // The last element is the incomplete line (or empty if chunk ends with newline)
+            const incompleteLine = lines.pop() ?? ''
+            // Emit each complete line
+            for (const line of lines) {
+                if (params.onChunk) params.onChunk(line, stream)
+                // Also add to output buffer (subject to limit)
+                const targetBuf = stream === 'stdout' ? stdoutBuf : stderrBuf
+                const remain = MAX_OUTPUT_CHARS - targetBuf.length
+                if (remain > 0) {
+                    const lineWithNewline = line + '\n'
+                    if (lineWithNewline.length > remain) {
+                        if (stream === 'stdout') {
+                            stdoutBuf += lineWithNewline.slice(0, remain)
+                        } else {
+                            stderrBuf += lineWithNewline.slice(0, remain)
+                        }
+                        truncated = true
+                    } else {
+                        if (stream === 'stdout') {
+                            stdoutBuf += lineWithNewline
+                        } else {
+                            stderrBuf += lineWithNewline
+                        }
+                    }
+                } else {
+                    truncated = true
+                }
+            }
+            // Update line buffer
+            if (stream === 'stdout') {
+                stdoutLineBuffer = incompleteLine
+            } else {
+                stderrLineBuffer = incompleteLine
+            }
+        }
+
         if (params.abortSignal) {
             if (params.abortSignal.aborted) return onAbort()
             params.abortSignal.addEventListener('abort', onAbort, { once: true })
@@ -257,37 +453,47 @@ export async function executeScript(params: {
 
         child.stdout.on('data', chunk => {
             const s = chunk?.toString() ?? ''
-            const remain = MAX_OUTPUT_CHARS - stdoutBuf.length
-            if (remain > 0) {
-                if (s.length > remain) {
-                    stdoutBuf += s.slice(0, remain)
-                    truncated = true
-                } else {
-                    stdoutBuf += s
-                }
-            } else {
-                truncated = true
-            }
+            processChunk(s, 'stdout')
         })
         child.stderr.on('data', chunk => {
             const s = chunk?.toString() ?? ''
-            const remain = MAX_OUTPUT_CHARS - stderrBuf.length
-            if (remain > 0) {
-                if (s.length > remain) {
-                    stderrBuf += s.slice(0, remain)
-                    truncated = true
-                } else {
-                    stderrBuf += s
-                }
-            } else {
-                truncated = true
-            }
+            processChunk(s, 'stderr')
         })
         child.on('error', err => {
             reject(err)
         })
         child.on('close', code => {
             if (params.abortSignal) params.abortSignal.removeEventListener('abort', onAbort as any)
+            // Emit any remaining incomplete lines
+            if (stdoutLineBuffer.length > 0) {
+                if (params.onChunk) params.onChunk(stdoutLineBuffer, 'stdout')
+                // Add to stdoutBuf
+                const remain = MAX_OUTPUT_CHARS - stdoutBuf.length
+                if (remain > 0) {
+                    if (stdoutLineBuffer.length > remain) {
+                        stdoutBuf += stdoutLineBuffer.slice(0, remain)
+                        truncated = true
+                    } else {
+                        stdoutBuf += stdoutLineBuffer
+                    }
+                } else {
+                    truncated = true
+                }
+            }
+            if (stderrLineBuffer.length > 0) {
+                if (params.onChunk) params.onChunk(stderrLineBuffer, 'stderr')
+                const remain = MAX_OUTPUT_CHARS - stderrBuf.length
+                if (remain > 0) {
+                    if (stderrLineBuffer.length > remain) {
+                        stderrBuf += stderrLineBuffer.slice(0, remain)
+                        truncated = true
+                    } else {
+                        stderrBuf += stderrLineBuffer
+                    }
+                } else {
+                    truncated = true
+                }
+            }
             const exitCode = code == null ? '0' : String(code)
             let output = stdoutBuf + (stderrBuf ? `\n${stderrBuf}` : '')
             if (truncated || output.length > MAX_OUTPUT_CHARS) {

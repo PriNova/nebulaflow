@@ -157,6 +157,17 @@ async function executeSingleCLINode(
         ? replaceIndexedInputs(template, inputs, ctx as any)
         : (inputs[0] ?? '').toString()
 
+    const onChunk = (chunk: string, stream: 'stdout' | 'stderr') => {
+        void safePost(port, {
+            type: 'node_output_chunk',
+            data: {
+                nodeId: node.id,
+                chunk,
+                stream,
+            },
+        } as ExtensionToWorkflow)
+    }
+
     const { output } = await runCLICore({
         node,
         baseCommandOrScript: base,
@@ -167,6 +178,7 @@ async function executeSingleCLINode(
         host,
         approvalHandler,
         context: ctx,
+        onChunk,
     })
 
     return output
