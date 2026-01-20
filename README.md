@@ -11,14 +11,14 @@ A VS Code extension for visually designing and running developer workflows. Buil
 
 ## Project Focus: LLM Node
 
-The LLM node runs via the Amp SDK. The editor acts as a visual wrapper around the SDK: it builds prompts from upstream node outputs and executes them with the SDK.
+The LLM node runs via the Amp SDK and OpenRouter SDK. The editor acts as a visual wrapper around the SDK: it builds prompts from upstream node outputs and executes them with the SDK.
 
 - SDK distribution: NebulaFlow vendors the SDK as `@prinova/amp-sdk` from a local tarball under `vendor/amp-sdk/`. No local path linking is required.
-- Auth: Set `AMP_API_KEY` in your environment so the LLM node can execute via the SDK.
+- Auth: Set `AMP_API_KEY` in your environment for Amp SDK and `OPENROUTER_API_KEY` for OpenRouter SDK so the LLM node can execute via the SDK.
 
 ### Workspace LLM configuration (`.nebulaflow/settings.json`)
 
-- NebulaFlow can pass additional Amp SDK settings (including OpenRouter) via a workspace-local JSON file at `.nebulaflow/settings.json` in the first workspace folder.
+- NebulaFlow can pass additional Amp SDK settings via a workspace-local JSON file at `.nebulaflow/settings.json` in the first workspace folder.
 - The file should contain an `nebulaflow.settings` object that maps 1:1 to Amp SDK settings keys.
 
 Example:
@@ -28,7 +28,7 @@ Example:
   "nebulaflow": {
     "settings": {
       "openrouter.key": "sk-or-...",
-      "internal.primaryModel": "openrouter/kwaipilot/kat-coder-pro:free"
+      "internal.primaryModel": "openrouter/xiaomi/mimo-v2-flash:free"
     }
   }
 }
@@ -44,16 +44,20 @@ Example:
     "settings": {
       "openrouter.models": [
         {
-          "model": "anthropic/claude-3-5-sonnet-20241022",
+          "model": "openrouter/z-ai/glm-4.7-flash",
           "provider": "anthropic",
-          "maxOutputTokens": 8192,
-          "contextWindow": 200000
+          "maxOutputTokens": 131000,
+          "contextWindow": 200000,
+          "temperatur": 0.5,
+          "provider": "z-ai"
         },
         {
-          "model": "openai/o1-preview",
+          "model": "openrouter/openai/openai/gpt-5.2-codex",
           "provider": "openai",
           "isReasoning": true,
-          "reasoning_effort": "medium"
+          "reasoning_effort": "medium",
+          "maxOutputTokens": 128000,
+          "contextWindow": 400000
         }
       ]
     }
@@ -72,7 +76,7 @@ Example:
 
 ### LLM Node and Chat Continuation
 
-- LLM nodes run via the vendored Amp SDK (`@prinova/amp-sdk`), building prompts from upstream node outputs and executing them inside a thread so later runs can reuse the same conversation.
+- LLM nodes run via the vendored Amp SDK (`@prinova/amp-sdk`) and OpenRouter SDK, building prompts from upstream node outputs and executing them inside a thread so later runs can reuse the same conversation.
 - When an LLM node has an active `threadID`, the Right Sidebar shows a small chat panel that lets you send follow-up messages to that node; replies append to the existing assistant history and stream back into the Playbox, while drafts are scoped to the current execution run and cleared on workflow reset.
 
 ### Shell Node (CLI)
@@ -86,8 +90,11 @@ Example:
 - Execution: Script mode uses spawn (buffered) by default; Command mode can use spawn (buffered) via a toggle. Output is aggregated and truncated when too large.
 - Approvals: When enabled, the Right Sidebar shows an editable script/command and a structured summary (Mode, Shell, Safety, Stdin, Flags) before you approve.
 
-- Visual workflow editor with @xyflow/react
+### Visual Workflow Editor
+
 - Node types: CLI, LLM, Preview, Text Input, Loop Start/End, Accumulator, Variable, If/Else
+- Custom Nodes to store recuring node tasks into reusable units
+- Support Sub-Flows to group nodes into reusable units
 - Graph execution with ordered edges, token counting for previews, and abortion support
 - Shell node enhancements:
   - Script mode (multiline) via in-memory stdin (no temp files)
@@ -114,6 +121,10 @@ Example:
 1) Install dependencies
 
 ```bash
+git clone https://github.com/PriNova/nebulaflow
+cd nebulaflow
+```
+
 npm install
 ```
 
@@ -126,7 +137,7 @@ npm run build
 3) Launch the extension in VS Code
 
 - Open this folder in VS Code
-- Run and Debug: "Launch Extension (Desktop)"
+- Run and Debug: "Launch Extension (Desktop)" (F5)
   - This uses the `dev: start-webview-watch` task to watch webview assets
 
 4) Open the editor UI
@@ -217,54 +228,69 @@ npm run pack:electron -- --mac
 │  ├ Web/                        # React webview app (Vite) → dist/webviews
 │  │  ├ workflow.html            # Webview HTML entry
 │  │  ├ index.tsx / WorkflowApp.tsx
-│  │  ├ vite.config.mts
 │  │  └ components/
 │  │     ├ sidebar/              # Left/Right sidebars, PropertyEditor, actions
 │  │     ├ graph/                 # Custom edge component, edge paths, validation
+│  │     ├ nodes/                 # Node UI components (LLM, CLI, etc.)
 │  │     ├ modals/               # Help, confirm delete, text editor, markdown preview
-│  │     └ shared/               # Reusable UI (Markdown, copy button, run buttons, logo)
-│  ├ Application/                # Extension-side app layer (messaging, handlers)
-│  │  ├ register.ts              # VS Code command + webview lifecycle
-│  │  └ handlers/ExecuteWorkflow.ts
-│  ├ Core/                       # Pure types, models, engine helpers
-│  │  ├ models.ts                # Node types, DTOs (re-exports Protocol)
-│  │  └ Contracts/Protocol.ts    # Webview ⇄ Extension message contracts
+│  │     ├ shared/               # Reusable UI (Markdown, copy button, run buttons, logo)
+│  │     └ subflows/             # Sub-flow UI components
+│  ├ Application/                # Extension-side app layer (messaging, lifecycle)
+│  │  └ messaging/               # Message handling and routing
+│  ├ Core/                       # Pure types, models, validation
+│  │  └ validation/              # Schema validation helpers
 │  ├ DataAccess/                 # I/O adapters (FS, shell)
 │  │  ├ fs.ts                    # Save/load workflows and custom nodes
 │  │  └ shell.ts                 # Shell exec with abort/sanitization
-│  └ ExternalServices/           # Third-party integrations (placeholder)
-├ dist/                          # Build outputs (extension JS + webview assets)
-├ .vscode/
-│  ├ launch.json                 # Launch extension (desktop/web)
-│  └ tasks.json                  # Dev tasks (webview watch, builds)
+│  ├ WorkflowExecution/          # Graph execution engine
+│  │  ├ Application/             # Execution orchestration
+│  │  ├ Core/                    # Execution logic (engine, graph sorting)
+│  │  └ Shared/                  # Execution utilities
+│  ├ WorkflowPersistence/        # Workspace persistence
+│  ├ LLMIntegration/             # LLM node SDK integration
+│  ├ Library/                    # Custom nodes library
+│  ├ Subflows/                   # Sub-flow management
+│  └ Shared/                     # Shared infrastructure
+│     ├ Host/                    # Host services
+│     ├ Infrastructure/          # Base infrastructure
+│     └ LLM/                     # Shared LLM utilities
 ```
 
 ## Architecture
 
 This repo follows a vertical slice style within the `workflow/` directory:
 
-- Web (UI): webview UI, user-initiated actions, and protocol mirror
+- **Web (UI)**: webview UI, user-initiated actions, and protocol mirror
   - Web slices under `workflow/Web/components/`:
     - `sidebar/` (left/right sidebars, PropertyEditor, actions)
     - `graph/` (custom edges, edge paths, edge validation)
+    - `nodes/` (node UI components for LLM, CLI, control-flow, etc.)
     - `modals/` (help, confirm delete, text editor, markdown preview)
     - `shared/` (reusable UI: Markdown, copy button, run buttons, spinning logo)
+    - `subflows/` (sub-flow UI components)
   - Path aliases for slices are defined in [tsconfig.json](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/tsconfig.json#L16-L23) and [vite.config.mts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/vite.config.mts#L9-L17): `@graph/*`, `@sidebar/*`, `@modals/*`, `@nodes/*`, `@shared/*`.
-- Application: request/message handling, command orchestration
-- Core: pure types/models and execution helpers (graph sorting, node execution glue)
-- DataAccess: file system and shell adapters for persistence and process execution (script mode + spawn/streaming)
+- **Application**: request/message handling, command orchestration, and lifecycle management
+- **Core**: pure types/models and validation helpers
+- **DataAccess**: file system and shell adapters for persistence and process execution (script mode + spawn/streaming)
+- **WorkflowExecution**: graph execution engine with node runners for each node type
+- **WorkflowPersistence**: workspace persistence layer
+- **LLMIntegration**: LLM node SDK integration and workspace configuration
+- **Library**: custom nodes library management
+- **Subflows**: sub-flow management
+- **Shared**: shared infrastructure (Host, Infrastructure, LLM utilities)
 
 Execution flow:
 
 1. User opens the editor and edits a graph in the webview
 2. Webview posts messages (save, load, execute, token count) to the extension
-3. Extension validates, persists, and executes nodes in a safe order
+3. Extension validates, persists, and executes nodes in a safe order and in parallel if possible
 4. Status/results stream back to the webview for display
 
 ## Persistence
 
 - Workflows are JSON files saved under `.nebulaflow/workflows/` (versioned `1.x`)
 - Custom nodes are JSON files saved under `.nebulaflow/nodes/`
+- Subflows are JSON files saved under `.nebulaflow/subflows/`
 - The extension prompts for save/load locations scoped to the workspace
 
 ## Security
@@ -297,4 +323,4 @@ Execution flow:
 
 ## License
 
-TBD
+[MIT License](LICENSE)
