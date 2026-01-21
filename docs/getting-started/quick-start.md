@@ -21,55 +21,49 @@ This guide will help you create your first NebulaFlow workflow in under 5 minute
 2. Type "NebulaFlow: Open Workflow"
 3. Select "Open Workflow Editor"
 
-## Step 3: Create a New Workflow
+## Step 3: Clear the Default Workflow (Optional)
 
-1. In the webview, click "New Workflow"
-2. Give your workflow a name (e.g., "My First Workflow")
-3. The empty canvas will appear
+1. The workflow editor opens with a default workflow (Git Diff → Generate Commit Message → Git Commit)
+2. To start fresh, click the **Clear** button (trash icon) in the sidebar actions bar
+3. Confirm the deletion to remove all nodes
+4. The canvas will be empty
 
 ## Step 4: Add Nodes
 
-1. Open the Sidebar (click the menu icon or press `Ctrl+Shift+B`)
-2. Drag a **Start Node** onto the canvas
-3. Drag an **LLM Node** onto the canvas
-4. Drag a **CLI Node** onto the canvas
-5. Drag an **End Node** onto the canvas
+1. The left sidebar contains the Library with node categories (Agent, Text, Shell, Preview, Conditionals, Loops, Subflows)
+2. Drag an **Agent** node (LLM) onto the canvas
+3. Drag a **Shell** node (CLI) onto the canvas
 
 ## Step 5: Connect Nodes
 
-1. Click the **Start Node** and drag to the **LLM Node**
-2. Click the **LLM Node** and drag to the **CLI Node**
-3. Click the **CLI Node** and drag to the **End Node**
-
-Your workflow should look like:
+1. Click the **Agent** node and drag to the **Shell** node
+2. Your workflow should look like:
 ```
-Start → LLM → CLI → End
+Agent → Shell
 ```
 
 ## Step 6: Configure Nodes
 
-### Start Node
-- No configuration needed
-
-### LLM Node
-1. Click the LLM node
+### Agent Node (LLM)
+1. Click the Agent node
 2. In the property editor:
    - Select a model (e.g., "gpt-4o")
    - Enter a prompt: "Generate a simple greeting"
-   - Set temperature: 0.7
+   - (Optional) Adjust reasoning effort (minimal, low, medium, high)
+   - (Optional) Set a system prompt override
+3. You can also double-click the node body to edit the prompt directly
 
-### CLI Node
-1. Click the CLI node
+### Shell Node (CLI)
+1. Click the Shell node
 2. In the property editor:
-   - Command: `echo`
-   - Arguments: `Hello World!`
-
-### End Node
-- No configuration needed
+   - Ensure Mode is set to "command"
+   - Enter the command: `echo Hello World!`
+   - (Optional) Configure shell, stdin, environment, safety, and approval settings
+3. You can also double-click the node body to edit the command directly
 
 ## Step 7: Execute the Workflow
 
-1. Click the **Run** button (play icon) in the toolbar
+1. Click the **Run** button (play icon) in the sidebar actions bar
 2. Watch the execution flow through the nodes
 3. View the output in the execution log
 

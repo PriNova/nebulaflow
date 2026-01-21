@@ -9,7 +9,7 @@ Generate a greeting message using an LLM and display it.
 
 ### Workflow Structure
 ```
-Start → LLM Node → CLI Node → End
+Start → LLM Node → CLI Node (Shell) → End
 ```
 
 ### Step-by-Step Setup
@@ -21,7 +21,7 @@ Start → LLM Node → CLI Node → End
 2. **Add LLM Node**
    - Drag from palette
    - Configure:
-     - Model: gpt-4o
+     - Model: `openai/gpt-4o` (or any available model)
      - System Prompt: "You are a friendly assistant."
      - User Prompt: "Generate a warm greeting for a new user."
      - Temperature: 0.7
@@ -29,8 +29,9 @@ Start → LLM Node → CLI Node → End
 3. **Add CLI Node**
    - Drag from palette
    - Configure:
-     - Command: `echo`
-     - Arguments: `{{llmNode.output}}`
+     - Content: `echo "${1}"` (the full command line; `${1}` refers to the first parent output)
+     - (Optional) Mode: command (default)
+     - (Optional) Shell: bash (default)
 
 4. **Add End Node**
    - Drag from palette
@@ -59,20 +60,20 @@ Start → CLI (Read) → LLM (Process) → CLI (Write) → End
 1. **Start Node** - Default
 
 2. **CLI Node (Read)**
-   - Command: `cat`
-   - Arguments: `input.txt`
-   - Working Directory: `./`
+   - Content: `cat input.txt` (the full command line)
+   - (Optional) Mode: command (default)
+   - (Optional) Shell: bash (default)
 
 3. **LLM Node**
-   - Model: gpt-4o
+   - Model: `openai/gpt-4o` (or any available model)
    - System Prompt: "You are a text processor. Summarize the following text concisely."
-   - User Prompt: `{{cliRead.output}}`
+   - User Prompt: `${1}` (the output from CLI Read)
    - Temperature: 0.5
 
 4. **CLI Node (Write)**
-   - Command: `echo`
-   - Arguments: `{{llmNode.output}} > summary.txt`
-   - Working Directory: `./`
+   - Content: `echo "${1}" > summary.txt` (where `${1}` is the LLM output)
+   - (Optional) Mode: command (default)
+   - (Optional) Shell: bash (default)
 
 5. **End Node** - Default
 
@@ -86,7 +87,7 @@ Process data differently based on its content.
 
 ### Workflow Structure
 ```
-Start → LLM (Analyze) → Condition → [True] LLM (Process A)
+Start → LLM (Analyze) → If/Else → [True] LLM (Process A)
                                    → [False] LLM (Process B)
                                     → End
 ```
@@ -96,23 +97,23 @@ Start → LLM (Analyze) → Condition → [True] LLM (Process A)
 1. **Start Node** - Default
 
 2. **LLM Node (Analyze)**
-   - Model: gpt-4o
-   - System Prompt: "Analyze the following text and determine if it's positive or negative."
-   - User Prompt: `{{startNode.output}}`
-   - Temperature: 0.3
+- Model: `openai/gpt-4o` (or any available model)
+- System Prompt: "Analyze the following text and determine if it's positive or negative."
+- User Prompt: `${1}` (the output from Start Node)
+- Temperature: 0.3
 
-3. **Condition Node**
-   - Condition: `{{llmAnalyze.output}} == "positive"`
-   - True Branch: Connect to LLM Node A
-   - False Branch: Connect to LLM Node B
+3. **If/Else Node**
+- Content: `${1} == "positive"` (where `${1}` is the output from LLM Analyze)
+- True Branch: Connect to LLM Node A
+- False Branch: Connect to LLM Node B
 
 4. **LLM Node A (Positive)**
-   - System Prompt: "Generate an encouraging response."
-   - User Prompt: `{{llmAnalyze.output}}`
+- System Prompt: "Generate an encouraging response."
+- User Prompt: `${1}` (the output from LLM Analyze)
 
 5. **LLM Node B (Negative)**
-   - System Prompt: "Generate a supportive response."
-   - User Prompt: `{{llmAnalyze.output}}`
+- System Prompt: "Generate a supportive response."
+- User Prompt: `${1}` (the output from LLM Analyze)
 
 6. **End Node** - Default
 
@@ -126,32 +127,37 @@ Process multiple items in a list.
 
 ### Workflow Structure
 ```
-Start → Loop → LLM (Process) → CLI (Save) → Loop End → End
+Start → Loop Start → LLM (Process) → CLI (Save) → Loop End → End
 ```
 
 ### Step-by-Step Setup
 
 1. **Start Node**
-   - Output: Array of items to process
-   - Example: `["item1", "item2", "item3"]`
+- Output: (optional) can be used to override iteration count
+- Example: `3` (if using override)
 
-2. **Loop Node**
-   - Type: Foreach
-   - Input: `{{startNode.output}}`
-   - Delay: 1 second (to avoid rate limits)
+2. **Loop Start Node**
+- Iterations: `3` (fixed number of iterations)
+- Loop Variable: `i` (available as `${i}` in loop body)
+- Loop Mode: `fixed`
+   - (Optional) Override iterations: connect a parent node to the special input port
 
 3. **LLM Node**
-   - System Prompt: "Process this item and extract key information."
-   - User Prompt: `{{loopNode.currentItem}}`
+- System Prompt: "Generate a greeting for iteration ${i}."
+   - User Prompt: `Iteration ${i}` (or any content)
+   - Temperature: 0.7
 
 4. **CLI Node**
-   - Command: `echo`
-   - Arguments: `{{llmNode.output}} >> results.txt`
+   - Content: `echo "${1}" >> results.txt` (where `${1}` is the LLM output)
+   - (Optional) Mode: command (default)
 
-5. **End Node** - Default
+5. **Loop End Node**
+   - No configuration needed
+
+6. **End Node** - Default
 
 ### Execution
-The workflow processes each item in the list sequentially, saving results to a file.
+The workflow runs the loop body 3 times, each time using the iteration index `${i}`. The LLM generates a greeting, and the CLI appends it to a file.
 
 ## Example 5: API Integration
 
@@ -160,7 +166,7 @@ Fetch data from an API and process it.
 
 ### Workflow Structure
 ```
-Start → CLI (Fetch) → LLM (Analyze) → API (Send) → End
+Start → CLI (Fetch) → LLM (Analyze) → CLI (Send) → End
 ```
 
 ### Step-by-Step Setup
@@ -168,24 +174,23 @@ Start → CLI (Fetch) → LLM (Analyze) → API (Send) → End
 1. **Start Node** - Default
 
 2. **CLI Node (Fetch)**
-   - Command: `curl`
-   - Arguments: `https://api.example.com/data`
+   - Content: `curl https://api.example.com/data`
+   - (Optional) Mode: command (default)
 
 3. **LLM Node**
    - System Prompt: "Analyze the following JSON data and extract the main insights."
-   - User Prompt: `{{cliFetch.output}}`
+   - User Prompt: `${1}` (the output from CLI Fetch)
    - Temperature: 0.5
 
-4. **API Node**
-   - Endpoint: `https://api.example.com/insights`
-   - Method: POST
-   - Body: `{{llmNode.output}}`
-   - Headers: `Content-Type: application/json`
+4. **CLI Node (Send)**
+   - Content: `curl -X POST -H "Content-Type: application/json" -d '${1}' https://api.example.com/insights`
+   - (Optional) Mode: command (default)
+   - (Optional) Shell: bash (default)
 
 5. **End Node** - Default
 
 ### Execution
-The workflow fetches data, analyzes it with an LLM, and sends the insights to another API.
+The workflow fetches data, analyzes it with an LLM, and sends the insights to another API using a CLI node with curl.
 
 ## Common Patterns
 
@@ -211,7 +216,7 @@ Multiple paths from the same node (requires careful data handling).
 
 ### Looping
 ```
-A → Loop → B → C → Loop End
+A → Loop Start → B → C → Loop End
 ```
 Repeating operations on multiple items.
 
@@ -225,7 +230,7 @@ Repeating operations on multiple items.
 ### Test Incrementally
 - Run the workflow after each node addition
 - Check intermediate outputs
-- Use log nodes for debugging
+- Use Preview nodes for debugging
 
 ### Handle Errors
 - Add condition nodes for error checking
