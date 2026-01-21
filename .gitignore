@@ -3,7 +3,6 @@ dist/
 .vscode/settings.json
 .sourcegraph/
 .nebulaflow/
-docs/
 tasks/
 scripts/update-amp-sdk.mjs
 dist-tests/subflows.spec.cjs
@@ -11,3 +10,4 @@ dist-tests/subflows.spec.cjs
 scripts/check-sdk-version.mjs
 .amp/
 amp-review.md
+.venv/**
