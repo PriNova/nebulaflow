@@ -19,6 +19,19 @@ interface RightSidebarContainerProps {
     stoppedAtNodeId: string | null
     nodeAssistantContent: Map<string, AssistantContentItem[]>
     nodeThreadIDs: Map<string, string>
+    nodeSubAgentContent: Map<
+        string,
+        Map<
+            string,
+            {
+                subThreadID: string
+                parentThreadID?: string
+                agentType: string
+                status: 'running' | 'done' | 'error' | 'cancelled'
+                content: AssistantContentItem[]
+            }
+        >
+    >
     executionRunId: number
     isPaused: boolean
     selectionSummary: any
@@ -47,6 +60,7 @@ export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
     stoppedAtNodeId,
     nodeAssistantContent,
     nodeThreadIDs,
+    nodeSubAgentContent,
     executionRunId,
     isPaused,
     selectionSummary,
@@ -100,6 +114,7 @@ export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
                         stoppedAtNodeId={stoppedAtNodeId}
                         nodeAssistantContent={nodeAssistantContent}
                         nodeThreadIDs={nodeThreadIDs}
+                        nodeSubAgentContent={nodeSubAgentContent}
                         executionRunId={executionRunId}
                         isPaused={isPaused}
                         selection={selectionSummary}

@@ -147,6 +147,23 @@ export const useMessageHandler = (
     setNodeAssistantContent: React.Dispatch<React.SetStateAction<Map<string, any[]>>>,
     setIfElseDecisions: React.Dispatch<React.SetStateAction<Map<string, 'true' | 'false'>>>,
     setNodeThreadIDs: React.Dispatch<React.SetStateAction<Map<string, string>>>,
+    setNodeSubAgentContent: React.Dispatch<
+        React.SetStateAction<
+            Map<
+                string,
+                Map<
+                    string,
+                    {
+                        subThreadID: string
+                        parentThreadID?: string
+                        agentType: string
+                        status: 'running' | 'done' | 'error' | 'cancelled'
+                        content: any[]
+                    }
+                >
+            >
+        >
+    >,
     notify: (p: { type: 'success' | 'error'; text: string }) => void,
     edges: Edge[],
     orderedEdges: Edge[],
@@ -393,6 +410,67 @@ export const useMessageHandler = (
                     const normalizedContent: AssistantContentItem[] = filterInitialUserMessage(content)
                     // Latest snapshot from SDK becomes the current assistant timeline for this node
                     setNodeAssistantContent(prev => new Map(prev).set(nodeId, normalizedContent))
+                    break
+                }
+                case 'node_sub_agent_content': {
+                    const { nodeId, subThreadID, parentThreadID, agentType, status, content } = event
+                        .data.data as any
+                    if (nodeId && subThreadID && agentType) {
+                        // Mark node as executing when sub-agent updates arrive
+                        setExecutingNodeIds(prev => {
+                            const next = new Set(prev)
+                            next.add(nodeId)
+                            return next
+                        })
+                        // Store sub-agent content
+                        const normalizedContent: AssistantContentItem[] =
+                            filterInitialUserMessage(content)
+                        setNodeSubAgentContent(prev => {
+                            const nodeMap = prev.get(nodeId) || new Map()
+                            nodeMap.set(subThreadID, {
+                                subThreadID,
+                                parentThreadID,
+                                agentType,
+                                status,
+                                content: normalizedContent,
+                            })
+                            return new Map(prev).set(nodeId, nodeMap)
+                        })
+                    }
+                    break
+                }
+                case 'subflow_node_sub_agent_content': {
+                    const {
+                        subflowId,
+                        nodeId,
+                        subThreadID,
+                        parentThreadID,
+                        agentType,
+                        status,
+                        content,
+                    } = event.data.data as any
+                    if (nodeId && subThreadID && agentType) {
+                        // Mark node as executing when sub-agent updates arrive
+                        setExecutingNodeIds(prev => {
+                            const next = new Set(prev)
+                            next.add(nodeId)
+                            return next
+                        })
+                        // Store sub-agent content
+                        const normalizedContent: AssistantContentItem[] =
+                            filterInitialUserMessage(content)
+                        setNodeSubAgentContent(prev => {
+                            const nodeMap = prev.get(nodeId) || new Map()
+                            nodeMap.set(subThreadID, {
+                                subThreadID,
+                                parentThreadID,
+                                agentType,
+                                status,
+                                content: normalizedContent,
+                            })
+                            return new Map(prev).set(nodeId, nodeMap)
+                        })
+                    }
                     break
                 }
                 case 'subflow_node_assistant_content': {

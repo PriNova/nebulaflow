@@ -438,6 +438,7 @@ export const Flow: React.FC<{
         interruptedNodeId,
         stoppedAtNodeId,
         nodeAssistantContent,
+        nodeSubAgentContent,
         ifElseDecisions,
         executionRunId,
         onExecute,
@@ -452,6 +453,7 @@ export const Flow: React.FC<{
         setStoppedAtNodeId,
         setNodeErrors,
         setNodeAssistantContent,
+        setNodeSubAgentContent,
         setIfElseDecisions,
         setCompletedThisRun,
     } = useWorkflowExecution(vscodeAPI, nodes, edges, setNodes, setEdges, nodeResults)
@@ -650,6 +652,7 @@ export const Flow: React.FC<{
         setNodeAssistantContent,
         setIfElseDecisions,
         setNodeThreadIDs,
+        setNodeSubAgentContent,
         notify,
         edges,
         orderedEdges,
@@ -965,6 +968,7 @@ export const Flow: React.FC<{
     const resetResultsState = useCallback(() => {
         setNodeResults(new Map())
         setNodeAssistantContent(new Map())
+        setNodeSubAgentContent(new Map())
         setNodeThreadIDs(new Map())
         setNodeErrors(new Map())
         setNodes(prev =>
@@ -978,7 +982,7 @@ export const Flow: React.FC<{
         try {
             vscodeAPI.postMessage({ type: 'reset_results' } as any)
         } catch {}
-    }, [setNodeAssistantContent, setNodeErrors, vscodeAPI])
+    }, [setNodeAssistantContent, setNodeSubAgentContent, setNodeErrors, vscodeAPI])
 
     const clearWorkflow = useCallback(() => {
         resetResultsState()
@@ -1135,6 +1139,7 @@ export const Flow: React.FC<{
                         stoppedAtNodeId={stoppedAtNodeId}
                         nodeAssistantContent={nodeAssistantContent}
                         nodeThreadIDs={nodeThreadIDs}
+                        nodeSubAgentContent={nodeSubAgentContent}
                         executionRunId={executionRunId}
                         isPaused={isPaused}
                         selectionSummary={selectionSummary}

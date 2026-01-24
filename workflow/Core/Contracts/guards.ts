@@ -396,6 +396,31 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
                 Array.isArray((msg.data as any).content) &&
                 (msg.data as any).content.every(isAssistantContentItem)
             )
+        case 'node_sub_agent_content':
+            return (
+                isObject(msg.data) &&
+                isString((msg.data as any).nodeId) &&
+                isString((msg.data as any).subThreadID) &&
+                isString((msg.data as any).agentType) &&
+                ['running', 'done', 'error', 'cancelled'].includes((msg.data as any).status) &&
+                ((msg.data as any).parentThreadID === undefined ||
+                    isString((msg.data as any).parentThreadID)) &&
+                Array.isArray((msg.data as any).content) &&
+                (msg.data as any).content.every(isAssistantContentItem)
+            )
+        case 'subflow_node_sub_agent_content':
+            return (
+                isObject(msg.data) &&
+                isString((msg.data as any).subflowId) &&
+                isString((msg.data as any).nodeId) &&
+                isString((msg.data as any).subThreadID) &&
+                isString((msg.data as any).agentType) &&
+                ['running', 'done', 'error', 'cancelled'].includes((msg.data as any).status) &&
+                ((msg.data as any).parentThreadID === undefined ||
+                    isString((msg.data as any).parentThreadID)) &&
+                Array.isArray((msg.data as any).content) &&
+                (msg.data as any).content.every(isAssistantContentItem)
+            )
         case 'models_loaded':
             return Array.isArray(msg.data)
         case 'provide_custom_nodes':
