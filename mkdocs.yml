@@ -1,0 +1,128 @@
+site_name: NebulaFlow Documentation
+site_description: VS Code extension for designing and running LLM+CLI workflows as node graphs
+site_url: https://prinova.github.io/nebulaflow/
+
+repo_name: PriNova/nebulaflow
+repo_url: https://github.com/PriNova/nebulaflow
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+    - toc.integrate
+    - content.action.edit
+    - content.action.view
+    - content.code.copy
+    - content.code.select
+  toc:
+    collapse: true  # Collapse nested sections
+    depth: 3
+
+nav:
+  - Overview:
+    - Introduction: getting-started/introduction.md
+    - Architecture: getting-started/architecture.md
+    - Quick Start: getting-started/quick-start.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+    - First Workflow: getting-started/first-workflow.md
+  - User Guide:
+    - Workflow Design: user-guide/workflow-design.md
+    - Node Types:
+      - Overview: user-guide/nodes/index.md
+      - LLM Nodes: user-guide/nodes/llm-nodes.md
+      - CLI Nodes: user-guide/nodes/cli-nodes.md
+      - Condition Nodes: user-guide/nodes/condition-nodes.md
+      - Loop Nodes: user-guide/nodes/loop-nodes.md
+    - Connections: user-guide/connections.md
+    - Variables & State: user-guide/variables-state.md
+    - Execution & Debugging: user-guide/execution-debugging.md
+  - API Reference:
+    - Extension API: api-reference/extension.md
+    - Protocol Contracts: api-reference/protocol.md
+    - Node Types: api-reference/node-types.md
+    - Event System: api-reference/events.md
+  - Workflow Examples:
+    - Basic: workflows/basic.md
+    - Advanced: workflows/advanced.md
+    - Integrations:
+      - Overview: workflows/integrations/index.md
+      - LLM Integration: workflows/integrations/llm.md
+      - CLI Integration: workflows/integrations/cli.md
+      - External APIs: workflows/integrations/apis.md
+  - Technical:
+    - Architecture Details: technical/architecture.md
+    - Development Setup: technical/development.md
+    - Testing: technical/testing.md
+    - Build Process: technical/build.md
+    - Deployment: technical/deployment.md
+  - Contributing:
+    - Guidelines: contributing/guidelines.md
+    - Workflow: contributing/workflow.md
+    - Code Style: contributing/code-style.md
+    - Pull Requests: contributing/pull-requests.md
+  - Resources:
+    - FAQ: resources/faq.md
+    - Troubleshooting: resources/troubleshooting.md
+    - Glossary: resources/glossary.md
+
+plugins:
+  - search:
+      lang: en
+      prebuild_index: true
+  #- git-revision-date:
+  #    enabled: true
+  #    format: iso
+  #- mkdocs-video:
+  #    enabled: true
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/PriNova/nebulaflow
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/example
+  version:
+    provider: mike
+
+watch:
+  - docs/
+  - mkdocs.yml

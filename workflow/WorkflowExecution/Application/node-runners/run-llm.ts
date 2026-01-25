@@ -247,6 +247,32 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
         try {
             let finalText = ''
             const handledBlocked = new Set<string>()
+            const subAgentThreads = new Map<
+                string,
+                {
+                    parentThreadID?: string
+                    agentType: string
+                    status: 'running' | 'done' | 'error' | 'cancelled'
+                    messages: any[]
+                }
+            >()
+            const postSubAgentContent = async (subThreadID: string) => {
+                const entry = subAgentThreads.get(subThreadID)
+                if (!entry) return
+                const items = extractAssistantTimeline({ messages: entry.messages })
+                await safePost(port, {
+                    type: 'node_sub_agent_content',
+                    data: {
+                        nodeId: node.id,
+                        subThreadID,
+                        parentThreadID: entry.parentThreadID,
+                        agentType: entry.agentType,
+                        status: entry.status,
+                        content: items,
+                    },
+                } as ExtensionToWorkflow)
+            }
+
             const streamP = (async () => {
                 const runOptions: any = { prompt }
                 if (images && images.length > 0) {
@@ -264,144 +290,199 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
 
                 for await (const event of amp.runJSONL(runOptions)) {
                     abortSignal.throwIfAborted()
-                    if (event.type === 'messages') {
-                        const thread = event.thread as any
+                    switch (event.type) {
+                        case 'messages': {
+                            const thread = event.thread as any
 
-                        // Debug: log first user message content block types to confirm image blocks are present
-                        try {
-                            const firstUser = (thread?.messages || []).find(
-                                (m: any) => m.role === 'user'
-                            )
-                            const types = (firstUser?.content || []).map((b: any) => b.type)
-                            /* console.debug(
-                                `${logPrefix} First user message block types for node %s: %s`,
-                                node.id,
-                                JSON.stringify(types)
-                            ) */
-                        } catch {
-                            // best-effort only
-                        }
+                            // Debug: log first user message content block types to confirm image blocks are present
+                            try {
+                                const firstUser = (thread?.messages || []).find(
+                                    (m: any) => m.role === 'user'
+                                )
+                                const types = (firstUser?.content || []).map((b: any) => b.type)
+                                /* console.debug(
+                                    `${logPrefix} First user message block types for node %s: %s`,
+                                    node.id,
+                                    JSON.stringify(types)
+                                ) */
+                            } catch {
+                                // best-effort only
+                            }
 
-                        const items = extractAssistantTimeline(thread)
-                        await safePost(port, {
-                            type: 'node_assistant_content',
-                            data: {
-                                nodeId: node.id,
-                                threadID: thread.id,
-                                content: items,
-                                mode,
-                            },
-                        } as ExtensionToWorkflow)
+                            const items = extractAssistantTimeline(thread)
+                            await safePost(port, {
+                                type: 'node_assistant_content',
+                                data: {
+                                    nodeId: node.id,
+                                    threadID: thread.id,
+                                    content: items,
+                                    mode,
+                                },
+                            } as ExtensionToWorkflow)
 
-                        // Detect blocked-on-user tool results and request approval
-                        try {
-                            const blocked: Array<{
-                                toolUseID: string
-                                toAllow?: string[]
-                                reason?: string
-                                tokens?: { percent?: number; threshold?: number }
-                            }> = []
-                            for (const msg of thread?.messages || []) {
-                                if (msg.role === 'user') {
-                                    for (const block of msg.content || []) {
-                                        if (block.type === 'tool_result') {
-                                            const run = block.run || {}
-                                            if (run?.status === 'blocked-on-user' && block.toolUseID) {
-                                                blocked.push({
-                                                    toolUseID: block.toolUseID,
-                                                    toAllow: run.toAllow,
-                                                    reason: run.reason,
-                                                    tokens: run.tokens,
-                                                })
+                            // Detect blocked-on-user tool results and request approval
+                            try {
+                                const blocked: Array<{
+                                    toolUseID: string
+                                    toAllow?: string[]
+                                    reason?: string
+                                    tokens?: { percent?: number; threshold?: number }
+                                }> = []
+                                for (const msg of thread?.messages || []) {
+                                    if (msg.role === 'user') {
+                                        for (const block of msg.content || []) {
+                                            if (block.type === 'tool_result') {
+                                                const run = block.run || {}
+                                                if (
+                                                    run?.status === 'blocked-on-user' &&
+                                                    block.toolUseID
+                                                ) {
+                                                    blocked.push({
+                                                        toolUseID: block.toolUseID,
+                                                        toAllow: run.toAllow,
+                                                        reason: run.reason,
+                                                        tokens: run.tokens,
+                                                    })
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
-                            for (const b of blocked) {
-                                if (handledBlocked.has(b.toolUseID)) continue
-                                handledBlocked.add(b.toolUseID)
+                                for (const b of blocked) {
+                                    if (handledBlocked.has(b.toolUseID)) continue
+                                    handledBlocked.add(b.toolUseID)
 
-                                // Auto-approve when dangerouslyAllowAll is enabled, regardless of toAllow content
-                                if (autoApprove) {
-                                    if (!b.toAllow || b.toAllow.length === 0) {
-                                        console.warn(
-                                            `${logPrefix} Auto-approving toolUseID=%s with no explicit toAllow`,
-                                            b.toolUseID
-                                        )
+                                    // Auto-approve when dangerouslyAllowAll is enabled, regardless of toAllow content
+                                    if (autoApprove) {
+                                        if (!b.toAllow || b.toAllow.length === 0) {
+                                            console.warn(
+                                                `${logPrefix} Auto-approving toolUseID=%s with no explicit toAllow`,
+                                                b.toolUseID
+                                            )
+                                        }
+                                        await amp.sendToolInput({
+                                            threadID: thread.id,
+                                            toolUseID: b.toolUseID,
+                                            value: { accepted: true },
+                                        })
+                                        continue
                                     }
+
+                                    const summaryLines: string[] = []
+                                    if (b.toAllow && Array.isArray(b.toAllow) && b.toAllow.length > 0) {
+                                        summaryLines.push('Command(s) awaiting approval:')
+                                        for (const c of b.toAllow) summaryLines.push(`- ${c}`)
+                                    }
+                                    if (b.reason) summaryLines.push(`Reason: ${b.reason}`)
+                                    if (
+                                        b.tokens &&
+                                        (b.tokens.percent != null || b.tokens.threshold != null)
+                                    ) {
+                                        const pct =
+                                            b.tokens.percent != null ? `${b.tokens.percent}%` : 'n/a'
+                                        const thr =
+                                            b.tokens.threshold != null ? `${b.tokens.threshold}` : 'n/a'
+                                        summaryLines.push(`Tokens: ${pct} (threshold ${thr})`)
+                                    }
+                                    const display = summaryLines.join('\n') || 'Approval required'
+
+                                    await safePost(port, {
+                                        type: 'node_execution_status',
+                                        data: {
+                                            nodeId: node.id,
+                                            status: 'pending_approval',
+                                            result: display,
+                                        },
+                                    } as ExtensionToWorkflow)
+
+                                    let accepted = false
+                                    try {
+                                        const decision = await approvalHandler(node.id)
+                                        if ((decision as any)?.type === 'aborted') {
+                                            throw new AbortedError()
+                                        }
+                                        accepted = true
+                                    } catch {
+                                        accepted = false
+                                    }
+
                                     await amp.sendToolInput({
                                         threadID: thread.id,
                                         toolUseID: b.toolUseID,
-                                        value: { accepted: true },
+                                        value: { accepted },
                                     })
-                                    continue
                                 }
-
-                                const summaryLines: string[] = []
-                                if (b.toAllow && Array.isArray(b.toAllow) && b.toAllow.length > 0) {
-                                    summaryLines.push('Command(s) awaiting approval:')
-                                    for (const c of b.toAllow) summaryLines.push(`- ${c}`)
-                                }
-                                if (b.reason) summaryLines.push(`Reason: ${b.reason}`)
-                                if (
-                                    b.tokens &&
-                                    (b.tokens.percent != null || b.tokens.threshold != null)
-                                ) {
-                                    const pct = b.tokens.percent != null ? `${b.tokens.percent}%` : 'n/a'
-                                    const thr =
-                                        b.tokens.threshold != null ? `${b.tokens.threshold}` : 'n/a'
-                                    summaryLines.push(`Tokens: ${pct} (threshold ${thr})`)
-                                }
-                                const display = summaryLines.join('\n') || 'Approval required'
-
-                                await safePost(port, {
-                                    type: 'node_execution_status',
-                                    data: {
-                                        nodeId: node.id,
-                                        status: 'pending_approval',
-                                        result: display,
-                                    },
-                                } as ExtensionToWorkflow)
-
-                                let accepted = false
-                                try {
-                                    const decision = await approvalHandler(node.id)
-                                    if ((decision as any)?.type === 'aborted') {
-                                        throw new AbortedError()
-                                    }
-                                    accepted = true
-                                } catch {
-                                    accepted = false
-                                }
-
-                                await amp.sendToolInput({
-                                    threadID: thread.id,
-                                    toolUseID: b.toolUseID,
-                                    value: { accepted },
-                                })
+                            } catch (e) {
+                                // If approval wait aborted, surface abort
+                                if (e instanceof AbortedError) throw e
+                                // Otherwise, continue streaming; errors here shouldn't crash the node
                             }
-                        } catch (e) {
-                            // If approval wait aborted, surface abort
-                            if (e instanceof AbortedError) throw e
-                            // Otherwise, continue streaming; errors here shouldn't crash the node
-                        }
 
-                        // Update latest assistant text for final result only
-                        const lastAssistantMessage = thread.messages?.findLast(
-                            (m: any) => m.role === 'assistant'
-                        )
-                        if (lastAssistantMessage) {
-                            const textBlocks = (lastAssistantMessage.content || []).filter(
-                                (b: any) => b.type === 'text'
+                            // Update latest assistant text for final result only
+                            const lastAssistantMessage = thread.messages?.findLast(
+                                (m: any) => m.role === 'assistant'
                             )
-                            if (textBlocks.length > 0) {
-                                finalText = textBlocks
-                                    .map((b: any) => b.text)
-                                    .join('\n')
-                                    .trim()
+                            if (lastAssistantMessage) {
+                                const textBlocks = (lastAssistantMessage.content || []).filter(
+                                    (b: any) => b.type === 'text'
+                                )
+                                if (textBlocks.length > 0) {
+                                    finalText = textBlocks
+                                        .map((b: any) => b.text)
+                                        .join('\n')
+                                        .trim()
+                                }
                             }
+                            break
                         }
+                        case 'sub-agent-start': {
+                            const subThreadID = (event as any).subThreadID as string | undefined
+                            if (!subThreadID) break
+                            const existing = subAgentThreads.get(subThreadID)
+                            subAgentThreads.set(subThreadID, {
+                                parentThreadID:
+                                    (event as any).parentThreadID ?? existing?.parentThreadID,
+                                agentType:
+                                    (event as any).agentType ?? existing?.agentType ?? 'sub-agent',
+                                status: 'running',
+                                messages: existing?.messages ?? [],
+                            })
+                            await postSubAgentContent(subThreadID)
+                            break
+                        }
+                        case 'sub-agent-messages': {
+                            const subThreadID = (event as any).subThreadID as string | undefined
+                            if (!subThreadID) break
+                            const thread = (event as any).thread
+                            const existing = subAgentThreads.get(subThreadID)
+                            subAgentThreads.set(subThreadID, {
+                                parentThreadID:
+                                    (event as any).parentThreadID ?? existing?.parentThreadID,
+                                agentType:
+                                    (event as any).agentType ?? existing?.agentType ?? 'sub-agent',
+                                status: existing?.status ?? 'running',
+                                messages: thread?.messages ?? [],
+                            })
+                            await postSubAgentContent(subThreadID)
+                            break
+                        }
+                        case 'sub-agent-end': {
+                            const subThreadID = (event as any).subThreadID as string | undefined
+                            if (!subThreadID) break
+                            const existing = subAgentThreads.get(subThreadID)
+                            subAgentThreads.set(subThreadID, {
+                                parentThreadID:
+                                    (event as any).parentThreadID ?? existing?.parentThreadID,
+                                agentType:
+                                    (event as any).agentType ?? existing?.agentType ?? 'sub-agent',
+                                status: (event as any).status ?? existing?.status ?? 'done',
+                                messages: existing?.messages ?? [],
+                            })
+                            await postSubAgentContent(subThreadID)
+                            break
+                        }
+                        default:
+                            break
                     }
                 }
             })()

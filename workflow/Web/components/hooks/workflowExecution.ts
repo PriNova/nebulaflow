@@ -21,6 +21,21 @@ export const useWorkflowExecution = (
     const [stoppedAtNodeId, setStoppedAtNodeId] = useState<string | null>(null)
     const [nodeResults, setNodeResults] = useState<Map<string, string>>(new Map())
     const [nodeAssistantContent, setNodeAssistantContent] = useState<Map<string, any[]>>(new Map())
+    const [nodeSubAgentContent, setNodeSubAgentContent] = useState<
+        Map<
+            string,
+            Map<
+                string,
+                {
+                    subThreadID: string
+                    parentThreadID?: string
+                    agentType: string
+                    status: 'running' | 'done' | 'error' | 'cancelled'
+                    content: any[]
+                }
+            >
+        >
+    >(new Map())
     const [ifElseDecisions, setIfElseDecisions] = useState<Map<string, 'true' | 'false'>>(new Map())
     const [executionRunId, setExecutionRunId] = useState(0)
     const [completedThisRun, setCompletedThisRun] = useState<Set<string>>(new Set())
@@ -37,6 +52,7 @@ export const useWorkflowExecution = (
         setAbortController(null)
         setNodeResults(new Map())
         setNodeAssistantContent(new Map())
+        setNodeSubAgentContent(new Map())
         setIfElseDecisions(new Map())
         setCompletedThisRun(new Set())
     }, [setEdges, setNodes])
@@ -226,6 +242,7 @@ export const useWorkflowExecution = (
         interruptedNodeId,
         stoppedAtNodeId,
         nodeAssistantContent,
+        nodeSubAgentContent,
         ifElseDecisions,
         executionRunId,
         onExecute,
@@ -241,6 +258,7 @@ export const useWorkflowExecution = (
         setNodeResults,
         setNodeErrors,
         setNodeAssistantContent,
+        setNodeSubAgentContent,
         setIfElseDecisions,
         setCompletedThisRun,
     }

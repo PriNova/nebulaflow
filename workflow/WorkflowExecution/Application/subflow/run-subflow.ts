@@ -158,6 +158,19 @@ export async function runSubflowWrapper(
                             mode: innerMsg.data.mode,
                         },
                     } as any)
+                } else if (innerMsg?.type === 'node_sub_agent_content' && innerMsg?.data) {
+                    await safePost(port, {
+                        type: 'subflow_node_sub_agent_content',
+                        data: {
+                            subflowId,
+                            nodeId: innerMsg.data.nodeId,
+                            subThreadID: innerMsg.data.subThreadID,
+                            parentThreadID: innerMsg.data.parentThreadID,
+                            agentType: innerMsg.data.agentType,
+                            status: innerMsg.data.status,
+                            content: innerMsg.data.content,
+                        },
+                    } as any)
                 }
             } catch (err) {
                 // Log forwarding failures so message delivery issues are diagnosable
