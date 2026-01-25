@@ -298,6 +298,31 @@ interface NodeRejectionCommand extends BaseWorkflowMessage {
     data: { nodeId: string; reason?: string }
 }
 
+interface NodeSubAgentContentEvent extends BaseWorkflowMessage {
+    type: 'node_sub_agent_content'
+    data: {
+        nodeId: string
+        subThreadID: string
+        parentThreadID?: string
+        agentType: string
+        status: 'running' | 'done' | 'error' | 'cancelled'
+        content: AssistantContentItem[]
+    }
+}
+
+interface SubflowNodeSubAgentContentEvent extends BaseWorkflowMessage {
+    type: 'subflow_node_sub_agent_content'
+    data: {
+        subflowId: string
+        nodeId: string
+        subThreadID: string
+        parentThreadID?: string
+        agentType: string
+        status: 'running' | 'done' | 'error' | 'cancelled'
+        content: AssistantContentItem[]
+    }
+}
+
 interface ModelsLoadedEvent extends BaseWorkflowMessage {
     type: 'models_loaded'
     data: Model[]
@@ -413,6 +438,8 @@ export type ExtensionToWorkflow =
     | NodeOutputChunkEvent
     | SubflowNodeExecutionStatusEvent
     | SubflowNodeAssistantContentEvent
+    | NodeSubAgentContentEvent
+    | SubflowNodeSubAgentContentEvent
     | ProvideCustomModelsEvent
     | StorageScopeEvent
     | SubflowSavedEvent

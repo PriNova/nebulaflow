@@ -38,3 +38,5 @@ electron/
 .dev-notes.md
 .gitignore
 AGENTS.md
+
+.venv/**

@@ -40,14 +40,13 @@ Example:
       "openrouter.models": [
         {
           "model": "openrouter/z-ai/glm-4.7-flash",
-          "provider": "anthropic",
+          "provider": "z-ai",
           "maxOutputTokens": 131000,
           "contextWindow": 200000,
-          "temperatur": 0.5,
-          "provider": "z-ai"
+          "temperatur": 0.5
         },
         {
-          "model": "openrouter/openai/openai/gpt-5.2-codex",
+          "model": "openrouter/openai/gpt-5.2-codex",
           "provider": "openai",
           "isReasoning": true,
           "reasoning_effort": "medium",
