@@ -272,26 +272,7 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
                     },
                 } as ExtensionToWorkflow)
             }
-            const upsertSubAgentMessage = (messages: any[], message: any): any[] => {
-                if (!message) return messages
-                const messageId = message?.id
-                if (messageId) {
-                    const index = messages.findIndex(existing => existing?.id === messageId)
-                    if (index === -1) return [...messages, message]
-                    return messages.map((existing, idx) => (idx === index ? message : existing))
-                }
 
-                const last = messages[messages.length - 1]
-                if (last?.role && message?.role && last.role === message.role) {
-                    const lastState = last?.state?.type
-                    const nextState = message?.state?.type
-                    if (lastState === 'streaming' || nextState === 'streaming') {
-                        return [...messages.slice(0, -1), message]
-                    }
-                }
-
-                return [...messages, message]
-            }
             const streamP = (async () => {
                 const runOptions: any = { prompt }
                 if (images && images.length > 0) {
@@ -469,20 +450,18 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
                             await postSubAgentContent(subThreadID)
                             break
                         }
-                        case 'sub-agent-message': {
-                            const subThreadID = (event as any).threadID as string | undefined
+                        case 'sub-agent-messages': {
+                            const subThreadID = (event as any).subThreadID as string | undefined
                             if (!subThreadID) break
+                            const thread = (event as any).thread
                             const existing = subAgentThreads.get(subThreadID)
-                            const messages = upsertSubAgentMessage(
-                                existing?.messages ?? [],
-                                (event as any).message
-                            )
                             subAgentThreads.set(subThreadID, {
-                                parentThreadID: existing?.parentThreadID,
+                                parentThreadID:
+                                    (event as any).parentThreadID ?? existing?.parentThreadID,
                                 agentType:
                                     (event as any).agentType ?? existing?.agentType ?? 'sub-agent',
                                 status: existing?.status ?? 'running',
-                                messages,
+                                messages: thread?.messages ?? [],
                             })
                             await postSubAgentContent(subThreadID)
                             break
