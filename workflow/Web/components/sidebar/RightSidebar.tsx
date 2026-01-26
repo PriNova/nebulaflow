@@ -757,28 +757,45 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             error: 'Error',
             cancelled: 'Cancelled',
         }
+        const subAgentKey = `${parentNodeId}:sub:${subAgent.subThreadID}`
 
         return (
-            <div className="tw-border tw-border-dashed tw-border-[var(--vscode-panel-border)] tw-rounded tw-p-2 tw-bg-[var(--vscode-sideBar-dropBackground)] tw-mt-2">
-                <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
-                    <div className="tw-flex tw-items-center tw-gap-2">
-                        <span className="tw-text-xs tw-font-semibold tw-text-[var(--vscode-foreground)]">
-                            Sub-agent: {subAgent.agentType}
-                        </span>
-                        <span className={`tw-text-xs ${statusColors[subAgent.status]}`}>
-                            {statusLabels[subAgent.status]}
-                        </span>
-                    </div>
-                </div>
-                <div className="tw-space-y-2">
-                    {renderAssistantTimeline({
-                        items: subAgent.content,
-                        nodeId: `${parentNodeId}:sub:${subAgent.subThreadID}`,
-                        isExecuting: isExecuting && subAgent.status === 'running',
-                        nodeSubAgentContent,
-                    })}
-                </div>
-            </div>
+            <Accordion type="single" collapsible defaultValue={subAgentKey}>
+                <AccordionItem
+                    value={subAgentKey}
+                    className="tw-border tw-border-dashed tw-border-[var(--vscode-panel-border)] tw-rounded tw-mt-2"
+                >
+                    <AccordionTrigger
+                        className={clsx(
+                            'tw-w-full tw-text-xs tw-h-7 tw-py-1 tw-px-2 tw-bg-[var(--vscode-sideBar-dropBackground)] tw-rounded-t',
+                            styles['sidebar-accordion-trigger']
+                        )}
+                    >
+                        <div className="tw-flex tw-items-center tw-justify-between tw-w-full">
+                            <div className="tw-flex tw-items-center tw-gap-2 tw-truncate">
+                                <span className="tw-text-xs tw-font-semibold tw-text-[var(--vscode-foreground)] tw-truncate">
+                                    Sub-agent: {subAgent.agentType}
+                                </span>
+                            </div>
+                            <span className={clsx('tw-text-xs', statusColors[subAgent.status])}>
+                                {statusLabels[subAgent.status]}
+                            </span>
+                        </div>
+                    </AccordionTrigger>
+                    <AccordionContent>
+                        <div className="tw-p-2 tw-bg-[var(--vscode-sideBar-dropBackground)] tw-rounded-b">
+                            <div className="tw-space-y-2">
+                                {renderAssistantTimeline({
+                                    items: subAgent.content,
+                                    nodeId: `${parentNodeId}:sub:${subAgent.subThreadID}`,
+                                    isExecuting: isExecuting && subAgent.status === 'running',
+                                    nodeSubAgentContent,
+                                })}
+                            </div>
+                        </div>
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
         )
     }
 
