@@ -733,6 +733,55 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         )
     }
 
+    const renderSubAgentTimeline = (args: {
+        subAgent: {
+            subThreadID: string
+            parentThreadID?: string
+            agentType: string
+            status: 'running' | 'done' | 'error' | 'cancelled'
+            content: AssistantContentItem[]
+        }
+        parentNodeId: string
+        isExecuting: boolean
+    }): React.ReactNode => {
+        const { subAgent, parentNodeId, isExecuting } = args
+        const statusColors: Record<'running' | 'done' | 'error' | 'cancelled', string> = {
+            running: 'tw-text-[var(--vscode-testing-iconPassed)]',
+            done: 'tw-text-[var(--vscode-testing-iconPassed)]',
+            error: 'tw-text-[var(--vscode-charts-red)]',
+            cancelled: 'tw-text-[var(--vscode-descriptionForeground)]',
+        }
+        const statusLabels: Record<'running' | 'done' | 'error' | 'cancelled', string> = {
+            running: 'Running',
+            done: 'Done',
+            error: 'Error',
+            cancelled: 'Cancelled',
+        }
+
+        return (
+            <div className="tw-border tw-border-dashed tw-border-[var(--vscode-panel-border)] tw-rounded tw-p-2 tw-bg-[var(--vscode-sideBar-dropBackground)] tw-mt-2">
+                <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
+                    <div className="tw-flex tw-items-center tw-gap-2">
+                        <span className="tw-text-xs tw-font-semibold tw-text-[var(--vscode-foreground)]">
+                            Sub-agent: {subAgent.agentType}
+                        </span>
+                        <span className={`tw-text-xs ${statusColors[subAgent.status]}`}>
+                            {statusLabels[subAgent.status]}
+                        </span>
+                    </div>
+                </div>
+                <div className="tw-space-y-2">
+                    {renderAssistantTimeline({
+                        items: subAgent.content,
+                        nodeId: `${parentNodeId}:sub:${subAgent.subThreadID}`,
+                        isExecuting: isExecuting && subAgent.status === 'running',
+                        nodeSubAgentContent,
+                    })}
+                </div>
+            </div>
+        )
+    }
+
     const renderAssistantTimeline = (args: {
         items: AssistantContentItem[]
         nodeId: string
@@ -740,8 +789,22 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         resultText?: string
         prompt?: string
         promptNodeId?: string
+        nodeSubAgentContent?: Map<
+            string,
+            Map<
+                string,
+                {
+                    subThreadID: string
+                    parentThreadID?: string
+                    agentType: string
+                    status: 'running' | 'done' | 'error' | 'cancelled'
+                    content: AssistantContentItem[]
+                }
+            >
+        >
     }) => {
-        const { items, nodeId, isExecuting, resultText, prompt, promptNodeId } = args
+        const { items, nodeId, isExecuting, resultText, prompt, promptNodeId, nodeSubAgentContent } =
+            args
         const displayItems = getAssistantDisplayItems(items, {
             isExecuting,
             resultText,
@@ -789,15 +852,41 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             const baseIndex = segments.length
             segments.push(
                 <Accordion key={`${nodeId}:accordion:${baseIndex}`} type="multiple">
-                    {pendingNonText.map((it, idx) =>
-                        renderAssistantAccordionItem(
+                    {pendingNonText.map((it, idx) => {
+                        const itemKey = it.type === 'tool_use' ? it.id : `${it.type}-${idx}`
+
+                        // If this is a tool_use with a subThreadID, render sub-agent content inline
+                        if (it.type === 'tool_use' && it.subThreadID && nodeSubAgentContent) {
+                            const subAgentMap = nodeSubAgentContent.get(nodeId)
+                            const subAgent = subAgentMap?.get(it.subThreadID)
+                            if (subAgent) {
+                                return (
+                                    <div key={`tool-with-subagent-${itemKey}`}>
+                                        {renderAssistantAccordionItem(
+                                            it,
+                                            idx,
+                                            nodeId,
+                                            isExecuting,
+                                            it.type === 'tool_use' ? pairedMap.get(it.id) : undefined
+                                        )}
+                                        {renderSubAgentTimeline({
+                                            subAgent,
+                                            parentNodeId: nodeId,
+                                            isExecuting,
+                                        })}
+                                    </div>
+                                )
+                            }
+                        }
+
+                        return renderAssistantAccordionItem(
                             it,
                             idx,
                             nodeId,
                             isExecuting,
                             it.type === 'tool_use' ? pairedMap.get(it.id) : undefined
                         )
-                    )}
+                    })}
                 </Accordion>
             )
             pendingNonText.length = 0
@@ -1050,115 +1139,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                                                             ? node.data.content.trim()
                                                             : '',
                                                     promptNodeId: node.id,
+                                                    nodeSubAgentContent,
                                                 })}
                                             </div>
                                         )}
-
-                                    {/* Sub-agents section */}
-                                    {node.type === NodeType.LLM && nodeSubAgentContent.has(node.id) && (
-                                        <Accordion type="single" collapsible>
-                                            <AccordionItem value={`${node.id}-subagents`}>
-                                                <AccordionTrigger
-                                                    className={clsx(
-                                                        'tw-w-full tw-text-sm tw-h-6 tw-py-[.1rem]',
-                                                        styles['sidebar-accordion-trigger']
-                                                    )}
-                                                >
-                                                    <div className="tw-flex tw-items-center tw-gap-2">
-                                                        <span>Sub-agents</span>
-                                                    </div>
-                                                </AccordionTrigger>
-                                                <AccordionContent>
-                                                    <div className="tw-mt-1 tw-space-y-2">
-                                                        {(() => {
-                                                            const subAgentMap =
-                                                                nodeSubAgentContent.get(node.id) ||
-                                                                new Map()
-                                                            const subAgentEntries = Array.from(
-                                                                subAgentMap.entries()
-                                                            )
-                                                            if (subAgentEntries.length === 0) {
-                                                                return null
-                                                            }
-                                                            return subAgentEntries.map(
-                                                                ([subThreadID, subAgent]) => {
-                                                                    const statusColors: Record<
-                                                                        | 'running'
-                                                                        | 'done'
-                                                                        | 'error'
-                                                                        | 'cancelled',
-                                                                        string
-                                                                    > = {
-                                                                        running:
-                                                                            'tw-text-[var(--vscode-testing-iconPassed)]',
-                                                                        done: 'tw-text-[var(--vscode-testing-iconPassed)]',
-                                                                        error: 'tw-text-[var(--vscode-charts-red)]',
-                                                                        cancelled:
-                                                                            'tw-text-[var(--vscode-descriptionForeground)]',
-                                                                    }
-                                                                    const statusLabels: Record<
-                                                                        | 'running'
-                                                                        | 'done'
-                                                                        | 'error'
-                                                                        | 'cancelled',
-                                                                        string
-                                                                    > = {
-                                                                        running: 'Running',
-                                                                        done: 'Done',
-                                                                        error: 'Error',
-                                                                        cancelled: 'Cancelled',
-                                                                    }
-                                                                    const statusKey = subAgent.status as
-                                                                        | 'running'
-                                                                        | 'done'
-                                                                        | 'error'
-                                                                        | 'cancelled'
-                                                                    return (
-                                                                        <div
-                                                                            key={subThreadID}
-                                                                            className="tw-border tw-border-dashed tw-border-[var(--vscode-panel-border)] tw-rounded tw-p-2 tw-bg-[var(--vscode-sideBar-dropBackground)]"
-                                                                        >
-                                                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
-                                                                                <div className="tw-flex tw-items-center tw-gap-2">
-                                                                                    <span className="tw-text-xs tw-font-semibold tw-text-[var(--vscode-foreground)]">
-                                                                                        Sub-agent:{' '}
-                                                                                        {
-                                                                                            subAgent.agentType
-                                                                                        }
-                                                                                    </span>
-                                                                                    <span
-                                                                                        className={`tw-text-xs ${statusColors[statusKey]}`}
-                                                                                    >
-                                                                                        {
-                                                                                            statusLabels[
-                                                                                                statusKey
-                                                                                            ]
-                                                                                        }
-                                                                                    </span>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="tw-space-y-2">
-                                                                                {renderAssistantTimeline(
-                                                                                    {
-                                                                                        items: subAgent.content,
-                                                                                        nodeId: `${node.id}:sub:${subThreadID}`,
-                                                                                        isExecuting:
-                                                                                            executingNodeIds.has(
-                                                                                                node.id
-                                                                                            ),
-                                                                                    }
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    )
-                                                                }
-                                                            )
-                                                        })()}
-                                                    </div>
-                                                </AccordionContent>
-                                            </AccordionItem>
-                                        </Accordion>
-                                    )}
 
                                     <div className="tw-mt-1 tw-mb-1 tw-border-t tw-border-[var(--vscode-panel-border)]" />
                                     <div>

@@ -256,6 +256,8 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
                     messages: any[]
                 }
             >()
+            // Track mapping between tool_use.id and subThreadID for interleaved display
+            const toolUseToSubThreadMap = new Map<string, string>()
             const postSubAgentContent = async (subThreadID: string) => {
                 const entry = subAgentThreads.get(subThreadID)
                 if (!entry) return
@@ -309,18 +311,8 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
                                 // best-effort only
                             }
 
-                            const items = extractAssistantTimeline(thread)
-                            await safePost(port, {
-                                type: 'node_assistant_content',
-                                data: {
-                                    nodeId: node.id,
-                                    threadID: thread.id,
-                                    content: items,
-                                    mode,
-                                },
-                            } as ExtensionToWorkflow)
-
-                            // Detect blocked-on-user tool results and request approval
+                            // Detect blocked-on-user tool results and request approval, and
+                            // derive sub-agent thread mappings from tool_result.run payloads.
                             try {
                                 const blocked: Array<{
                                     toolUseID: string
@@ -333,6 +325,17 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
                                         for (const block of msg.content || []) {
                                             if (block.type === 'tool_result') {
                                                 const run = block.run || {}
+
+                                                // Map Task/WebCrawler/Librarian tool results to their
+                                                // spawned sub-agent threads when possible.
+                                                const subThreadID = tryGetSubAgentThreadIDFromRun(run)
+                                                if (subThreadID && block.toolUseID) {
+                                                    toolUseToSubThreadMap.set(
+                                                        block.toolUseID,
+                                                        subThreadID
+                                                    )
+                                                }
+
                                                 if (
                                                     run?.status === 'blocked-on-user' &&
                                                     block.toolUseID
@@ -417,6 +420,27 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
                                 if (e instanceof AbortedError) throw e
                                 // Otherwise, continue streaming; errors here shouldn't crash the node
                             }
+
+                            // Extract assistant timeline and enrich tool_use items with subThreadID
+                            const items = extractAssistantTimeline(thread)
+                            for (const item of items) {
+                                if (item.type === 'tool_use') {
+                                    const subThreadID = toolUseToSubThreadMap.get(item.id)
+                                    if (subThreadID) {
+                                        item.subThreadID = subThreadID
+                                    }
+                                }
+                            }
+
+                            await safePost(port, {
+                                type: 'node_assistant_content',
+                                data: {
+                                    nodeId: node.id,
+                                    threadID: thread.id,
+                                    content: items,
+                                    mode,
+                                },
+                            } as ExtensionToWorkflow)
 
                             // Update latest assistant text for final result only
                             const lastAssistantMessage = thread.messages?.findLast(
@@ -626,6 +650,21 @@ export function extractAssistantTimeline(thread: any): AssistantContentItem[] {
     }
 
     return items
+}
+
+// Best-effort extraction of a sub-agent thread ID from a tool_result.run payload.
+// Mirrors the Amp SDK logic (getSubAgentThreadIDFromRun) but stays local to this
+// extension so we do not depend on SDK internals.
+function tryGetSubAgentThreadIDFromRun(run: unknown): string | null {
+    if (typeof run !== 'object' || run === null) return null
+    const record = run as Record<string, unknown>
+    const progress = record.progress as Record<string, unknown> | undefined
+    const result = record.result as Record<string, unknown> | undefined
+    const threadID = (progress?.threadID ?? result?.threadID) as string | undefined
+    if (typeof threadID !== 'string') return null
+    // Lightweight validation: Amp thread IDs are of the form "T-<...>".
+    if (!threadID.startsWith('T-')) return null
+    return threadID
 }
 
 export function safeSafeStringify(obj: any, maxLength = 100000): string {
