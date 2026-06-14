@@ -215,7 +215,7 @@ export const defaultWorkflow = (() => {
                 title: 'Generate Commit Message',
                 content: 'Generate a commit message for the following git diff: ${1}',
                 active: true,
-                model: { id: DEFAULT_LLM_MODEL_ID, title: DEFAULT_LLM_MODEL_TITLE },
+                model: { id: DEFAULT_LLM_MODEL_ID, provider: DEFAULT_LLM_MODEL_ID.split('/')[0], title: DEFAULT_LLM_MODEL_TITLE },
                 reasoningEffort: 'medium',
             },
             position: { x: 0, y: 100 },

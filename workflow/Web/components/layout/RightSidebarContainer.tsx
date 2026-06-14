@@ -7,8 +7,10 @@ import { Button } from '../../ui/shadcn/ui/button'
 
 const COLLAPSED_WIDTH = 36 // px
 const HANDLE_THICKNESS = '6px'
+const OVERLAY_Z = 40
 
 interface RightSidebarContainerProps {
+    overlay: boolean
     rightCollapsed: boolean
     rightSidebarWidth: number
     sortedNodes: WorkflowNodes[]
@@ -47,9 +49,10 @@ interface RightSidebarContainerProps {
 }
 
 /**
- * Right sidebar container with collapse handling.
+ * Right sidebar container with collapse handling and mobile overlay support.
  */
 export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
+    overlay,
     rightCollapsed,
     rightSidebarWidth,
     sortedNodes,
@@ -74,6 +77,52 @@ export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
     handleRightSidebarMouseDown,
     onChat,
 }) => {
+    const expanded = !rightCollapsed
+
+    // Overlay backdrop — shown when expanded on mobile
+    const backdrop = overlay && expanded ? (
+        <div
+            className="tw-fixed tw-inset-0 tw-bg-black/30 tw-z-[39]"
+            onClick={() => setRightCollapsed(true)}
+        />
+    ) : null
+
+    const panelClass = overlay
+        ? `tw-absolute tw-right-0 tw-top-0 tw-bottom-0 tw-z-[${OVERLAY_Z}] tw-bg-[var(--vscode-sideBar-background)] tw-h-full tw-overflow-y-auto tw-shadow-2xl`
+        : 'tw-flex-shrink-0 tw-border-r tw-border-solid tw-border-[var(--vscode-panel-border)] tw-bg-[var(--vscode-sideBar-background)] tw-h-full tw-overflow-y-auto'
+
+    const collapsedToggle = overlay ? (
+        <div className="tw-absolute tw-right-0 tw-top-0 tw-z-[41] tw-p-1">
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRightCollapsed(false)}
+                aria-label="Expand Right Sidebar"
+                title="Expand Right Sidebar"
+                aria-expanded={false}
+                aria-controls="right-sidebar-panel"
+                className="tw-h-8 tw-w-8 tw-p-0 tw-shadow-md"
+            >
+                <Menu size={18} />
+            </Button>
+        </div>
+    ) : (
+        <div className="tw-border-b tw-border-border tw-bg-sidebar-background tw-px-2 tw-py-2 tw-flex tw-justify-center">
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRightCollapsed(false)}
+                aria-label="Expand Right Sidebar"
+                title="Expand Right Sidebar"
+                aria-expanded={false}
+                aria-controls="right-sidebar-panel"
+                className="tw-h-8 tw-w-8 tw-p-0"
+            >
+                <Menu size={18} />
+            </Button>
+        </div>
+    )
+
     return (
         <>
             <div
@@ -81,28 +130,16 @@ export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
                 className="hover:tw-bg-[var(--vscode-textLink-activeForeground)] tw-bg-[var(--vscode-panel-border)] tw-cursor-ew-resize tw-select-none"
                 onMouseDown={handleRightSidebarMouseDown}
             />
+            {backdrop}
             <div
                 id="right-sidebar-panel"
                 style={{ width: (rightCollapsed ? COLLAPSED_WIDTH : rightSidebarWidth) + 'px' }}
-                className="tw-flex-shrink-0 tw-border-r tw-border-solid tw-border-[var(--vscode-panel-border)] tw-bg-[var(--vscode-sideBar-background)] tw-h-full tw-overflow-y-auto"
+                className={panelClass}
                 onClick={e => e.stopPropagation()}
                 onKeyDown={e => e.stopPropagation()}
             >
                 {rightCollapsed ? (
-                    <div className="tw-border-b tw-border-border tw-bg-sidebar-background tw-px-2 tw-py-2 tw-flex tw-justify-center">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setRightCollapsed(false)}
-                            aria-label="Expand Right Sidebar"
-                            title="Expand Right Sidebar"
-                            aria-expanded={false}
-                            aria-controls="right-sidebar-panel"
-                            className="tw-h-8 tw-w-8 tw-p-0"
-                        >
-                            <Menu size={18} />
-                        </Button>
-                    </div>
+                    collapsedToggle
                 ) : (
                     <RightSidebar
                         sortedNodes={sortedNodes}

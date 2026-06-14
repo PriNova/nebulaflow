@@ -1,5 +1,5 @@
 /* Standard VS Code Dark Modern Theme Tokens for Electron */
-html[data-platform='electron'] {
+html[data-platform='electron'], html[data-platform='web'] {
     --vscode-editor-background: #1e1e1e;
     --vscode-editor-foreground: #d4d4d4;
     --vscode-editor-selectionBackground: #264f78;
@@ -58,6 +58,10 @@ html[data-platform='electron'] {
     --vscode-testing-iconPassed: #73c991;
     --vscode-symbolIcon-functionForeground: #dcdcaa;
     --vscode-foreground: #cccccc;
+
+    --vscode-statusBarItem-warningBackground: #cca700;
+    --vscode-statusBarItem-warningForeground: #333333;
+
     --vscode-font-family: "Segoe UI WPC", "Segoe UI", sans-serif;
     --vscode-font-size: 13px;
 }

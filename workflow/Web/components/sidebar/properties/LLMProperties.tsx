@@ -17,7 +17,7 @@ import { ToolsSelector } from '../widgets/ToolsSelector'
 interface LLMPropertiesProps {
     node: LLMNode
     onUpdate: (nodeId: string, data: Partial<LLMNode['data']>) => void
-    models: { id: string; title?: string }[]
+    models: { id: string; provider: string; title?: string }[]
     onSaveCustomNode: (node: LLMNode) => void
     nodeError?: string
 }

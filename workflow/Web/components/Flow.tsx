@@ -26,6 +26,7 @@ import { useCustomNodes, useNodeOperations } from './hooks/nodeOperations'
 import { memoizedTopologicalSort, useNodeStateTransformation } from './hooks/nodeStateTransforming'
 import { useParallelAnalysis } from './hooks/parallelAnalysis'
 import { buildSelectionSummary, useInteractionHandling } from './hooks/selectionHandling'
+import { useResponsiveLayout } from './hooks/useResponsiveLayout'
 import { useRightSidebarResize, useSidebarResize } from './hooks/sidebarResizing'
 import { useWorkflowActions } from './hooks/workflowActions'
 import { useWorkflowExecution } from './hooks/workflowExecution'
@@ -157,7 +158,7 @@ export const Flow: React.FC<{
     const [nodeResults, setNodeResults] = useState<Map<string, string>>(new Map())
     const [nodeThreadIDs, setNodeThreadIDs] = useState<Map<string, string>>(new Map())
     const [pendingApprovalNodeId, setPendingApprovalNodeId] = useState<string | null>(null)
-    const [models, setModels] = useState<{ id: string; title?: string }[]>([])
+    const [models, setModels] = useState<{ id: string; provider: string; title?: string }[]>([])
     const [customNodes, setCustomNodes] = useState<WorkflowNodes[]>([])
     const [subflows, setSubflows] = useState<Array<{ id: string; title: string; version: string }>>([])
     const [banner, setBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -183,8 +184,9 @@ export const Flow: React.FC<{
         outputs: Array<{ id: string; name: string; index: number }>
     } | null>(null)
 
-    const [leftCollapsed, setLeftCollapsed] = useState(false)
-    const [rightCollapsed, setRightCollapsed] = useState(false)
+    const { isMobile } = useResponsiveLayout()
+    const [leftCollapsed, setLeftCollapsed] = useState(isMobile)
+    const [rightCollapsed, setRightCollapsed] = useState(isMobile)
     // One-shot rename flow for existing subflows triggered via PropertyEditor
     const [pendingSubflowRename, setPendingSubflowRename] = useState<{
         id: string
@@ -1007,8 +1009,9 @@ export const Flow: React.FC<{
     }, [storageScope, vscodeAPI])
 
     return (
-        <div className="tw-flex tw-h-screen tw-w-full tw-border-2 tw-border-solid tw-border-[var(--vscode-panel-border)] tw-text-[14px] tw-overflow-hidden">
+        <div className="tw-flex tw-h-screen tw-w-full tw-border-2 tw-border-solid tw-border-[var(--vscode-panel-border)] tw-text-[14px] tw-overflow-hidden tw-relative">
             <LeftSidebarContainer
+                overlay={isMobile}
                 leftCollapsed={leftCollapsed}
                 sidebarWidth={sidebarWidth}
                 isExecuting={isExecuting}
@@ -1129,6 +1132,7 @@ export const Flow: React.FC<{
                         />
                     </div>
                     <RightSidebarContainer
+                        overlay={isMobile}
                         rightCollapsed={rightCollapsed}
                         rightSidebarWidth={rightSidebarWidth}
                         sortedNodes={sortedNodes}

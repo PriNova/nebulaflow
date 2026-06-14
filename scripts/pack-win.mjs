@@ -17,7 +17,7 @@ async function buildWin() {
         out: path.join(rootDir, 'dist', 'release'),
         overwrite: true,
         asar: {
-            unpackDir: '{node_modules/@vscode/ripgrep,node_modules/@prinova/amp-sdk}',
+            unpackDir: '{node_modules/@vscode/ripgrep,node_modules/@earendil-works/pi-ai,node_modules/@earendil-works/pi-agent-core,node_modules/@earendil-works/pi-coding-agent}',
         },
         prune: true,
         ignore: [

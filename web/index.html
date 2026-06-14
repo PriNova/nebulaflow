@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" data-platform="web">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
+        />
+        <title>NebulaFlow Workflow Editor</title>
+        <script>
+            // acquireVsCodeApi shim — injected before the React bundle.
+            // __nebulaPort is set by web-init.ts after WebSocket connects.
+            window.acquireVsCodeApi = () => ({
+                postMessage: msg => window.__nebulaPort?.postMessage(msg),
+                getState: () => window.__nebulaState,
+                setState: s => {
+                    window.__nebulaState = s
+                },
+            })
+        </script>
+    </head>
+    <body>
+        <div id="root"></div>
+        <script type="module" src="./web-init.tsx"></script>
+    </body>
+</html>

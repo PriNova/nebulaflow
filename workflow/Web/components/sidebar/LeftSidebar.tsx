@@ -28,7 +28,7 @@ interface LeftSidebarProps {
     ) => void
     selectedNode?: WorkflowNodes | null
     onNodeUpdate?: (nodeId: string, data: Partial<WorkflowNodes['data']>) => void
-    models: { id: string; title?: string }[]
+    models: { id: string; provider: string; title?: string }[]
     onSaveCustomNode: (node: WorkflowNodes) => void
     onDeleteCustomNode: (nodeId: string) => void
     onRenameCustomNode: (oldNodeTitle: string, newNodeTitle: string) => void

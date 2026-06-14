@@ -16,6 +16,13 @@ let api: GenericVSCodeWrapper<any, any> | undefined
 export function getGenericVSCodeAPI<W, E>(): GenericVSCodeWrapper<W, E> {
     if (!api) {
         const vsCodeApi = acquireVsCodeApi()
+
+        // Web target: messages flow through the WebSocket port (window.__nebulaPort).
+        // VS Code target: messages come as window 'message' events from the extension host.
+        const nebulaPort = (window as any).__nebulaPort as
+            | { onDidReceiveMessage: (cb: (msg: unknown) => void) => { dispose: () => void } }
+            | undefined
+
         api = {
             postMessage: (message: W) => {
                 try {
@@ -32,6 +39,16 @@ export function getGenericVSCodeAPI<W, E>(): GenericVSCodeWrapper<W, E> {
                 }
             },
             onMessage: (callback: (event: MessageEvent<E>) => void) => {
+                if (nebulaPort) {
+                    // Web target: messages arrive via WebSocket, not window.postMessage.
+                    // Wrap raw message data in a MessageEvent-like shape so callers
+                    // (useMessageHandler, etc.) can access event.data as they do in VS Code.
+                    const disposable = nebulaPort.onDidReceiveMessage((msg: unknown) => {
+                        callback({ data: msg } as MessageEvent<E>)
+                    })
+                    return () => disposable.dispose()
+                }
+                // VS Code target: messages arrive as window 'message' events.
                 const listener = (event: MessageEvent<E>): void => callback(event)
                 window.addEventListener('message', listener)
                 return () => window.removeEventListener('message', listener)

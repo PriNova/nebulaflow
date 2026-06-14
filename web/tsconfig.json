@@ -1,0 +1,24 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "jsx": "react-jsx",
+        "noEmit": true,
+        "skipLibCheck": true,
+        "isolatedModules": true,
+        "esModuleInterop": true,
+        "allowImportingTsExtensions": true,
+        "resolveJsonModule": true,
+        "paths": {
+            "@graph/*": ["../workflow/Web/components/graph/*"],
+            "@sidebar/*": ["../workflow/Web/components/sidebar/*"],
+            "@modals/*": ["../workflow/Web/components/modals/*"],
+            "@nodes/*": ["../workflow/Web/components/nodes/*"],
+            "@shared/*": ["../workflow/Web/components/shared/*"]
+        }
+    },
+    "include": ["**/*.ts", "**/*.tsx", "../workflow/Web/**/*.ts", "../workflow/Web/**/*.tsx", "../workflow/Core/Contracts/Protocol.ts"],
+    "exclude": ["node_modules"]
+}

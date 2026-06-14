@@ -2,7 +2,7 @@
 // Import with `import type { ... } from '.../Protocol'` on both sides
 
 // Basic model descriptor
-export type Model = { id: string; title?: string }
+export type Model = { id: string; provider: string; title?: string }
 
 // Assistant/user/tool content blocks streamed during LLM node execution
 export type AssistantContentItem =

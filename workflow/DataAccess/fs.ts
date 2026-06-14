@@ -5,6 +5,7 @@ import { isWorkflowPayloadDTO } from '../Core/Contracts/guards'
 import { NodeType, type WorkflowNodes } from '../Core/models'
 import { FileType, type IHostEnvironment } from '../Shared/Host/index'
 import { DEFAULT_LLM_MODEL_ID, DEFAULT_LLM_MODEL_TITLE } from '../Shared/LLM/default-model'
+import { migrateAmpModelId } from '../PiIntegration/Application/pi-models'
 
 const PERSISTENCE_ROOT = '.nebulaflow'
 const LEGACY_PERSISTENCE_ROOT = '.sourcegraph'
@@ -189,52 +190,40 @@ function cryptoRandomId(): string {
     }
 }
 
-// Normalize LLM node model IDs to SDK keys for save/load robustness
+// Normalize LLM node model IDs for save/load robustness.
+// Migrates legacy Amp SDK model IDs to pi-compatible format.
 async function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): Promise<WorkflowPayloadDTO> {
     try {
-        const sdk = (await import('@prinova/amp-sdk')) as any
-        const resolveModel:
-            | ((args: { key: string } | { displayName: string; provider?: unknown }) => { key: string })
-            | undefined = sdk?.resolveModel
+        const nodes = await Promise.all(
+            (data.nodes ?? []).map(async (node) => {
+                if (!node || typeof node !== 'object' || (node as any).type !== 'llm') return node
+                const n: any = node
+                let model = n.data?.model
 
-        const nodes = (data.nodes ?? []).map(node => {
-            if (!node || typeof node !== 'object' || (node as any).type !== 'llm') return node
-            const n: any = node
-            let model = n.data?.model
-
-            if (!model) {
-                model = { id: DEFAULT_LLM_MODEL_ID, title: DEFAULT_LLM_MODEL_TITLE }
-            }
-
-            const id = model?.id
-            if (!id || typeof id !== 'string') {
-                return {
-                    ...node,
-                    data: {
-                        ...n.data,
-                        model: { id: DEFAULT_LLM_MODEL_ID, title: DEFAULT_LLM_MODEL_TITLE },
-                    },
+                if (!model) {
+                    model = { id: DEFAULT_LLM_MODEL_ID, provider: DEFAULT_LLM_MODEL_ID.split('/')[0], title: DEFAULT_LLM_MODEL_TITLE }
                 }
-            }
 
-            if (typeof resolveModel !== 'function') {
-                return { ...node, data: { ...n.data, model } }
-            }
-
-            try {
-                const r1 = resolveModel({ key: id })
-                if (r1?.key && r1.key !== id) {
-                    return { ...node, data: { ...n.data, model: { ...model, id: r1.key } } }
-                }
-                try {
-                    const r2 = resolveModel({ displayName: id })
-                    if (r2?.key && r2.key !== id) {
-                        return { ...node, data: { ...n.data, model: { ...model, id: r2.key } } }
+                const id = model?.id
+                if (!id || typeof id !== 'string') {
+                    return {
+                        ...node,
+                        data: {
+                            ...n.data,
+                            model: { id: DEFAULT_LLM_MODEL_ID, provider: DEFAULT_LLM_MODEL_ID.split('/')[0], title: DEFAULT_LLM_MODEL_TITLE },
+                        },
                     }
-                } catch {}
-            } catch {}
-            return { ...node, data: { ...n.data, model } }
-        })
+                }
+
+                // Attempt migration from Amp SDK model ID to pi format
+                const migratedId = await migrateAmpModelId(id)
+                if (migratedId && migratedId !== id) {
+                    return { ...node, data: { ...n.data, model: { ...model, id: migratedId } } }
+                }
+
+                return { ...node, data: { ...n.data, model } }
+            })
+        )
         return { ...data, nodes }
     } catch {
         return data

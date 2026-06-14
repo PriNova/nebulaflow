@@ -1,4 +1,12 @@
 import * as nodePath from 'node:path'
+
+// Local type mirroring pi-ai's ImageContent to avoid ESM import in CJS context
+interface ImageContent {
+    type: 'image'
+    data: string
+    mimeType: string
+}
+
 import {
     AbortedError,
     type ApprovalResult,
@@ -7,14 +15,16 @@ import {
     type ExtensionToWorkflow,
     type WorkflowNodes,
 } from '../../../Core/models'
-import { computeLLMAmpSettings } from '../../../LLMIntegration/Application/llm-settings'
 import type { IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
 import { readNebulaflowSettingsFromWorkspaceRoots } from '../../../Shared/Infrastructure/nebulaflow-settings'
-import { DEFAULT_LLM_MODEL_ID } from '../../../Shared/LLM/default-model'
+import { DEFAULT_PI_MODEL_ID } from '../../../Shared/LLM/default-model'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
 import { replaceIndexedInputs } from '../../Core/execution/inputs'
 import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
+import { buildPiTools } from '../../../PiIntegration/Application/pi-tools'
+import { imageFromFile, imageFromURL } from '../../../PiIntegration/utils/image-utils'
+import { listPiModels, resolvePiModel } from '../../../PiIntegration/Application/pi-models'
 
 const DEFAULT_LLM_TIMEOUT_MS = 300_000
 
@@ -28,43 +38,30 @@ export interface LLMRunArgs {
     mode: 'workflow' | 'single-node'
 }
 
+// ---------------------------------------------------------------------------
+// Image attachment resolution
+// ---------------------------------------------------------------------------
+
 export async function resolveLLMAttachmentsToImages(
     node: WorkflowNodes,
-    ampSdk: any,
     workspaceRoots: string[]
-): Promise<any[] | undefined> {
+): Promise<ImageContent[] | undefined> {
     const data = (node as any)?.data
     const attachments = (data?.attachments ?? []) as AttachmentRef[]
-    /* console.debug(
-        '[ExecuteWorkflow] LLM attachments for node %s: %s',
-        node.id,
-        JSON.stringify(attachments ?? [], null, 2)
-    ) */
 
     if (!Array.isArray(attachments) || attachments.length === 0) {
         return undefined
     }
 
-    if (!ampSdk) {
-        console.debug('[ExecuteWorkflow] Amp SDK not available when resolving attachments')
-        return undefined
-    }
-
-    const images: any[] = []
+    const images: ImageContent[] = []
 
     for (const attachment of attachments) {
         if (!attachment || attachment.kind !== 'image') continue
 
         if (attachment.source === 'file' && attachment.path) {
             const filePath = resolveAttachmentFilePath(attachment.path, workspaceRoots)
-            /* console.debug(
-                '[ExecuteWorkflow] Resolving file attachment for node %s: %s -> %s',
-                node.id,
-                attachment.path,
-                filePath
-            ) */
             try {
-                const image = await ampSdk.imageFromFile({ path: filePath })
+                const image = await imageFromFile(filePath)
                 images.push(image)
             } catch (error) {
                 const reason = error instanceof Error ? error.message : String(error)
@@ -73,13 +70,8 @@ export async function resolveLLMAttachmentsToImages(
                 )
             }
         } else if (attachment.source === 'url' && attachment.url) {
-            /*  console.debug(
-                '[ExecuteWorkflow] Resolving URL attachment for node %s: %s',
-                node.id,
-                attachment.url
-            ) */
             try {
-                const image = await ampSdk.imageFromURL({ url: attachment.url })
+                const image = await imageFromURL(attachment.url)
                 images.push(image)
             } catch (error) {
                 const reason = error instanceof Error ? error.message : String(error)
@@ -89,12 +81,6 @@ export async function resolveLLMAttachmentsToImages(
             }
         }
     }
-
-    /* console.debug(
-        '[ExecuteWorkflow] Resolved %d image attachment(s) for node %s',
-        images.length,
-        node.id
-    ) */
 
     return images.length > 0 ? images : undefined
 }
@@ -108,12 +94,10 @@ export function resolveAttachmentFilePath(
         throw new Error('Attachment file path is empty')
     }
 
-    // Absolute path for the current OS: use as-is (after normalisation)
     if (nodePath.isAbsolute(trimmed)) {
         return nodePath.normalize(trimmed)
     }
 
-    // Otherwise, treat as workspace-relative (first root preferred)
     if (!Array.isArray(workspaceRoots) || workspaceRoots.length === 0) {
         throw new Error(
             `Relative attachment path "${trimmed}" cannot be resolved: no active workspace roots. ` +
@@ -126,7 +110,83 @@ export function resolveAttachmentFilePath(
     return nodePath.normalize(resolved)
 }
 
-export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): Promise<string> {
+// ---------------------------------------------------------------------------
+// Model resolution from node config
+// ---------------------------------------------------------------------------
+
+async function resolveModelForNode(node: WorkflowNodes): Promise<{ model: any | undefined; modelKey: string }> {
+    const modelId = (node as any)?.data?.model?.id as string | undefined
+    const piModel = modelId ? await resolvePiModel(modelId) : undefined
+    return {
+        model: piModel,
+        modelKey: modelId ?? DEFAULT_PI_MODEL_ID,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Timeline accumulation from pi Agent events
+// ---------------------------------------------------------------------------
+
+interface TimelineState {
+    items: AssistantContentItem[]
+    toolCallNames: Map<string, string> // toolCallId → toolName
+    currentAssistantMessageId: string | null
+}
+
+function createTimelineState(): TimelineState {
+    return {
+        items: [],
+        toolCallNames: new Map(),
+        currentAssistantMessageId: null,
+    }
+}
+
+function addTextToTimeline(state: TimelineState, text: string): void {
+    if (text.length === 0) return
+    const last = state.items[state.items.length - 1]
+    if (last?.type === 'text') {
+        // Merge consecutive text deltas into one item to avoid
+        // creating one sidebar block per streaming chunk.
+        last.text += text
+        return
+    }
+    state.items.push({ type: 'text', text })
+}
+
+function addThinkingToTimeline(state: TimelineState, thinking: string): void {
+    if (thinking.length === 0) return
+    const last = state.items[state.items.length - 1]
+    if (last?.type === 'thinking') {
+        // Merge consecutive thinking deltas into one item.
+        last.thinking += thinking
+        return
+    }
+    state.items.push({ type: 'thinking', thinking })
+}
+
+function addToolUseToTimeline(state: TimelineState, toolCallId: string, toolName: string, args: any): void {
+    state.toolCallNames.set(toolCallId, toolName)
+    const inputJSON = safeStringify(args)
+    state.items.push({ type: 'tool_use', id: toolCallId, name: toolName, inputJSON })
+}
+
+function addToolResultToTimeline(state: TimelineState, toolCallId: string, result: any, isError: boolean): void {
+    const name = state.toolCallNames.get(toolCallId)
+    const resultStr = isError && typeof result === 'string' ? `Error: ${result}` : safeStringify(result)
+    state.items.push({ type: 'tool_result', toolUseID: toolCallId, resultJSON: resultStr })
+
+    // Detect sub-agent completion from Task tool
+    if (name === 'task' || name === 'Task') {
+        // Post sub-agent result as a node_sub_agent_content event if we can extract thread info
+        // For now, the tool_result item in the timeline shows the sub-agent output
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Core LLM execution with pi Agent
+// ---------------------------------------------------------------------------
+
+export async function runLLMCore(args: LLMRunArgs): Promise<string> {
     const { node, prompt, workspaceRoots, abortSignal, port, approvalHandler, mode } = args
 
     const nodeLabel = (node as any)?.data?.label ?? (node as any)?.data?.title
@@ -134,63 +194,33 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
         typeof nodeLabel === 'string' && nodeLabel.trim().length > 0 ? ` "${nodeLabel.trim()}"` : ''
 
     const wrapErrorWithContext = (error: unknown): Error => {
-        if (error instanceof AbortedError) {
-            return error
-        }
+        if (error instanceof AbortedError) return error
         const baseMessage = error instanceof Error ? error.message : String(error)
         return new Error(`[LLM node ${node.id}${labelSuffix} (${mode})] ${baseMessage}`)
     }
 
     try {
-        let ampSdk: any
-        try {
-            ampSdk = await import('@prinova/amp-sdk')
-        } catch (error) {
-            throw new Error(
-                `Amp SDK not available: ${error instanceof Error ? error.message : String(error)}`
-            )
-        }
+        // Dynamic import pi SDK (ESM packages from CJS context)
+        const [{ Agent }, { streamSimple }] = await Promise.all([
+            import('@earendil-works/pi-agent-core'),
+            import('@earendil-works/pi-ai'),
+        ])
 
-        const apiKey = process.env.AMP_API_KEY
-        if (!apiKey) {
-            throw new Error('AMP_API_KEY is not set')
-        }
+        // Resolve model
+        const { model: piModel, modelKey } = await resolveModelForNode(node)
 
-        const defaultModelKey = DEFAULT_LLM_MODEL_ID
-        const modelId = (node as any)?.data?.model?.id as string | undefined
+        // Resolve images
+        const images = await resolveLLMAttachmentsToImages(node, workspaceRoots)
 
-        // Prefer the node-level model ID; normalize via SDK when possible, but never
-        // silently ignore a user-selected model and fall back to the hardcoded default.
-        let selectedKey: string | undefined = modelId
-        try {
-            const resolveModel:
-                | ((args: { key: string } | { displayName: string; provider?: any }) => { key: string })
-                | undefined = ampSdk?.resolveModel
-            if (modelId && typeof resolveModel === 'function') {
-                try {
-                    const { key } = resolveModel({ key: modelId })
-                    if (key) {
-                        selectedKey = key
-                    }
-                } catch {
-                    // If resolution fails, fall back to the raw modelId
-                    selectedKey = modelId
-                }
-            }
-        } catch {
-            // Keep whatever selectedKey we already have (modelId or undefined)
-        }
+        // Read node settings
+        const data = (node as any)?.data ?? {}
+        const disabledTools: string[] = Array.isArray(data.disabledTools)
+            ? data.disabledTools
+            : []
+        const dangerouslyAllowAll: boolean = data.dangerouslyAllowAll === true
+        const reasoningEffort: string = data.reasoningEffort ?? 'medium'
 
-        const { settings: llmSettings, debug: llmDebug } = await computeLLMAmpSettings(node)
-        if (
-            llmDebug.dangerouslyAllowAll &&
-            llmDebug.disabledTools.some(t => typeof t === 'string' && t.toLowerCase() === 'bash')
-        ) {
-            console.debug(
-                '[ExecuteWorkflow] Bash is disabled; ignoring dangerouslyAllowAll flag for safety'
-            )
-        }
-
+        // Read NebulaFlow workspace settings
         const nebulaflowWorkspaceSettings = await readNebulaflowSettingsFromWorkspaceRoots(
             workspaceRoots,
             {
@@ -198,350 +228,282 @@ export async function runLLMCore(args: LLMRunArgs, existingThreadID?: string): P
                 debugTag: 'WorkflowExecution/run-llm',
             }
         )
-        const mergedSettings: Record<string, unknown> = {
-            ...nebulaflowWorkspaceSettings,
-            ...llmSettings,
-        }
 
-        const configuredPrimary =
-            (nebulaflowWorkspaceSettings['internal.primaryModel'] as string | undefined)?.trim() ||
-            undefined
-        const primaryModelKey = selectedKey ?? configuredPrimary ?? defaultModelKey
-
-        const autoApprove = Boolean((mergedSettings as any)['amp.dangerouslyAllowAll'])
-
-        const rawSystemPrompt = ((node as any).data?.systemPromptTemplate ?? '').toString()
-        const trimmedSystemPrompt = rawSystemPrompt.trim()
-        const systemPromptTemplate = trimmedSystemPrompt.length > 0 ? rawSystemPrompt : undefined
-
-        const { createAmp } = ampSdk
-        const amp = await createAmp({
-            apiKey,
-            workspaceRoots,
-            systemPromptTemplate,
-            settings: {
-                ...mergedSettings,
-                'internal.primaryModel': primaryModelKey,
-            },
+        // Build tools
+        const cwd = workspaceRoots[0] ?? process.cwd()
+        const tools = await buildPiTools({
+            cwd,
+            disabledTools,
+            allowAll: dangerouslyAllowAll,
         })
 
+        // Build system prompt
+        const rawSystemPrompt = (data?.systemPromptTemplate ?? '').toString()
+        const trimmedSystemPrompt = rawSystemPrompt.trim()
+        const systemPrompt = trimmedSystemPrompt.length > 0 ? rawSystemPrompt : undefined
+
+        // Get API key for the model's provider
+        const getApiKey = async (provider: string): Promise<string | undefined> => {
+            // 1. Check env vars
+            const envKey = process.env[`${provider.toUpperCase().replace(/-/g, '_')}_API_KEY`]
+                ?? process.env.AMP_API_KEY // legacy Amp fallback
+                ?? process.env.OPENROUTER_API_KEY
+            if (envKey) return envKey
+
+            // 2. Check NebulaFlow workspace settings
+            const wsKey = nebulaflowWorkspaceSettings[`api_key_${provider}`] as string | undefined
+            if (wsKey) return wsKey
+
+            return undefined
+        }
+
+        // Create the pi Agent
+        const agent = new Agent({
+            streamFn: streamSimple,
+            getApiKey,
+            toolExecution: 'parallel',
+        })
+
+        // Set initial state
+        agent.state.tools = tools
+        if (systemPrompt) {
+            agent.state.systemPrompt = systemPrompt
+        }
+        if (piModel) {
+            agent.state.model = piModel
+        }
+
+        // Map pi thinking levels
+        const thinkingLevelMap: Record<string, 'off' | 'minimal' | 'low' | 'medium' | 'high'> = {
+            off: 'off',
+            minimal: 'minimal',
+            low: 'low',
+            medium: 'medium',
+            high: 'high',
+        }
+        agent.state.thinkingLevel = thinkingLevelMap[reasoningEffort] ?? 'medium'
+
+        const timeline = createTimelineState()
         const logPrefix = mode === 'workflow' ? '[ExecuteWorkflow]' : '[ExecuteSingleNode]'
 
-        // Ensure tools are registered before first run
-        try {
-            if (typeof (amp as any).whenToolsReady === 'function') {
-                const enabled = await (amp as any).whenToolsReady()
-                console.debug(`${logPrefix} Tools ready for node`, node.id, {
-                    enabled,
-                    disabled: llmDebug.disabledTools,
-                    allowAll: llmDebug.dangerouslyAllowAll,
-                    effort: llmDebug.reasoningEffort,
-                })
-            }
-        } catch {
-            // Non-fatal: continue
-        }
+        // Set up event subscription
+        const unsubscribe = agent.subscribe(async (event, signal) => {
+            if (signal?.aborted) return
 
-        const images = await resolveLLMAttachmentsToImages(node, ampSdk, workspaceRoots)
-
-        try {
-            let finalText = ''
-            const handledBlocked = new Set<string>()
-            const subAgentThreads = new Map<
-                string,
-                {
-                    parentThreadID?: string
-                    agentType: string
-                    status: 'running' | 'done' | 'error' | 'cancelled'
-                    messages: any[]
-                }
-            >()
-            // Track mapping between tool_use.id and subThreadID for interleaved display
-            const toolUseToSubThreadMap = new Map<string, string>()
-            const postSubAgentContent = async (subThreadID: string) => {
-                const entry = subAgentThreads.get(subThreadID)
-                if (!entry) return
-                const items = extractAssistantTimeline({ messages: entry.messages })
-                await safePost(port, {
-                    type: 'node_sub_agent_content',
-                    data: {
-                        nodeId: node.id,
-                        subThreadID,
-                        parentThreadID: entry.parentThreadID,
-                        agentType: entry.agentType,
-                        status: entry.status,
-                        content: items,
-                    },
-                } as ExtensionToWorkflow)
-            }
-
-            const streamP = (async () => {
-                const runOptions: any = { prompt }
-                if (images && images.length > 0) {
-                    runOptions.images = images
-                }
-                if (existingThreadID) {
-                    runOptions.threadID = existingThreadID
-                }
-
-                /* console.debug(
-                    `${logPrefix} Starting amp.runJSONL for node %s with images=%s`,
-                    node.id,
-                    images && images.length > 0 ? String(images.length) : '0'
-                ) */
-
-                for await (const event of amp.runJSONL(runOptions)) {
-                    abortSignal.throwIfAborted()
-                    switch (event.type) {
-                        case 'messages': {
-                            const thread = event.thread as any
-
-                            // Debug: log first user message content block types to confirm image blocks are present
-                            try {
-                                const firstUser = (thread?.messages || []).find(
-                                    (m: any) => m.role === 'user'
-                                )
-                                const types = (firstUser?.content || []).map((b: any) => b.type)
-                                /* console.debug(
-                                    `${logPrefix} First user message block types for node %s: %s`,
-                                    node.id,
-                                    JSON.stringify(types)
-                                ) */
-                            } catch {
-                                // best-effort only
-                            }
-
-                            // Detect blocked-on-user tool results and request approval, and
-                            // derive sub-agent thread mappings from tool_result.run payloads.
-                            try {
-                                const blocked: Array<{
-                                    toolUseID: string
-                                    toAllow?: string[]
-                                    reason?: string
-                                    tokens?: { percent?: number; threshold?: number }
-                                }> = []
-                                for (const msg of thread?.messages || []) {
-                                    if (msg.role === 'user') {
-                                        for (const block of msg.content || []) {
-                                            if (block.type === 'tool_result') {
-                                                const run = block.run || {}
-
-                                                // Map Task/WebCrawler/Librarian tool results to their
-                                                // spawned sub-agent threads when possible.
-                                                const subThreadID = tryGetSubAgentThreadIDFromRun(run)
-                                                if (subThreadID && block.toolUseID) {
-                                                    toolUseToSubThreadMap.set(
-                                                        block.toolUseID,
-                                                        subThreadID
-                                                    )
-                                                }
-
-                                                if (
-                                                    run?.status === 'blocked-on-user' &&
-                                                    block.toolUseID
-                                                ) {
-                                                    blocked.push({
-                                                        toolUseID: block.toolUseID,
-                                                        toAllow: run.toAllow,
-                                                        reason: run.reason,
-                                                        tokens: run.tokens,
-                                                    })
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                for (const b of blocked) {
-                                    if (handledBlocked.has(b.toolUseID)) continue
-                                    handledBlocked.add(b.toolUseID)
-
-                                    // Auto-approve when dangerouslyAllowAll is enabled, regardless of toAllow content
-                                    if (autoApprove) {
-                                        if (!b.toAllow || b.toAllow.length === 0) {
-                                            console.warn(
-                                                `${logPrefix} Auto-approving toolUseID=%s with no explicit toAllow`,
-                                                b.toolUseID
-                                            )
-                                        }
-                                        await amp.sendToolInput({
-                                            threadID: thread.id,
-                                            toolUseID: b.toolUseID,
-                                            value: { accepted: true },
-                                        })
-                                        continue
-                                    }
-
-                                    const summaryLines: string[] = []
-                                    if (b.toAllow && Array.isArray(b.toAllow) && b.toAllow.length > 0) {
-                                        summaryLines.push('Command(s) awaiting approval:')
-                                        for (const c of b.toAllow) summaryLines.push(`- ${c}`)
-                                    }
-                                    if (b.reason) summaryLines.push(`Reason: ${b.reason}`)
-                                    if (
-                                        b.tokens &&
-                                        (b.tokens.percent != null || b.tokens.threshold != null)
-                                    ) {
-                                        const pct =
-                                            b.tokens.percent != null ? `${b.tokens.percent}%` : 'n/a'
-                                        const thr =
-                                            b.tokens.threshold != null ? `${b.tokens.threshold}` : 'n/a'
-                                        summaryLines.push(`Tokens: ${pct} (threshold ${thr})`)
-                                    }
-                                    const display = summaryLines.join('\n') || 'Approval required'
-
-                                    await safePost(port, {
-                                        type: 'node_execution_status',
-                                        data: {
-                                            nodeId: node.id,
-                                            status: 'pending_approval',
-                                            result: display,
-                                        },
-                                    } as ExtensionToWorkflow)
-
-                                    let accepted = false
-                                    try {
-                                        const decision = await approvalHandler(node.id)
-                                        if ((decision as any)?.type === 'aborted') {
-                                            throw new AbortedError()
-                                        }
-                                        accepted = true
-                                    } catch {
-                                        accepted = false
-                                    }
-
-                                    await amp.sendToolInput({
-                                        threadID: thread.id,
-                                        toolUseID: b.toolUseID,
-                                        value: { accepted },
-                                    })
-                                }
-                            } catch (e) {
-                                // If approval wait aborted, surface abort
-                                if (e instanceof AbortedError) throw e
-                                // Otherwise, continue streaming; errors here shouldn't crash the node
-                            }
-
-                            // Extract assistant timeline and enrich tool_use items with subThreadID
-                            const items = extractAssistantTimeline(thread)
-                            for (const item of items) {
-                                if (item.type === 'tool_use') {
-                                    const subThreadID = toolUseToSubThreadMap.get(item.id)
-                                    if (subThreadID) {
-                                        item.subThreadID = subThreadID
-                                    }
-                                }
-                            }
-
-                            await safePost(port, {
-                                type: 'node_assistant_content',
-                                data: {
-                                    nodeId: node.id,
-                                    threadID: thread.id,
-                                    content: items,
-                                    mode,
-                                },
-                            } as ExtensionToWorkflow)
-
-                            // Update latest assistant text for final result only
-                            const lastAssistantMessage = thread.messages?.findLast(
-                                (m: any) => m.role === 'assistant'
-                            )
-                            if (lastAssistantMessage) {
-                                const textBlocks = (lastAssistantMessage.content || []).filter(
-                                    (b: any) => b.type === 'text'
-                                )
-                                if (textBlocks.length > 0) {
-                                    finalText = textBlocks
-                                        .map((b: any) => b.text)
-                                        .join('\n')
-                                        .trim()
-                                }
-                            }
-                            break
-                        }
-                        case 'sub-agent-start': {
-                            const subThreadID = (event as any).subThreadID as string | undefined
-                            if (!subThreadID) break
-                            const existing = subAgentThreads.get(subThreadID)
-                            subAgentThreads.set(subThreadID, {
-                                parentThreadID:
-                                    (event as any).parentThreadID ?? existing?.parentThreadID,
-                                agentType:
-                                    (event as any).agentType ?? existing?.agentType ?? 'sub-agent',
-                                status: 'running',
-                                messages: existing?.messages ?? [],
-                            })
-                            await postSubAgentContent(subThreadID)
-                            break
-                        }
-                        case 'sub-agent-messages': {
-                            const subThreadID = (event as any).subThreadID as string | undefined
-                            if (!subThreadID) break
-                            const thread = (event as any).thread
-                            const existing = subAgentThreads.get(subThreadID)
-                            subAgentThreads.set(subThreadID, {
-                                parentThreadID:
-                                    (event as any).parentThreadID ?? existing?.parentThreadID,
-                                agentType:
-                                    (event as any).agentType ?? existing?.agentType ?? 'sub-agent',
-                                status: existing?.status ?? 'running',
-                                messages: thread?.messages ?? [],
-                            })
-                            await postSubAgentContent(subThreadID)
-                            break
-                        }
-                        case 'sub-agent-end': {
-                            const subThreadID = (event as any).subThreadID as string | undefined
-                            if (!subThreadID) break
-                            const existing = subAgentThreads.get(subThreadID)
-                            subAgentThreads.set(subThreadID, {
-                                parentThreadID:
-                                    (event as any).parentThreadID ?? existing?.parentThreadID,
-                                agentType:
-                                    (event as any).agentType ?? existing?.agentType ?? 'sub-agent',
-                                status: (event as any).status ?? existing?.status ?? 'done',
-                                messages: existing?.messages ?? [],
-                            })
-                            await postSubAgentContent(subThreadID)
-                            break
-                        }
-                        default:
-                            break
+            switch (event.type) {
+                case 'message_update': {
+                    // Extract text and thinking content from the streaming assistant message
+                    const msg: any = event.assistantMessageEvent
+                    if (msg.type === 'text_delta') {
+                        addTextToTimeline(timeline, msg.delta)
+                    } else if (msg.type === 'thinking_delta') {
+                        addThinkingToTimeline(timeline, msg.delta)
                     }
+                    // Post the current timeline to webview
+                    await safePost(port, {
+                        type: 'node_assistant_content',
+                        data: {
+                            nodeId: node.id,
+                            content: [...timeline.items],
+                            mode,
+                        },
+                    } as ExtensionToWorkflow)
+                    break
                 }
-            })()
 
-            let abortHandler: (() => void) | undefined
-            const abortP = new Promise<never>((_, rej) => {
-                abortHandler = () => rej(new AbortedError())
-                abortSignal.addEventListener('abort', abortHandler)
-            }).catch(() => {})
-            const sec = Number((node as any)?.data?.timeoutSec)
-            const disableTimeout = sec === 0
-            const timeoutMs =
-                Number.isFinite(sec) && sec > 0 ? Math.floor(sec * 1000) : DEFAULT_LLM_TIMEOUT_MS
-            let timer: ReturnType<typeof setTimeout> | undefined
-            const timeoutP = disableTimeout
-                ? undefined
-                : new Promise<never>((_, rej) => {
-                      timer = setTimeout(() => rej(new Error('LLM request timed out')), timeoutMs)
-                  })
+                case 'tool_execution_start': {
+                    const { toolCallId, toolName, args } = event
+                    addToolUseToTimeline(timeline, toolCallId, toolName, args)
+
+                    await safePost(port, {
+                        type: 'node_assistant_content',
+                        data: {
+                            nodeId: node.id,
+                            content: [...timeline.items],
+                            mode,
+                        },
+                    } as ExtensionToWorkflow)
+
+                    // If this is a Task/sub-agent tool, emit sub-agent start event
+                    if (toolName === 'task' || toolName === 'Task') {
+                        await safePost(port, {
+                            type: 'node_sub_agent_content',
+                            data: {
+                                nodeId: node.id,
+                                subThreadID: toolCallId,
+                                agentType: 'task',
+                                status: 'running',
+                                content: [],
+                            },
+                        } as ExtensionToWorkflow)
+                    }
+                    break
+                }
+
+                case 'tool_execution_update': {
+                    const { toolCallId, partialResult } = event
+                    // Stream tool partial results (e.g., bash stdout chunks)
+                    if (typeof partialResult === 'string') {
+                        await safePost(port, {
+                            type: 'node_output_chunk',
+                            data: {
+                                nodeId: node.id,
+                                chunk: partialResult,
+                                stream: 'stdout',
+                            },
+                        } as ExtensionToWorkflow)
+                    }
+                    // Update sub-agent content if this is a Task tool
+                    const toolName = timeline.toolCallNames.get(toolCallId)
+                    if (toolName === 'task' || toolName === 'Task') {
+                        const resultStr = typeof partialResult === 'string'
+                            ? partialResult
+                            : safeStringify(partialResult)
+                        await safePost(port, {
+                            type: 'node_sub_agent_content',
+                            data: {
+                                nodeId: node.id,
+                                subThreadID: toolCallId,
+                                agentType: 'task',
+                                status: 'running',
+                                content: [{ type: 'text', text: resultStr }],
+                            },
+                        } as ExtensionToWorkflow)
+                    }
+                    break
+                }
+
+                case 'tool_execution_end': {
+                    const { toolCallId, toolName, result, isError } = event
+                    addToolResultToTimeline(timeline, toolCallId, result, isError)
+
+                    // Emit sub-agent end for Task tool
+                    if (toolName === 'task' || toolName === 'Task') {
+                        const resultStr = safeStringify(result)
+                        await safePost(port, {
+                            type: 'node_sub_agent_content',
+                            data: {
+                                nodeId: node.id,
+                                subThreadID: toolCallId,
+                                agentType: 'task',
+                                status: isError ? 'error' : 'done',
+                                content: [{ type: 'text', text: resultStr }],
+                            },
+                        } as ExtensionToWorkflow)
+                    }
+                    break
+                }
+
+                case 'turn_end': {
+                    // Post the complete timeline for this turn
+                    await safePost(port, {
+                        type: 'node_assistant_content',
+                        data: {
+                            nodeId: node.id,
+                            content: [...timeline.items],
+                            mode,
+                        },
+                    } as ExtensionToWorkflow)
+                    break
+                }
+            }
+        })
+
+        // Approval hook: block tool calls that need user approval
+        agent.beforeToolCall = async (ctx, signal) => {
+            if (signal?.aborted) return { block: true }
+
+            // If auto-approve is enabled, allow all
+            if (dangerouslyAllowAll) return { block: false }
+
+            // Check if this node requires user approval for all tool calls
+            const needsApproval = (node as any)?.data?.needsUserApproval === true
+            if (!needsApproval) return { block: false }
+
+            // Show approval prompt in webview
+            const toolName = ctx.toolCall.name
+            const display = `Tool call awaiting approval: ${toolName}\nArguments: ${safeStringify(ctx.args)}`
+
+            await safePost(port, {
+                type: 'node_execution_status',
+                data: {
+                    nodeId: node.id,
+                    status: 'pending_approval',
+                    result: display,
+                },
+            } as ExtensionToWorkflow)
 
             try {
-                const racePromises = timeoutP ? [streamP, abortP, timeoutP] : [streamP, abortP]
-                await Promise.race(racePromises)
-            } finally {
-                if (timer) clearTimeout(timer)
-                if (abortHandler) abortSignal.removeEventListener('abort', abortHandler)
+                const decision = await approvalHandler(node.id)
+                if ((decision as any)?.type === 'aborted') {
+                    return { block: true, reason: 'User rejected tool execution' }
+                }
+                return { block: false }
+            } catch {
+                return { block: true, reason: 'Approval handler failed' }
             }
-            return finalText
-        } finally {
-            await amp.dispose()
         }
+
+        // Set up timeout and abort
+        const sec = Number((node as any)?.data?.timeoutSec)
+        const disableTimeout = sec === 0
+        const timeoutMs =
+            Number.isFinite(sec) && sec > 0 ? Math.floor(sec * 1000) : DEFAULT_LLM_TIMEOUT_MS
+
+        let timer: ReturnType<typeof setTimeout> | undefined
+        if (!disableTimeout) {
+            timer = setTimeout(() => {
+                agent.abort()
+            }, timeoutMs)
+        }
+
+        // Wire abort signal to agent
+        const onAbort = () => agent.abort()
+        abortSignal.addEventListener('abort', onAbort)
+
+        let finalResult = ''
+        try {
+            // Run the agent
+            await agent.prompt(prompt, images)
+
+            // Wait for completion
+            await agent.waitForIdle()
+
+            // Extract final text from the last assistant message
+            const messages = agent.state.messages
+            const lastAssistant = [...messages].reverse().find(
+                (m) => m.role === 'assistant' && 'content' in m
+            )
+            if (lastAssistant) {
+                const content = (lastAssistant as { content: Array<{ type: string; text?: string }> }).content
+                const textBlocks = (content || []).filter((b) => b.type === 'text')
+                if (textBlocks.length > 0) {
+                    finalResult = textBlocks
+                        .map((b) => b.text ?? '')
+                        .join('\n')
+                        .trim()
+                }
+            }
+        } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') {
+                throw new AbortedError()
+            }
+            throw error
+        } finally {
+            if (timer) clearTimeout(timer)
+            abortSignal.removeEventListener('abort', onAbort)
+            unsubscribe()
+        }
+
+        return finalResult
     } catch (error) {
         throw wrapErrorWithContext(error)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Public entry points
+// ---------------------------------------------------------------------------
 
 export async function executeLLMNode(
     node: WorkflowNodes,
@@ -577,7 +539,7 @@ export async function executeLLMNode(
 
 export async function executeLLMChatTurn(
     node: WorkflowNodes,
-    threadID: string,
+    _threadID: string,
     userMessage: string,
     abortSignal: AbortSignal,
     port: IMessagePort,
@@ -593,81 +555,34 @@ export async function executeLLMChatTurn(
     console.debug('executeLLMChatTurn workspaceRoots: %s', JSON.stringify(workspaceRoots, null, 2))
     console.debug('executeLLMChatTurn prompt', {
         nodeId: node.id,
-        threadID,
         prompt,
     })
 
-    return await runLLMCore(
-        {
-            node,
-            prompt,
-            workspaceRoots,
-            abortSignal,
-            port,
-            approvalHandler,
-            mode: 'single-node',
-        },
-        threadID
-    )
+    // Chat turns always create a new Agent instance (no persistent state between turns in this model).
+    // The threadID is no longer needed — pi handles multi-turn differently.
+    return await runLLMCore({
+        node,
+        prompt,
+        workspaceRoots,
+        abortSignal,
+        port,
+        approvalHandler,
+        mode: 'single-node',
+    })
 }
 
-export function extractAssistantTimeline(thread: any): AssistantContentItem[] {
-    const items: AssistantContentItem[] = []
+// ---------------------------------------------------------------------------
+// Timeline extraction utilities (kept for backward compat)
+// ---------------------------------------------------------------------------
 
-    for (const msg of thread?.messages || []) {
-        if (msg.role === 'assistant') {
-            for (const block of msg.content || []) {
-                if (block.type === 'text') {
-                    items.push({ type: 'text', text: block.text || '' })
-                } else if (block.type === 'thinking') {
-                    items.push({ type: 'thinking', thinking: block.thinking || '' })
-                } else if (block.type === 'tool_use') {
-                    const inputJSON = block.inputPartialJSON?.json || JSON.stringify(block.input || {})
-                    items.push({ type: 'tool_use', id: block.id, name: block.name, inputJSON })
-                } else if (block.type === 'server_tool_use') {
-                    const inputJSON = JSON.stringify(block.input || {})
-                    items.push({ type: 'server_tool_use', name: block.name, inputJSON })
-                } else if (block.type === 'server_web_search_result') {
-                    const resultJSON = safeSafeStringify(block.result)
-                    items.push({
-                        type: 'server_web_search_result',
-                        query: (block as any).query,
-                        resultJSON,
-                    })
-                }
-            }
-        } else if (msg.role === 'user') {
-            for (const block of msg.content || []) {
-                if (block.type === 'text') {
-                    items.push({ type: 'user_message', text: block.text || '' })
-                } else if (block.type === 'tool_result') {
-                    const run = block.run || {}
-                    const resultJSON = safeSafeStringify(run)
-                    items.push({ type: 'tool_result', toolUseID: block.toolUseID, resultJSON })
-                }
-            }
-        }
-    }
-
-    return items
+export function extractAssistantTimeline(_thread: any): AssistantContentItem[] {
+    // With pi Agent, timeline is built incrementally from events.
+    // This function remains as a stub for any legacy callers that relied on
+    // the old Amp SDK thread format.
+    return []
 }
 
-// Best-effort extraction of a sub-agent thread ID from a tool_result.run payload.
-// Mirrors the Amp SDK logic (getSubAgentThreadIDFromRun) but stays local to this
-// extension so we do not depend on SDK internals.
-function tryGetSubAgentThreadIDFromRun(run: unknown): string | null {
-    if (typeof run !== 'object' || run === null) return null
-    const record = run as Record<string, unknown>
-    const progress = record.progress as Record<string, unknown> | undefined
-    const result = record.result as Record<string, unknown> | undefined
-    const threadID = (progress?.threadID ?? result?.threadID) as string | undefined
-    if (typeof threadID !== 'string') return null
-    // Lightweight validation: Amp thread IDs are of the form "T-<...>".
-    if (!threadID.startsWith('T-')) return null
-    return threadID
-}
-
-export function safeSafeStringify(obj: any, maxLength = 100000): string {
+export function safeStringify(obj: any, maxLength = 100000): string {
     try {
         const str = JSON.stringify(obj, null, 2)
         if (str.length > maxLength) {

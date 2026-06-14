@@ -15,13 +15,13 @@ import type { LLMNode } from '../../nodes/LLM_Node'
 
 interface ModelSelectorProps {
     node: LLMNode
-    models: { id: string; title?: string }[]
+    models: { id: string; provider: string; title?: string }[]
     onUpdate: (nodeId: string, data: Partial<LLMNode['data']>) => void
 }
 
 export const ModelSelector: React.FC<ModelSelectorProps> = ({ node, models, onUpdate }) => {
     const [open, setOpen] = useState(false)
-    const [selectedModel, setSelectedModel] = useState<{ id: string; title?: string } | undefined>(
+    const [selectedModel, setSelectedModel] = useState<{ id: string; provider: string; title?: string } | undefined>(
         undefined
     )
 
@@ -30,14 +30,14 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ node, models, onUp
     }, [node])
 
     const groupedModels = useMemo(() => {
-        const groups = new Map<string, { id: string; title?: string }[]>()
+        const groups = new Map<string, { id: string; provider: string; title?: string }[]>()
         for (const m of models) {
-            const provider = m.id.split('/', 1)[0]
+            const provider = m.provider
             if (!groups.has(provider)) groups.set(provider, [])
             groups.get(provider)!.push(m)
         }
-        const providers = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b))
-        return providers.map(provider => ({
+        const providerNames = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b))
+        return providerNames.map(provider => ({
             provider,
             items: groups
                 .get(provider)!
@@ -57,7 +57,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ node, models, onUp
     }, [selectedModel?.id, selectedModel?.title, nodeModelId, nodeModelTitle, models])
 
     const onModelSelect = useCallback(
-        (model: { id: string; title?: string }) => {
+        (model: { id: string; provider: string; title?: string }) => {
             setSelectedModel(model)
             setOpen(false)
             onUpdate(node.id, { model: { ...model } as any })

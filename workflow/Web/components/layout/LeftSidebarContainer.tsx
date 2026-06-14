@@ -8,14 +8,16 @@ import type { GenericVSCodeWrapper } from '../../utils/vscode'
 
 const COLLAPSED_WIDTH = 36 // px
 const HANDLE_THICKNESS = '6px'
+const OVERLAY_Z = 40
 
 interface LeftSidebarContainerProps {
+    overlay: boolean
     leftCollapsed: boolean
     sidebarWidth: number
     isExecuting: boolean
     isPaused: boolean
     activeNode: WorkflowNodes | null
-    models: { id: string; title?: string }[]
+    models: { id: string; provider: string; title?: string }[]
     customNodes: WorkflowNodes[]
     subflows: Array<{ id: string; title: string; version: string }>
     nodeErrors: Map<string, string>
@@ -43,9 +45,10 @@ interface LeftSidebarContainerProps {
 }
 
 /**
- * Left sidebar container with collapse handling.
+ * Left sidebar container with collapse handling and mobile overlay support.
  */
 export const LeftSidebarContainer: React.FC<LeftSidebarContainerProps> = ({
+    overlay,
     leftCollapsed,
     sidebarWidth,
     isExecuting,
@@ -73,28 +76,63 @@ export const LeftSidebarContainer: React.FC<LeftSidebarContainerProps> = ({
     onRenameCustomNode,
     handleMouseDown,
 }) => {
+    const expanded = !leftCollapsed
+    const panelWidth = leftCollapsed ? COLLAPSED_WIDTH : sidebarWidth
+
+    // Overlay backdrop — shown when expanded on mobile
+    const backdrop = overlay && expanded ? (
+        <div
+            className="tw-fixed tw-inset-0 tw-bg-black/30 tw-z-[39]"
+            onClick={() => setLeftCollapsed(true)}
+        />
+    ) : null
+
+    const panelClass = overlay
+        ? `tw-absolute tw-left-0 tw-top-0 tw-bottom-0 tw-z-[${OVERLAY_Z}] tw-bg-[var(--vscode-sideBar-background)] tw-h-full tw-flex tw-flex-col tw-shadow-2xl`
+        : 'tw-flex-shrink-0 tw-bg-[var(--vscode-sideBar-background)] tw-h-full tw-flex tw-flex-col'
+
+    const collapsedToggle = overlay ? (
+        <div className="tw-absolute tw-left-0 tw-top-0 tw-z-[41] tw-p-1">
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLeftCollapsed(false)}
+                aria-label="Expand Left Sidebar"
+                title="Expand Left Sidebar"
+                aria-expanded={false}
+                aria-controls="left-sidebar-panel"
+                className="tw-h-8 tw-w-8 tw-p-0 tw-shadow-md"
+            >
+                <Menu size={18} />
+            </Button>
+        </div>
+    ) : (
+        <div className="tw-border-b tw-border-border tw-bg-sidebar-background tw-px-2 tw-py-2 tw-flex tw-justify-center">
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLeftCollapsed(false)}
+                aria-label="Expand Left Sidebar"
+                title="Expand Left Sidebar"
+                aria-expanded={false}
+                aria-controls="left-sidebar-panel"
+                className="tw-h-8 tw-w-8 tw-p-0"
+            >
+                <Menu size={18} />
+            </Button>
+        </div>
+    )
+
     return (
         <>
+            {backdrop}
             <div
                 id="left-sidebar-panel"
-                style={{ width: (leftCollapsed ? COLLAPSED_WIDTH : sidebarWidth) + 'px' }}
-                className="tw-flex-shrink-0 tw-bg-[var(--vscode-sideBar-background)] tw-h-full tw-flex tw-flex-col"
+                style={{ width: panelWidth + 'px' }}
+                className={panelClass}
             >
                 {leftCollapsed ? (
-                    <div className="tw-border-b tw-border-border tw-bg-sidebar-background tw-px-2 tw-py-2 tw-flex tw-justify-center">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setLeftCollapsed(false)}
-                            aria-label="Expand Left Sidebar"
-                            title="Expand Left Sidebar"
-                            aria-expanded={false}
-                            aria-controls="left-sidebar-panel"
-                            className="tw-h-8 tw-w-8 tw-p-0"
-                        >
-                            <Menu size={18} />
-                        </Button>
-                    </div>
+                    collapsedToggle
                 ) : (
                     <LeftSidebar
                         onToggleCollapse={() => setLeftCollapsed(true)}
@@ -125,11 +163,13 @@ export const LeftSidebarContainer: React.FC<LeftSidebarContainerProps> = ({
                     />
                 )}
             </div>
-            <div
-                style={{ width: HANDLE_THICKNESS }}
-                className="hover:tw-bg-[var(--vscode-textLink-activeForeground)] tw-bg-[var(--vscode-panel-border)] tw-cursor-ew-resize tw-select-none"
-                onMouseDown={handleMouseDown}
-            />
+            {!overlay && (
+                <div
+                    style={{ width: HANDLE_THICKNESS }}
+                    className="hover:tw-bg-[var(--vscode-textLink-activeForeground)] tw-bg-[var(--vscode-panel-border)] tw-cursor-ew-resize tw-select-none"
+                    onMouseDown={handleMouseDown}
+                />
+            )}
         </>
     )
 }

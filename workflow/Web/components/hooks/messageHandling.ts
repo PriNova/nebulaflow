@@ -141,7 +141,7 @@ export const useMessageHandler = (
     onNodeUpdate: (nodeId: string, data: Partial<WorkflowNodes['data']>) => void,
     calculatePreviewNodeTokens: (nodes: WorkflowNodes[]) => void,
     setPendingApprovalNodeId: React.Dispatch<React.SetStateAction<string | null>>,
-    setModels: React.Dispatch<React.SetStateAction<{ id: string; title?: string }[]>>,
+    setModels: React.Dispatch<React.SetStateAction<{ id: string; provider: string; title?: string }[]>>,
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>,
     setCustomNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>,
     setNodeAssistantContent: React.Dispatch<React.SetStateAction<Map<string, any[]>>>,
@@ -493,6 +493,12 @@ export const useMessageHandler = (
                 }
                 case 'models_loaded': {
                     const models = event.data.data as any
+                    console.log(
+                        '[nebulaflow webview] models_loaded received:',
+                        Array.isArray(models) ? models.length : typeof models,
+                        'models',
+                        Array.isArray(models) && models.length > 0 ? models[0] : ''
+                    )
                     if (models) {
                         setModels(models)
                     }

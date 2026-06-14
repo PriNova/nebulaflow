@@ -20,7 +20,7 @@ import { VariableProperties } from './properties/VariableProperties'
 interface PropertyEditorProps {
     node: WorkflowNodes
     onUpdate: (nodeId: string, data: Partial<WorkflowNodes['data']>) => void
-    models: { id: string; title?: string }[]
+    models: { id: string; provider: string; title?: string }[]
     onSaveCustomNode: (node: WorkflowNodes) => void
     nodeError?: string
 }
