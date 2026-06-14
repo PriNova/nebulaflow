@@ -47,3 +47,10 @@
 - VS Code: engines `>=1.90.0`; main `dist/extension.js`; webview output `dist/webviews`. Run: `npm i && npm run build`, launch in VS Code.
 - Amp SDK reference implementation: `/home/prinova/CodeProjects/upstreamAmp/sdk` with the root at `/home/prinova/CodeProjects/upstreamAmp`
 - LLM node dev: set `AMP_API_KEY` env var before F5. Errors: "Amp SDK not available" → link SDK; "AMP_API_KEY is not set" → set env; timeout/abort handled gracefully.
+
+## Structured Docs
+
+Codebase reconstruction artifacts live under global overlay:
+`~/.pi/agent/workspaces/--data-data-com.termux-files-home-CodeProjects-nebulaflow--/docs/agent/api/repo/`
+
+Key artifacts: `architecture.yaml`, `data-model.yaml`, `invariants.yaml`, `dependency-rules.yaml`, `design-issues.yaml`, `risk-register.yaml`, `agent-operating-guide.yaml`.
