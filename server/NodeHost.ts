@@ -229,7 +229,7 @@ class NodeClipboard implements IClipboard {
     constructor(private readonly window: NodeWindow) {}
 
     async readText(): Promise<string> {
-        const text = await this.window['request']<string>(
+        const text = await this.window.request<string>(
             { type: 'bridge:clipboard_read' },
             10_000
         )
@@ -237,8 +237,8 @@ class NodeClipboard implements IClipboard {
     }
 
     async writeText(value: string): Promise<void> {
-        if (this.window['port']) {
-            await this.window['port'].postMessage({
+        if (this.window.port) {
+            await this.window.port.postMessage({
                 type: 'bridge:clipboard_write',
                 text: value,
             })

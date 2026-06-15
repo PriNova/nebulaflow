@@ -84,6 +84,13 @@ export const RightSidebarContainer: React.FC<RightSidebarContainerProps> = ({
         <div
             className="tw-fixed tw-inset-0 tw-bg-black/30 tw-z-[39]"
             onClick={() => setRightCollapsed(true)}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    setRightCollapsed(true)
+                }
+            }}
+            role="button"
+            tabIndex={0}
         />
     ) : null
 

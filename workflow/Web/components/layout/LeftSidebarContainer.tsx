@@ -84,6 +84,13 @@ export const LeftSidebarContainer: React.FC<LeftSidebarContainerProps> = ({
         <div
             className="tw-fixed tw-inset-0 tw-bg-black/30 tw-z-[39]"
             onClick={() => setLeftCollapsed(true)}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    setLeftCollapsed(true)
+                }
+            }}
+            role="button"
+            tabIndex={0}
         />
     ) : null
 
