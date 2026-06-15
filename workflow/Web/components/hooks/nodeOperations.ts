@@ -42,7 +42,7 @@ function cloneNodeData(sourceNode: WorkflowNodes): WorkflowNodes {
             active: sourceNode.data.active,
         },
         position: { x: sourceNode.position.x, y: sourceNode.position.y },
-    }) as WorkflowNodes
+    })
 
     switch (sourceNode.type) {
         case NodeType.LLM: {
@@ -52,7 +52,7 @@ function cloneNodeData(sourceNode: WorkflowNodes): WorkflowNodes {
                 data: {
                     ...baseClone.data,
                     model: llmSource.data.model,
-                    timeoutSec: (llmSource as LLMNode).data.timeoutSec,
+                    timeoutSec: (llmSource).data.timeoutSec,
                 },
             } as LLMNode
         }
@@ -176,12 +176,12 @@ export const useNodeOperations = (
                     type: nodeType!,
                     data: { title: nodeOrLabel, content: '', active: true },
                     position: centerPosition,
-                }) as WorkflowNodes
+                })
                 switch (nodeType) {
                     case NodeType.LLM:
-                        ;(newNode as any).data = {
+                        ;(newNode as LLMNode).data = {
                             ...newNode.data,
-                            model: { id: DEFAULT_LLM_MODEL_ID, title: DEFAULT_LLM_MODEL_TITLE },
+                            model: { id: DEFAULT_LLM_MODEL_ID, provider: DEFAULT_LLM_MODEL_ID.split('/')[0] ?? 'openai', title: DEFAULT_LLM_MODEL_TITLE },
                             reasoningEffort: DEFAULT_LLM_REASONING_EFFORT,
                         }
                         break
@@ -190,7 +190,11 @@ export const useNodeOperations = (
                         newNode.data.content = ''
                         break
                     case NodeType.LOOP_START:
-                        ;(newNode as any).data = { ...newNode.data, iterations: 1, loopVariable: 'loop' }
+                        ;(newNode as LoopStartNode).data = {
+                            ...newNode.data,
+                            iterations: 1,
+                            loopVariable: 'loop',
+                        }
                         break
                 }
                 if (options?.initialData) {
@@ -203,10 +207,10 @@ export const useNodeOperations = (
                 }
             } else {
                 const nodeWithId = { ...nodeOrLabel, id: uuidv4(), position: centerPosition }
-                setNodes(nodes => [...nodes, nodeWithId as any])
+                setNodes(nodes => [...nodes, nodeWithId])
                 if (AUTO_SELECT_ON_ADD) {
-                    setSelectedNodes([nodeWithId as any])
-                    setActiveNode(nodeWithId as any)
+                    setSelectedNodes([nodeWithId])
+                    setActiveNode(nodeWithId)
                 }
             }
         },
@@ -221,18 +225,20 @@ export const useNodeOperations = (
             if (nodeToUpdate.type === NodeType.LLM) {
                 const llmNode = nodeToUpdate as LLMNode
                 const updatedLLMData: Partial<LLMNode['data']> = { ...llmNode.data, ...data }
-                if ('model' in data && (data as any).model) {
-                    ;(updatedLLMData as any).model = { ...(data as any).model }
+                const modelFromData = (data as Partial<LLMNode['data']>).model
+                if ('model' in data && modelFromData) {
+                    updatedLLMData.model = { ...modelFromData }
                 }
                 updatedNode = { ...llmNode, data: updatedLLMData as LLMNode['data'] }
             } else {
                 updatedNode = { ...nodeToUpdate, data: { ...nodeToUpdate.data, ...data } }
             }
             if (nodeToUpdate.type === NodeType.PREVIEW && 'content' in data) {
+                const previewContent = String(data.content ?? '')
                 vscodeAPI.postMessage({
                     type: 'calculate_tokens',
-                    data: { text: (data as any).content || '', nodeId },
-                } as any)
+                    data: { text: previewContent, nodeId },
+                })
             }
             unstable_batchedUpdates(() => {
                 setNodes(currentNodes => currentNodes.map(n => (n.id === nodeId ? updatedNode : n)))
@@ -254,19 +260,19 @@ export const useCustomNodes = (
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>
 ) => {
     const onGetCustomNodes = useCallback(() => {
-        vscodeAPI.postMessage({ type: 'get_custom_nodes' } as any)
+        vscodeAPI.postMessage({ type: 'get_custom_nodes' })
     }, [vscodeAPI])
     const onSaveCustomNode = useCallback(
         (node: WorkflowNodes) => {
             // Send a sanitized DTO to avoid DataCloneError from functions/symbols
             const dto = toWorkflowNodeDTO(node)
-            vscodeAPI.postMessage({ type: 'save_customNode', data: dto } as any)
+            vscodeAPI.postMessage({ type: 'save_customNode', data: dto })
         },
         [vscodeAPI]
     )
     const onDeleteCustomNode = useCallback(
         (nodeTitle: string) => {
-            vscodeAPI.postMessage({ type: 'delete_customNode', data: nodeTitle } as any)
+            vscodeAPI.postMessage({ type: 'delete_customNode', data: nodeTitle })
         },
         [vscodeAPI]
     )
@@ -275,7 +281,7 @@ export const useCustomNodes = (
             vscodeAPI.postMessage({
                 type: 'rename_customNode',
                 data: { oldNodeTitle, newNodeTitle },
-            } as any)
+            })
         },
         [vscodeAPI]
     )

@@ -65,7 +65,7 @@ export const useEdgeOperations = (
         (params: Connection) => {
             setEdges(eds => {
                 if (!isValidEdgeConnection(params, eds, nodes)) return eds
-                return [...addEdge({ ...params, data: { edgeStyle: 'bezier' } } as Edge, eds)]
+                return [...addEdge({ ...params, data: { edgeStyle: 'bezier' } }, eds)]
             })
         },
         [setEdges, nodes]

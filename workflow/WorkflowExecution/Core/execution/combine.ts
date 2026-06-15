@@ -1,6 +1,35 @@
 import { NodeType } from '../../../Core/models'
+import type { Edge } from '../../../Core/models'
 import type { IndexedExecutionContext } from '../../Application/handlers/ExecuteWorkflow'
 import { evalTemplate } from './inputs'
+
+function getInIndex(h: unknown): number | null {
+    if (typeof h === 'string') {
+        const m = /^in-(\d+)$/.exec(h)
+        if (m) return Number.parseInt(m[1], 10)
+    }
+    return null
+}
+
+interface OrderedEdge {
+    edge: Edge
+    n: number | null
+}
+
+function sortEdgesByTargetHandle(edges: Edge[]): Edge[] {
+    const withIn: OrderedEdge[] = []
+    const withoutIn: Edge[] = []
+    for (const e of edges) {
+        const n = getInIndex(e.targetHandle)
+        if (n !== null) withIn.push({ edge: e, n })
+        else withoutIn.push(e)
+    }
+    if (withIn.length > 0) {
+        withIn.sort((a, b) => (a.n as number) - (b.n as number))
+        return withIn.map(x => x.edge).concat(withoutIn)
+    }
+    return edges
+}
 
 export function combineParentOutputsByConnectionOrder(
     nodeId: string,
@@ -16,28 +45,11 @@ export function combineParentOutputsByConnectionOrder(
     localVisited.add(nodeId)
 
     // Ensure stable input ordering by sorting parent edges by targetHandle in-<n> when present
-    const getInIndex = (h: unknown): number | null => {
-        if (typeof h === 'string') {
-            const m = /^in-(\d+)$/.exec(h)
-            if (m) return Number.parseInt(m[1], 10)
-        }
-        return null
-    }
-    let orderedEdges: any[] = parentEdges as any[]
+    let orderedEdges: Edge[]
     try {
-        const withIn: Array<{ edge: any; n: number }> = []
-        const withoutIn: any[] = []
-        for (const e of parentEdges as any[]) {
-            const n = getInIndex(e.targetHandle)
-            if (n !== null) withIn.push({ edge: e, n })
-            else withoutIn.push(e)
-        }
-        if (withIn.length > 0) {
-            withIn.sort((a, b) => a.n - b.n)
-            orderedEdges = withIn.map(x => x.edge).concat(withoutIn)
-        }
+        orderedEdges = sortEdgesByTargetHandle(parentEdges)
     } catch {
-        orderedEdges = parentEdges as any[]
+        orderedEdges = parentEdges
     }
 
     return orderedEdges
@@ -50,7 +62,7 @@ export function combineParentOutputsByConnectionOrder(
                     context,
                     localVisited
                 )
-                const template = ((parentNode as any).data?.content || '').toString()
+                const template = String(parentNode.data?.content || '')
                 const text = evalTemplate(template, parentInputs, context)
                 return text.replace(/\r\n/g, '\n')
             }

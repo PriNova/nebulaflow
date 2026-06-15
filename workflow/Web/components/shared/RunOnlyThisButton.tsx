@@ -33,7 +33,7 @@ export const RunOnlyThisButton: React.FC<Props> = ({
                     return
                 }
                 window.dispatchEvent(
-                    new CustomEvent('nebula-run-only-this' as any, { detail: { nodeId } })
+                    new CustomEvent('nebula-run-only-this', { detail: { nodeId } })
                 )
             }}
         >

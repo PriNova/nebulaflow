@@ -48,11 +48,11 @@ export const useWorkflowActions = (
             })),
             state,
         }
-        vscodeAPI.postMessage({ type: 'save_workflow', data: workflowData } as any)
+        vscodeAPI.postMessage({ type: 'save_workflow', data: workflowData })
     }, [nodes, edges, nodeResults, ifElseDecisions, vscodeAPI])
 
     const onLoad = useCallback(() => {
-        vscodeAPI.postMessage({ type: 'load_workflow' } as any)
+        vscodeAPI.postMessage({ type: 'load_workflow' })
     }, [vscodeAPI])
 
     const calculatePreviewNodeTokens = useCallback(
@@ -62,7 +62,7 @@ export const useWorkflowActions = (
                     vscodeAPI.postMessage({
                         type: 'calculate_tokens',
                         data: { text: node.data.content, nodeId: node.id },
-                    } as any)
+                    })
                 }
             }
         },
@@ -72,10 +72,10 @@ export const useWorkflowActions = (
     const handleNodeApproval = (nodeId: string, approved: boolean, modifiedCommand?: string) => {
         if (approved) {
             setPendingApprovalNodeId(null)
-            vscodeAPI.postMessage({ type: 'node_approved', data: { nodeId, modifiedCommand } } as any)
+            vscodeAPI.postMessage({ type: 'node_approved', data: { nodeId, modifiedCommand } })
         } else {
             setPendingApprovalNodeId(null)
-            vscodeAPI.postMessage({ type: 'node_rejected', data: { nodeId } } as any)
+            vscodeAPI.postMessage({ type: 'node_rejected', data: { nodeId } })
         }
     }
     return { onSave, onLoad, calculatePreviewNodeTokens, handleNodeApproval }

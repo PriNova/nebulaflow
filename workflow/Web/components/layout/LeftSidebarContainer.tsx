@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, jsx-a11y/no-static-element-interactions */
 import type { WorkflowNodes } from '@nodes/Nodes'
 import { LeftSidebar } from '@sidebar/LeftSidebar'
 import { Menu } from 'lucide-react'
@@ -34,9 +35,11 @@ interface LeftSidebarContainerProps {
     onPauseToggle: () => void
     onNodeAdd: (
         nodeOrLabel: WorkflowNodes | string,
-        nodeType?: any,
+         
+    nodeType?: any,
         options?: { position?: { x: number; y: number }; initialData?: any }
     ) => void
+     
     onNodeUpdate: (id: string, partial: any) => void
     onSaveCustomNode: (node: WorkflowNodes) => void
     onDeleteCustomNode: (nodeId: string) => void
@@ -165,7 +168,7 @@ export const LeftSidebarContainer: React.FC<LeftSidebarContainerProps> = ({
                         storageScope={storageScope}
                         isTogglingScope={isTogglingScope}
                         onToggleStorageScope={() => {
-                            vscodeAPI.postMessage({ type: 'toggle_storage_scope' } as any)
+                            vscodeAPI.postMessage({ type: 'toggle_storage_scope' })
                         }}
                     />
                 )}

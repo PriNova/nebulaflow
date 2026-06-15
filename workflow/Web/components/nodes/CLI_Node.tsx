@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access */
 import { TextEditorModal } from '@modals/TextEditorModal'
 import RunFromHereButton from '@shared/RunFromHereButton'
 import RunOnlyThisButton from '@shared/RunOnlyThisButton'
@@ -31,7 +32,7 @@ export const CLINode: React.FC<BaseNodeProps> = ({ id, data, selected }) => {
 
     const dispatchEditEvent = useCallback(
         (action: 'start' | 'commit' | 'cancel', payload?: any) => {
-            const detail: any = { id, action }
+            const detail: Record<string, unknown> = { id, action }
             if (payload?.content !== undefined) {
                 detail.content = payload.content
             }
@@ -118,7 +119,7 @@ export const CLINode: React.FC<BaseNodeProps> = ({ id, data, selected }) => {
                     onCancel={handleCancel}
                     title={
                         data.title ??
-                        (((data as any).mode ?? 'command') === 'script' ? 'Edit Script' : 'Edit Command')
+                        (((data as Record<string, unknown>).mode ?? 'command') === 'script' ? 'Edit Script' : 'Edit Command')
                     }
                     onSwitchToResults={() => {
                         window.dispatchEvent(

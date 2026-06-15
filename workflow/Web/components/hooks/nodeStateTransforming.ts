@@ -1,6 +1,7 @@
 import type { Edge as FlowEdge } from '@graph/CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '@nodes/Nodes'
 import { useMemo } from 'react'
+import type { LoopStartNode } from '../nodes/LoopStart_Node'
 import type { Edge as ProtocolEdge } from '../../../Core/models'
 import { processGraphComposition } from '../../../WorkflowExecution/Core/engine/node-sorting'
 
@@ -10,7 +11,8 @@ function computeFanInPortCount(nodeId: string, edges: FlowEdge[]): number {
 
     let maxIdx = -1
     for (const e of toNode) {
-        const m = (e as any).targetHandle?.match(/^in-(\d+)$/)
+        const handle = e.targetHandle ?? undefined
+        const m = handle?.match(/^in-(\d+)$/)
         if (m) {
             const idx = Number.parseInt(m[1], 10)
             if (!Number.isNaN(idx)) maxIdx = Math.max(maxIdx, idx)
@@ -29,13 +31,13 @@ function computeHandleEdgeMap(
     const map: Record<string, string> = {}
     for (const e of edges) {
         if (e.target !== nodeId) continue
-        const h = (e as any).targetHandle as string | undefined
+        const h = e.targetHandle ?? undefined
         if (!h) continue
-        const order = (e as any).data?.orderNumber
+        const order = e.data?.orderNumber
         const src = nodeById.get(e.source)
-        const title = (src as any)?.data?.title || (src as any)?.data?.content || ''
+        const title = src?.data?.title || src?.data?.content || ''
         const label =
-            typeof order === 'number' ? `${order} - ${title || e.source}` : title || (e as any).id
+            typeof order === 'number' ? `${order} - ${title || e.source}` : title || e.id
         map[h] = label
     }
     return map
@@ -49,7 +51,7 @@ function computeLoopIterationOverride(
     nodeResults: Map<string, string>
 ): { active: true; effectiveIterations: number } | { active: false } {
     const overrideEdges = edges.filter(
-        e => e.target === nodeId && (e as any).targetHandle === 'iterations-override'
+        e => e.target === nodeId && (e.targetHandle ?? undefined) === 'iterations-override'
     )
 
     if (overrideEdges.length === 0) return { active: false }
@@ -83,7 +85,7 @@ function computeLoopIterationOverride(
         }
 
         if (sourceNode?.type === NodeType.INPUT) {
-            const staticRaw = (sourceNode as any).data?.content as string | undefined
+            const staticRaw = sourceNode.data?.content
             const staticParsed = parseOverride(staticRaw)
             if (staticParsed !== undefined) {
                 return { active: true, effectiveIterations: staticParsed }
@@ -138,7 +140,7 @@ export const useNodeStateTransformation = (
                     ? Number.parseInt(nodeResults.get(`${nodeId}_tokens`) || '0', 10)
                     : undefined
 
-            const fanInEnabled = (node.data as any).fanInEnabled === true
+            const fanInEnabled = node.data.fanInEnabled === true
             const inputPortCount = fanInEnabled ? computeFanInPortCount(nodeId, edges) : undefined
             const inputEdgeIdByHandle = fanInEnabled
                 ? computeHandleEdgeMap(nodeId, edges, nodes)
@@ -147,7 +149,8 @@ export const useNodeStateTransformation = (
             let extraLoopFields: Record<string, unknown> = {}
 
             if (node.type === NodeType.LOOP_START) {
-                const baseIterations = ((node.data as any).iterations ?? 1) as number
+                const loopNode = node as LoopStartNode
+                const baseIterations = loopNode.data.iterations ?? 1
                 const overrideInfo = computeLoopIterationOverride(
                     nodeId,
                     baseIterations,
@@ -219,8 +222,8 @@ export const memoizedTopologicalSort = (nodes: WorkflowNodes[], edges: FlowEdge[
         id: e.id,
         source: e.source,
         target: e.target,
-        sourceHandle: (e as any).sourceHandle ?? undefined,
-        targetHandle: (e as any).targetHandle ?? undefined,
+        sourceHandle: e.sourceHandle ?? undefined,
+        targetHandle: e.targetHandle ?? undefined,
     }))
     return processGraphComposition(nodes, sanitized, false, { mode: 'display' })
 }

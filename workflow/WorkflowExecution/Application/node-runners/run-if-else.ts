@@ -4,10 +4,10 @@ import { getInactiveNodes } from '../../Core/execution/graph'
 import { replaceIndexedInputs } from '../../Core/execution/inputs'
 import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
 
-export async function executeIfElseNode(
+export function executeIfElseNode(
     context: IndexedExecutionContext,
     node: WorkflowNode | IfElseNode
-): Promise<string> {
+): string {
     let result = ''
     const parentEdges = context.edgeIndex.byTarget.get(node.id) || []
     let cliNode: WorkflowNodes | undefined

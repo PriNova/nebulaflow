@@ -4,7 +4,7 @@ import type { Edge, NodeType, WorkflowNode, WorkflowNodes } from '../../Core/mod
 export function toProtocolNode(node: WorkflowNode): WorkflowNodeDTO {
     return {
         id: node.id,
-        type: node.type as unknown as string,
+        type: node.type,
         data: node.data as unknown as Record<string, unknown>,
         position: node.position,
         selected: node.selected,
@@ -14,9 +14,9 @@ export function toProtocolNode(node: WorkflowNode): WorkflowNodeDTO {
 export function toProtocolPayload(payload: {
     nodes: WorkflowNodes[]
     edges: Edge[]
-    state?: any
+    state?: unknown
 }): WorkflowPayloadDTO {
-    const nodes = payload.nodes.map(n => toProtocolNode(n as WorkflowNode))
+    const nodes = payload.nodes.map(n => toProtocolNode(n))
     const edges: EdgeDTO[] = payload.edges.map(e => ({
         id: e.id,
         source: e.source,
@@ -24,7 +24,7 @@ export function toProtocolPayload(payload: {
         sourceHandle: e.sourceHandle,
         targetHandle: e.targetHandle,
     }))
-    return { nodes, edges, state: payload.state }
+    return { nodes, edges, state: payload.state as WorkflowPayloadDTO['state'] }
 }
 
 export function fromProtocolNode(dto: WorkflowNodeDTO): WorkflowNode {
@@ -40,7 +40,7 @@ export function fromProtocolNode(dto: WorkflowNodeDTO): WorkflowNode {
 export function fromProtocolPayload(dto: WorkflowPayloadDTO): {
     nodes: WorkflowNodes[]
     edges: Edge[]
-    state?: any
+    state?: unknown
 } {
     const nodes: WorkflowNodes[] = (dto.nodes ?? []).map(n => fromProtocolNode(n))
     const edges: Edge[] = (dto.edges ?? []).map(e => ({

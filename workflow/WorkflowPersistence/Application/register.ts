@@ -1,5 +1,5 @@
-import type { ExtensionToWorkflow } from '../../Core/models'
 import { loadLastWorkflow, loadWorkflow, saveWorkflow } from '../../DataAccess/fs'
+import type { WorkflowPayloadDTO } from '../../Core/Contracts/Protocol'
 import { ConfigurationTarget, type IHostEnvironment, type IMessagePort } from '../../Shared/Host/index'
 import { safePost } from '../../Shared/Infrastructure/messaging/safePost'
 import { setActiveWorkflowUri } from '../../Shared/Infrastructure/workspace'
@@ -11,7 +11,7 @@ export type SliceEnv = {
     updatePanelTitle: (uri?: string) => void
 }
 
-export type Router = Map<string, (message: any, env: SliceEnv) => Promise<void> | void>
+export type Router = Map<string, (_message: unknown, env: SliceEnv) => Promise<void> | void>
 
 function readStorageScope(host: IHostEnvironment): { scope: 'workspace' | 'user'; basePath?: string } {
     const scope =
@@ -26,7 +26,7 @@ export function registerHandlers(router: Router): void {
     // get_storage_scope
     router.set('get_storage_scope', async (_message, env) => {
         const info = readStorageScope(env.host)
-        await safePost(env.port, { type: 'storage_scope', data: info } as ExtensionToWorkflow, {
+        await safePost(env.port, { type: 'storage_scope', data: info }, {
             strict: env.isDev,
         })
     })
@@ -46,33 +46,34 @@ export function registerHandlers(router: Router): void {
         // Configuration change listener in host (VS Code) will trigger refresh
         // However, for Electron host (which lacks the listener), we must manually trigger the update
         const info = readStorageScope(env.host)
-        await safePost(env.port, { type: 'storage_scope', data: info } as ExtensionToWorkflow, {
+        await safePost(env.port, { type: 'storage_scope', data: info }, {
             strict: env.isDev,
         })
     })
 
     // save_workflow
     router.set('save_workflow', async (message, env) => {
-        const result = await saveWorkflow(message.data)
+        const data = (message as { data: WorkflowPayloadDTO }).data
+        const result = await saveWorkflow(data)
         if (result && 'uri' in result) {
             const uri = result.uri
             setActiveWorkflowUri(uri)
             env.updatePanelTitle(uri)
             await safePost(
                 env.port,
-                { type: 'workflow_saved', data: { path: uri } } as ExtensionToWorkflow, // path is string
+                { type: 'workflow_saved', data: { path: uri } }, // path is string
                 { strict: env.isDev }
             )
         } else if (result && 'error' in result) {
             await safePost(
                 env.port,
-                { type: 'workflow_save_failed', data: { error: result.error } } as ExtensionToWorkflow,
+                { type: 'workflow_save_failed', data: { error: result.error } },
                 { strict: env.isDev }
             )
         } else {
             await safePost(
                 env.port,
-                { type: 'workflow_save_failed', data: { error: 'cancelled' } } as ExtensionToWorkflow,
+                { type: 'workflow_save_failed', data: { error: 'cancelled' } },
                 { strict: env.isDev }
             )
         }
@@ -85,7 +86,7 @@ export function registerHandlers(router: Router): void {
             const { uri, dto } = result
             setActiveWorkflowUri(uri)
             env.updatePanelTitle(uri)
-            await safePost(env.port, { type: 'workflow_loaded', data: dto } as ExtensionToWorkflow, {
+            await safePost(env.port, { type: 'workflow_loaded', data: dto }, {
                 strict: env.isDev,
             })
         }
@@ -99,13 +100,13 @@ export function registerHandlers(router: Router): void {
         const { uri, dto } = result
         setActiveWorkflowUri(uri)
         env.updatePanelTitle(uri)
-        await safePost(env.port, { type: 'workflow_loaded', data: dto } as ExtensionToWorkflow, {
+        await safePost(env.port, { type: 'workflow_loaded', data: dto }, {
             strict: env.isDev,
         })
     })
 
     // clear_workflow
-    router.set('clear_workflow', async (_message, env) => {
+    router.set('clear_workflow', (_message, env) => {
         setActiveWorkflowUri(undefined)
         env.updatePanelTitle(undefined)
     })
@@ -113,7 +114,7 @@ export function registerHandlers(router: Router): void {
     // open_external_link
     router.set('open_external_link', async (message, env) => {
         try {
-            const urlStr = (message as any).url
+            const urlStr = (message as { url: string }).url
             let url: URL
             try {
                 // Handle simple paths or full URLs
@@ -179,8 +180,9 @@ export function registerHandlers(router: Router): void {
 
             // Fallback: open externally
             await env.host.window.openExternal(urlStr)
-        } catch (e: any) {
-            void env.host.window.showErrorMessage(`Could not open link: ${e?.message ?? String(e)}`)
+        } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e)
+            void env.host.window.showErrorMessage(`Could not open link: ${errMsg}`)
         }
     })
 }

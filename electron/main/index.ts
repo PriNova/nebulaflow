@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
 import * as path from 'node:path'
 import { BrowserWindow, Menu, MenuItem, app, dialog, ipcMain, protocol } from 'electron'
 import {
@@ -127,7 +128,7 @@ function createWindow() {
                 host.workspace.workspaceFolders.length > 0
             ) {
                 const wsRoot = host.workspace.workspaceFolders[0]
-                if (wsRoot && wsRoot !== require('node:os').homedir()) {
+                if (wsRoot && wsRoot !== os.homedir()) {
                     mainWindow.title = `NebulaFlow - ${wsRoot}`
                     return
                 }
@@ -145,7 +146,7 @@ function createWindow() {
 
     if (host.workspace instanceof ElectronWorkspace && host.workspace.workspaceFolders.length > 0) {
         const wsRoot = host.workspace.workspaceFolders[0]
-        if (wsRoot && wsRoot !== require('node:os').homedir()) {
+        if (wsRoot && wsRoot !== os.homedir()) {
             mainWindow.title = `NebulaFlow - ${wsRoot}`
         }
     }

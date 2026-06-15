@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call */
 import type { WorkflowNodes } from '@nodes/Nodes'
 import { Save } from 'lucide-react'
 import type React from 'react'
@@ -46,10 +47,12 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                         key={m}
                         type="button"
                         className={`tw-px-2 tw-py-0.5 tw-text-xs tw-border tw-rounded ${
+                             
                             ((node as any).data?.mode ?? 'command') === m
                                 ? 'tw-bg-[var(--vscode-button-background)] tw-text-[var(--vscode-button-foreground)] tw-border-[var(--vscode-button-background)]'
                                 : 'tw-bg-transparent tw-text-[var(--vscode-foreground)] tw-border-[var(--vscode-input-border)]'
                         }`}
+                         
                         onClick={() => onUpdate(node.id, { mode: m } as any)}
                     >
                         {m}
@@ -59,14 +62,17 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
 
             {/* Content */}
             <Label htmlFor="node-command">
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
                 {((node as any).data?.mode ?? 'command') === 'script' ? 'Script' : 'Command'}
             </Label>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
             {((node as any).data?.mode ?? 'command') === 'script' ? (
                 <Textarea
                     id="node-script"
                     className="tw-min-h-[80px] tw-text-sm tw-py-1"
                     value={node.data.content || ''}
-                    onChange={(e: { target: { value: any } }) =>
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+                         
                         onUpdate(node.id, { content: e.target.value })
                     }
                     onDoubleClick={() => {
@@ -81,7 +87,8 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                     id="node-command"
                     className="tw-h-8 tw-py-1 tw-text-sm"
                     value={node.data.content}
-                    onChange={(e: { target: { value: any } }) =>
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+                         
                         onUpdate(node.id, { content: e.target.value })
                     }
                     onDoubleClick={() => {
@@ -97,19 +104,23 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                 value={cliDraft}
                 onChange={setCliDraft}
                 onConfirm={() => {
+                     
                     onUpdate(node.id, { content: cliDraft })
                     setIsCliEditorOpen(false)
                 }}
                 onCancel={() => setIsCliEditorOpen(false)}
                 title={
                     node.data.title ??
+                     
                     (((node as any).data?.mode ?? 'command') === 'script'
                         ? 'Edit Script'
                         : 'Edit Command')
                 }
             />
             {(() => {
+                 
                 const m = (node as any).data?.mode ?? 'command'
+                 
                 const expose = Boolean((node as any).data?.env?.exposeParents)
                 if (m === 'script' && !expose) {
                     const txt = String(node.data.content || '')
@@ -122,8 +133,10 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                                     type="button"
                                     className="tw-underline"
                                     onClick={() =>
+                                         
                                         onUpdate(node.id, {
                                             env: {
+                                                 
                                                 ...((node as any).data?.env || {}),
                                                 exposeParents: true,
                                             },
@@ -149,10 +162,12 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                             key={s}
                             type="button"
                             className={`tw-px-2 tw-py-0.5 tw-text-xs tw-border tw-rounded ${
+                                 
                                 ((node as any).data?.shell ?? 'bash') === s
                                     ? 'tw-bg-[var(--vscode-button-background)] tw-text-[var(--vscode-button-foreground)] tw-border-[var(--vscode-button-background)]'
                                     : 'tw-bg-transparent tw-text-[var(--vscode-foreground)] tw-border-[var(--vscode-input-border)]'
                             }`}
+                             
                             onClick={() => onUpdate(node.id, { shell: s } as any)}
                         >
                             {s}
@@ -170,12 +185,15 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                             key={s}
                             type="button"
                             className={`tw-px-2 tw-py-0.5 tw-text-xs tw-border tw-rounded ${
+                                 
                                 ((node as any).data?.stdin?.source ?? 'none') === s
                                     ? 'tw-bg-[var(--vscode-button-background)] tw-text-[var(--vscode-button-foreground)] tw-border-[var(--vscode-button-background)]'
                                     : 'tw-bg-transparent tw-text-[var(--vscode-foreground)] tw-border-[var(--vscode-input-border)]'
                             }`}
                             onClick={() =>
+                                 
                                 onUpdate(node.id, {
+                                     
                                     stdin: { ...((node as any).data?.stdin || {}), source: s },
                                 } as any)
                             }
@@ -184,6 +202,7 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                         </button>
                     ))}
                 </div>
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
                 {((node as any).data?.stdin?.source ?? 'none') === 'parent-index' && (
                     <div className="tw-flex tw-items-center tw-gap-2">
                         <Label htmlFor={`stdin-index-${node.id}`}>Parent Index</Label>
@@ -192,10 +211,13 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                             className="tw-h-8 tw-py-1 tw-text-sm tw-w-20"
                             type="number"
                             min={1}
+                             
                             value={String((node as any).data?.stdin?.parentIndex ?? 1)}
-                            onChange={(e: { target: { value: string } }) =>
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                 
                                 onUpdate(node.id, {
                                     stdin: {
+                                         
                                         ...((node as any).data?.stdin || {}),
                                         parentIndex: Number.parseInt(e.target.value || '1', 10),
                                     },
@@ -204,16 +226,20 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                         />
                     </div>
                 )}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
                 {((node as any).data?.stdin?.source ?? 'none') === 'literal' && (
                     <div>
                         <Label htmlFor={`stdin-literal-${node.id}`}>Stdin Literal</Label>
                         <Textarea
                             id={`stdin-literal-${node.id}`}
                             className="tw-min-h-[60px] tw-text-sm tw-py-1"
+                             
                             value={(node as any).data?.stdin?.literal || ''}
-                            onChange={(e: { target: { value: any } }) =>
+                            onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+                                 
                                 onUpdate(node.id, {
                                     stdin: {
+                                         
                                         ...((node as any).data?.stdin || {}),
                                         literal: e.target.value,
                                     },
@@ -232,10 +258,13 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                     <div className="tw-flex tw-items-center tw-space-x-1">
                         <Checkbox
                             id={`env-expose-${node.id}`}
+                             
                             checked={Boolean((node as any).data?.env?.exposeParents)}
                             onCheckedChange={checked =>
+                                 
                                 onUpdate(node.id, {
                                     env: {
+                                         
                                         ...((node as any).data?.env || {}),
                                         exposeParents: checked === true,
                                     },
@@ -255,10 +284,12 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                         key={s}
                         type="button"
                         className={`tw-px-2 tw-py-0.5 tw-text-xs tw-border tw-rounded ${
+                             
                             ((node as any).data?.safetyLevel ?? 'safe') === s
                                 ? 'tw-bg-[var(--vscode-button-background)] tw-text-[var(--vscode-button-foreground)] tw-border-[var(--vscode-button-background)]'
                                 : 'tw-bg-transparent tw-text-[var(--vscode-foreground)] tw-border-[var(--vscode-input-border)]'
                         }`}
+                         
                         onClick={() => onUpdate(node.id, { safetyLevel: s } as any)}
                     >
                         {s}
@@ -270,6 +301,7 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                     id="node-approval"
                     checked={node.data.needsUserApproval || false}
                     onCheckedChange={checked =>
+                         
                         onUpdate(node.id, { needsUserApproval: checked === true })
                     }
                 />
@@ -278,6 +310,7 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                 <Checkbox
                     id="node-aborting"
                     checked={node.data.shouldAbort || false}
+                     
                     onCheckedChange={checked => onUpdate(node.id, { shouldAbort: checked === true })}
                 />
                 <Label htmlFor="node-aborting">Abort on Error</Label>
@@ -299,16 +332,20 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                     <div className="tw-flex tw-flex-col tw-gap-3">
                         {/* Shell flags */}
                         {(['bash', 'sh', 'zsh'] as const).includes(
-                            ((node as any).data?.shell ?? 'bash') as any
+                             
+                            ((node as any).data?.shell ?? 'bash')
                         ) && (
                             <div className="tw-flex tw-items-center tw-gap-3">
                                 <div className="tw-flex tw-items-center tw-space-x-1">
                                     <Checkbox
                                         id={`flag-exit-${node.id}`}
+                                         
                                         checked={Boolean((node as any).data?.flags?.exitOnError)}
                                         onCheckedChange={checked =>
+                                             
                                             onUpdate(node.id, {
                                                 flags: {
+                                                     
                                                     ...((node as any).data?.flags || {}),
                                                     exitOnError: checked === true,
                                                 },
@@ -320,10 +357,13 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                                 <div className="tw-flex tw-items-center tw-space-x-1">
                                     <Checkbox
                                         id={`flag-unset-${node.id}`}
+                                         
                                         checked={Boolean((node as any).data?.flags?.unsetVars)}
                                         onCheckedChange={checked =>
+                                             
                                             onUpdate(node.id, {
                                                 flags: {
+                                                     
                                                     ...((node as any).data?.flags || {}),
                                                     unsetVars: checked === true,
                                                 },
@@ -335,10 +375,13 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                                 <div className="tw-flex tw-items-center tw-space-x-1">
                                     <Checkbox
                                         id={`flag-pipe-${node.id}`}
+                                         
                                         checked={Boolean((node as any).data?.flags?.pipefail)}
                                         onCheckedChange={checked =>
+                                             
                                             onUpdate(node.id, {
                                                 flags: {
+                                                     
                                                     ...((node as any).data?.flags || {}),
                                                     pipefail: checked === true,
                                                 },
@@ -349,15 +392,19 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                                 </div>
                             </div>
                         )}
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
                         {((node as any).data?.shell ?? 'bash') === 'pwsh' && (
                             <div className="tw-flex tw-items-center tw-gap-3">
                                 <div className="tw-flex tw-items-center tw-space-x-1">
                                     <Checkbox
                                         id={`flag-np-${node.id}`}
+                                         
                                         checked={(node as any).data?.flags?.noProfile !== false}
                                         onCheckedChange={checked =>
+                                             
                                             onUpdate(node.id, {
                                                 flags: {
+                                                     
                                                     ...((node as any).data?.flags || {}),
                                                     noProfile: checked !== false,
                                                 },
@@ -369,10 +416,13 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                                 <div className="tw-flex tw-items-center tw-space-x-1">
                                     <Checkbox
                                         id={`flag-ni-${node.id}`}
+                                         
                                         checked={(node as any).data?.flags?.nonInteractive !== false}
                                         onCheckedChange={checked =>
+                                             
                                             onUpdate(node.id, {
                                                 flags: {
+                                                     
                                                     ...((node as any).data?.flags || {}),
                                                     nonInteractive: checked !== false,
                                                 },
@@ -385,11 +435,14 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                                     <Checkbox
                                         id={`flag-ep-${node.id}`}
                                         checked={Boolean(
+                                             
                                             (node as any).data?.flags?.executionPolicyBypass
                                         )}
                                         onCheckedChange={checked =>
+                                             
                                             onUpdate(node.id, {
                                                 flags: {
+                                                     
                                                     ...((node as any).data?.flags || {}),
                                                     executionPolicyBypass: checked === true,
                                                 },
@@ -406,10 +459,13 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                             <div className="tw-flex tw-items-center tw-space-x-1">
                                 <Checkbox
                                     id={`stdin-fences-${node.id}`}
+                                     
                                     checked={Boolean((node as any).data?.stdin?.stripCodeFences)}
                                     onCheckedChange={checked =>
+                                         
                                         onUpdate(node.id, {
                                             stdin: {
+                                                 
                                                 ...((node as any).data?.stdin || {}),
                                                 stripCodeFences: checked === true,
                                             },
@@ -421,10 +477,13 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                             <div className="tw-flex tw-items-center tw-space-x-1">
                                 <Checkbox
                                     id={`stdin-crlf-${node.id}`}
+                                     
                                     checked={(node as any).data?.stdin?.normalizeCRLF !== false}
                                     onCheckedChange={checked =>
+                                         
                                         onUpdate(node.id, {
                                             stdin: {
+                                                 
                                                 ...((node as any).data?.stdin || {}),
                                                 normalizeCRLF: checked !== false,
                                             },
@@ -445,13 +504,17 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                                     id={`env-names-${node.id}`}
                                     className="tw-h-8 tw-py-1 tw-text-sm"
                                     value={
+                                         
                                         Array.isArray((node as any).data?.env?.names)
+                                             
                                             ? ((node as any).data?.env?.names || []).join(',')
                                             : ''
                                     }
-                                    onChange={(e: { target: { value: string } }) =>
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                         
                                         onUpdate(node.id, {
                                             env: {
+                                                 
                                                 ...((node as any).data?.env || {}),
                                                 names: e.target.value
                                                     .split(',')
@@ -471,6 +534,7 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                                     value={(() => {
                                         try {
                                             return JSON.stringify(
+                                                 
                                                 (node as any).data?.env?.static || {},
                                                 null,
                                                 2
@@ -479,12 +543,14 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                                             return '{}'
                                         }
                                     })()}
-                                    onChange={(e: { target: { value: string } }) => {
+                                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
                                         try {
                                             const obj = JSON.parse(e.target.value || '{}')
                                             if (obj && typeof obj === 'object') {
+                                                 
                                                 onUpdate(node.id, {
                                                     env: {
+                                                         
                                                         ...((node as any).data?.env || {}),
                                                         static: obj,
                                                     },
@@ -503,8 +569,10 @@ export const CLIProperties: React.FC<CLIPropertiesProps> = ({
                         <div className="tw-flex tw-items-center tw-space-x-2">
                             <Checkbox
                                 id="node-stream"
+                                 
                                 checked={Boolean((node as any).data?.streamOutput)}
                                 onCheckedChange={checked =>
+                                     
                                     onUpdate(node.id, { streamOutput: checked === true } as any)
                                 }
                             />

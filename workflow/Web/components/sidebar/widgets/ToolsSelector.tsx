@@ -17,7 +17,7 @@ interface ToolsSelectorProps {
 
 export const ToolsSelector: React.FC<ToolsSelectorProps> = ({ node, onUpdate }) => {
     const toolNames = getAllToolNames()
-    const disabled = (node.data.disabledTools ?? []) as string[]
+    const disabled = (node.data.disabledTools ?? [])
 
     const onToggle = (tool: string, enabled: boolean) => {
         const next = new Set(disabled)

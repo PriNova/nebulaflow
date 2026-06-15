@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access */
 import { TextEditorModal } from '@modals/TextEditorModal'
 import RunFromHereButton from '@shared/RunFromHereButton'
 import RunOnlyThisButton from '@shared/RunOnlyThisButton'
@@ -30,7 +31,7 @@ export const TextNode: React.FC<BaseNodeProps & { data: BaseNodeData }> = ({ id,
 
     const dispatchEditEvent = useCallback(
         (action: 'start' | 'commit' | 'cancel', payload?: any) => {
-            const detail: any = { id, action }
+            const detail: Record<string, unknown> = { id, action }
             if (payload?.content !== undefined) {
                 detail.content = payload.content
             }

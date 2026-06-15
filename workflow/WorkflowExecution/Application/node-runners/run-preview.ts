@@ -1,4 +1,3 @@
-import type { ExtensionToWorkflow } from '../../../Core/models'
 import type { IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
@@ -17,6 +16,6 @@ export async function executePreviewNode(
     await safePost(port, {
         type: 'token_count',
         data: { nodeId, count: tokenCount },
-    } as ExtensionToWorkflow)
+    })
     return trimmedInput
 }

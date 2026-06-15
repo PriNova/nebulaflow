@@ -1,9 +1,14 @@
 import type { Edge } from '@graph/CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '@nodes/Nodes'
 import { useEffect } from 'react'
+import type { VariableNode } from '../nodes/Variable_Node'
 import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
 import { toWorkflowNodeDTO } from '../../utils/nodeDto'
 import type { GenericVSCodeWrapper } from '../../utils/vscode'
+
+interface RunOnlyThisDetail {
+    nodeId?: string
+}
 
 /**
  * Hook to handle run-only-this events from the node UI.
@@ -16,8 +21,11 @@ export const useRunOnlyThis = (
     isPaused: boolean
 ) => {
     useEffect(() => {
-        const handler = (e: any) => {
-            const nodeId: string | undefined = e?.detail?.nodeId
+        const handler = (e: Event) => {
+            const detail: RunOnlyThisDetail | undefined = (
+                e as CustomEvent<RunOnlyThisDetail>
+            ).detail
+            const nodeId = detail?.nodeId
             if (!nodeId) return
             if (isPaused) return
             // Build ordered inputs from immediate parents using edge order
@@ -34,7 +42,8 @@ export const useRunOnlyThis = (
             const variables: Record<string, string> = {}
             for (const n of nodes) {
                 if (n.type === NodeType.VARIABLE) {
-                    const varName = (n as any).data?.variableName as string | undefined
+                    const varNode = n as VariableNode
+                    const varName = varNode.data.variableName
                     if (varName) {
                         const v = nodeResults.get(n.id)
                         if (typeof v === 'string') variables[varName] = v
@@ -46,10 +55,10 @@ export const useRunOnlyThis = (
             // Post single-node execution request
             vscodeAPI.postMessage({
                 type: 'execute_node',
-                data: { node: toWorkflowNodeDTO(node as any), inputs, variables },
-            } as any)
+                data: { node: toWorkflowNodeDTO(node), inputs, variables },
+            })
         }
-        window.addEventListener('nebula-run-only-this' as any, handler as any)
-        return () => window.removeEventListener('nebula-run-only-this' as any, handler as any)
+        window.addEventListener('nebula-run-only-this', handler)
+        return () => window.removeEventListener('nebula-run-only-this', handler)
     }, [edges, nodeResults, nodes, vscodeAPI, isPaused])
 }

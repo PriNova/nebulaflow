@@ -13,7 +13,7 @@ export function replaceIndexedInputs(
 ): string {
     const escapeFn = options?.shell ? (v: string) => escapeForShell(v, options.shell!) : (v: string) => v
 
-    let result = template.replace(/\${(\d+)}(?!\w)/g, (_match, index) => {
+    let result = template.replace(/\${(\d+)}(?!\w)/g, (_match: string, index: string) => {
         const adjustedIndex = Number.parseInt(index, 10) - 1
         return adjustedIndex >= 0 && adjustedIndex < parentOutputs.length
             ? escapeFn(parentOutputs[adjustedIndex])

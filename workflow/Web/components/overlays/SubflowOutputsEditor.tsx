@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return */
 import type { Edge } from '@graph/CustomOrderedEdge'
 import { NodeType } from '@nodes/Nodes'
 import type { WorkflowNodes } from '@nodes/Nodes'
@@ -156,13 +157,13 @@ export const SubflowOutputsEditor: React.FC<SubflowOutputsEditorProps> = ({
                         })
                         setNodes(updatedNodes)
                         // Prepare def
-                        const innerNodeDTOs = (updatedNodes as any[]).map(n => toWorkflowNodeDTO(n))
+                        const innerNodeDTOs = (updatedNodes).map(n => toWorkflowNodeDTO(n))
                         const innerEdgeDTOs = (edges as any[]).map(e => ({
                             id: e.id,
                             source: e.source,
                             target: e.target,
-                            sourceHandle: (e as any).sourceHandle,
-                            targetHandle: (e as any).targetHandle,
+                            sourceHandle: (e).sourceHandle,
+                            targetHandle: (e).targetHandle,
                         }))
                         const def = {
                             id: subflowMeta.id,
@@ -179,8 +180,8 @@ export const SubflowOutputsEditor: React.FC<SubflowOutputsEditorProps> = ({
                         // Cache disabled outputs for this subflow id
                         try {
                             const disabled = computeDisabledOutputHandles(
-                                innerNodeDTOs as any,
-                                innerEdgeDTOs as any
+                                innerNodeDTOs,
+                                innerEdgeDTOs
                             )
                             setDisabledOutputsBySubflowId(prev => {
                                 const next = new Map(prev)

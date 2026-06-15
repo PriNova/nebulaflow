@@ -24,7 +24,7 @@ wss.on('connection', ws => {
     })
 
     ws.on('close', () => {
-        host.setPort(null as any) // detach — next connection will re-set
+        host.setPort(null as unknown as IMessagePort) // detach — next connection will re-set
     })
 })
 

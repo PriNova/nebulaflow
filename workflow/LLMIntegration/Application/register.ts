@@ -10,10 +10,10 @@ export type SliceEnv = {
     isDev: boolean
     updatePanelTitle: (uri?: string) => void
 }
-export type Router = Map<string, (message: any, env: SliceEnv) => Promise<void> | void>
+export type Router = Map<string, (message: unknown, env: SliceEnv) => Promise<void> | void>
 
 export function registerHandlers(router: Router): void {
-    router.set('get_models', async (_message: any, env: SliceEnv) => {
+    router.set('get_models', async (_message: unknown, env: SliceEnv) => {
         try {
             // List models from pi's built-in registry
             console.log('[nebulaflow] get_models: calling listPiModels()')
@@ -28,7 +28,8 @@ export function registerHandlers(router: Router): void {
                 warnOnError: env.isDev,
                 debugTag: 'LLMIntegration/register',
             })
-            const configuredPrimary =
+            // configuredPrimary is read for future use (e.g., highlighting default model)
+            const _configuredPrimary =
                 (nebulaflowSettings['internal.primaryModel'] as string | undefined)?.trim() || undefined
             const openrouterModels = nebulaflowSettings['openrouter.models'] as
                 | Array<{ model: string }>
@@ -75,7 +76,7 @@ export function registerHandlers(router: Router): void {
             console.log('[nebulaflow] get_models: sending fallback models:', fallbackModels.length)
             await safePost(
                 env.port,
-                { type: 'models_loaded', data: fallbackModels } as ExtensionToWorkflow,
+                { type: 'models_loaded', data: fallbackModels },
                 { strict: env.isDev },
             )
         }

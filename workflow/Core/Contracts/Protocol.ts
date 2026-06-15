@@ -139,26 +139,26 @@ interface PauseWorkflowCommand extends BaseWorkflowMessage {
     type: 'pause_workflow'
 }
 
-interface GetModelsCommand extends BaseWorkflowMessage {
+export interface GetModelsCommand extends BaseWorkflowMessage {
     type: 'get_models'
 }
 
-interface SaveCustomNodeCommand extends BaseWorkflowMessage {
+export interface SaveCustomNodeCommand extends BaseWorkflowMessage {
     type: 'save_customNode'
     data: WorkflowNodeDTO
 }
 
-interface DeleteCustomNodeCommand extends BaseWorkflowMessage {
+export interface DeleteCustomNodeCommand extends BaseWorkflowMessage {
     type: 'delete_customNode'
     data: string
 }
 
-interface RenameCustomNodeCommand extends BaseWorkflowMessage {
+export interface RenameCustomNodeCommand extends BaseWorkflowMessage {
     type: 'rename_customNode'
     data: { oldNodeTitle: string; newNodeTitle: string }
 }
 
-interface GetCustomNodesCommand extends BaseWorkflowMessage {
+export interface GetCustomNodesCommand extends BaseWorkflowMessage {
     type: 'get_custom_nodes'
 }
 
@@ -179,37 +179,37 @@ interface ClearWorkflowCommand extends BaseWorkflowMessage {
 }
 
 // Subflow commands
-interface CreateSubflowCommand extends BaseWorkflowMessage {
+export interface CreateSubflowCommand extends BaseWorkflowMessage {
     type: 'create_subflow'
     data: SubflowDefinitionDTO
 }
 
-interface GetSubflowCommand extends BaseWorkflowMessage {
+export interface GetSubflowCommand extends BaseWorkflowMessage {
     type: 'get_subflow'
     data: { id: string }
 }
 
-interface GetSubflowsCommand extends BaseWorkflowMessage {
+export interface GetSubflowsCommand extends BaseWorkflowMessage {
     type: 'get_subflows'
 }
 
-interface DuplicateSubflowCommand extends BaseWorkflowMessage {
+export interface DuplicateSubflowCommand extends BaseWorkflowMessage {
     type: 'duplicate_subflow'
     data: { id: string; nodeId: string }
 }
 
 // From Extension (to webview)
-interface WorkflowLoadedEvent extends BaseWorkflowMessage {
+export interface WorkflowLoadedEvent extends BaseWorkflowMessage {
     type: 'workflow_loaded'
     data: WorkflowPayloadDTO
 }
 
-interface WorkflowSavedEvent extends BaseWorkflowMessage {
+export interface WorkflowSavedEvent extends BaseWorkflowMessage {
     type: 'workflow_saved'
     data?: { path?: string }
 }
 
-interface WorkflowSaveFailedEvent extends BaseWorkflowMessage {
+export interface WorkflowSaveFailedEvent extends BaseWorkflowMessage {
     type: 'workflow_save_failed'
     data?: { error?: string }
 }
@@ -218,32 +218,32 @@ interface ExecutionStartedEvent extends BaseWorkflowMessage {
     type: 'execution_started'
 }
 
-interface ExecutionCompletedEvent extends BaseWorkflowMessage {
+export interface ExecutionCompletedEvent extends BaseWorkflowMessage {
     type: 'execution_completed'
     stoppedAtNodeId?: string
 }
 
-interface ExecutionPausedEvent extends BaseWorkflowMessage {
+export interface ExecutionPausedEvent extends BaseWorkflowMessage {
     type: 'execution_paused'
     stoppedAtNodeId?: string
 }
 
-interface NodeExecutionStatusEvent extends BaseWorkflowMessage {
+export interface NodeExecutionStatusEvent extends BaseWorkflowMessage {
     type: 'node_execution_status'
     data: NodeExecutionPayload
 }
 
-interface CalculateTokensCommand extends BaseWorkflowMessage {
+export interface CalculateTokensCommand extends BaseWorkflowMessage {
     type: 'calculate_tokens'
     data: { text: string; nodeId: string }
 }
 
-interface TokenCountEvent extends BaseWorkflowMessage {
+export interface TokenCountEvent extends BaseWorkflowMessage {
     type: 'token_count'
     data: { count: number; nodeId: string }
 }
 
-interface NodeAssistantContentEvent extends BaseWorkflowMessage {
+export interface NodeAssistantContentEvent extends BaseWorkflowMessage {
     type: 'node_assistant_content'
     data: {
         nodeId: string
@@ -323,12 +323,12 @@ interface SubflowNodeSubAgentContentEvent extends BaseWorkflowMessage {
     }
 }
 
-interface ModelsLoadedEvent extends BaseWorkflowMessage {
+export interface ModelsLoadedEvent extends BaseWorkflowMessage {
     type: 'models_loaded'
     data: Model[]
 }
 
-interface ProvideCustomModelsEvent extends BaseWorkflowMessage {
+export interface ProvideCustomModelsEvent extends BaseWorkflowMessage {
     type: 'provide_custom_nodes'
     data: WorkflowNodeDTO[]
 }
@@ -344,17 +344,17 @@ interface SubflowSavedEvent extends BaseWorkflowMessage {
     data: { id: string }
 }
 
-interface ProvideSubflowEvent extends BaseWorkflowMessage {
+export interface ProvideSubflowEvent extends BaseWorkflowMessage {
     type: 'provide_subflow'
     data: SubflowDefinitionDTO
 }
 
-interface ProvideSubflowsEvent extends BaseWorkflowMessage {
+export interface ProvideSubflowsEvent extends BaseWorkflowMessage {
     type: 'provide_subflows'
     data: Array<{ id: string; title: string; version: string }>
 }
 
-interface SubflowCopiedEvent extends BaseWorkflowMessage {
+export interface SubflowCopiedEvent extends BaseWorkflowMessage {
     type: 'subflow_copied'
     data: { nodeId: string; oldId: string; newId: string }
 }
@@ -380,12 +380,12 @@ interface LLMNodeChatCommand extends BaseWorkflowMessage {
 }
 
 // Clipboard commands
-interface CopySelectionCommand extends BaseWorkflowMessage {
+export interface CopySelectionCommand extends BaseWorkflowMessage {
     type: 'copy_selection'
     data: WorkflowPayloadDTO
 }
 
-interface PasteSelectionCommand extends BaseWorkflowMessage {
+export interface PasteSelectionCommand extends BaseWorkflowMessage {
     type: 'paste_selection'
 }
 

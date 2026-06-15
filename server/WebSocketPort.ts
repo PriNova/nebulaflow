@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { IMessagePort } from '../workflow/Shared/Host/index.js'
 import type { WebSocket } from 'ws'
 

@@ -68,7 +68,7 @@ export interface IWorkspace {
      */
     getConfiguration<T>(section: string, defaultValue?: T): T
 
-    updateConfiguration(section: string, value: any, target: ConfigurationTarget): Promise<void>
+    updateConfiguration(section: string, value: unknown, target: ConfigurationTarget): Promise<void>
 }
 
 /**
@@ -94,5 +94,5 @@ export interface IHostEnvironment {
  */
 export interface IMessagePort {
     postMessage(message: unknown): Promise<boolean>
-    onDidReceiveMessage(listener: (e: unknown) => any, thisArgs?: any, disposables?: any[]): any
+    onDidReceiveMessage(listener: (e: unknown) => unknown, thisArgs?: unknown, disposables?: unknown[]): unknown
 }

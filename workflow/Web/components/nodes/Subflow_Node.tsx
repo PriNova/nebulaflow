@@ -40,7 +40,7 @@ export const SubflowNode: React.FC<BaseNodeProps & { data: SubflowNode['data'] }
 
     const openSubflow = () => {
         window.dispatchEvent(
-            new CustomEvent('nebula-open-subflow' as any, {
+            new CustomEvent('nebula-open-subflow', {
                 detail: { nodeId: id, subflowId: data.subflowId },
             })
         )
@@ -107,7 +107,7 @@ export const SubflowNode: React.FC<BaseNodeProps & { data: SubflowNode['data'] }
                         onClick={e => {
                             stop(e)
                             window.dispatchEvent(
-                                new CustomEvent('nebula-duplicate-subflow' as any, {
+                                new CustomEvent('nebula-duplicate-subflow', {
                                     detail: { id: data.subflowId, nodeId: id },
                                 })
                             )

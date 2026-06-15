@@ -9,10 +9,10 @@ interface LoopStartPropertiesProps {
 }
 
 export const LoopStartProperties: React.FC<LoopStartPropertiesProps> = ({ node, onUpdate }) => {
-    const loopMode = (node.data.loopMode ?? 'fixed') as 'fixed' | 'while-variable-not-empty'
+    const loopMode = (node.data.loopMode ?? 'fixed')
     const isWhileMode = loopMode === 'while-variable-not-empty'
 
-    const handleMaxSafeIterationsChange = (e: { target: { value: any } }) => {
+    const handleMaxSafeIterationsChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const rawValue = e.target.value
         if (rawValue === '') {
             onUpdate(node.id, { maxSafeIterations: undefined })
@@ -37,7 +37,7 @@ export const LoopStartProperties: React.FC<LoopStartPropertiesProps> = ({ node, 
                     min={1}
                     max={100}
                     value={node.data.iterations || 1}
-                    onChange={(e: { target: { value: any } }) =>
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
                         onUpdate(node.id, { iterations: Number.parseInt(e.target.value, 10) })
                     }
                 />
@@ -48,7 +48,7 @@ export const LoopStartProperties: React.FC<LoopStartPropertiesProps> = ({ node, 
                     id="loop-variable"
                     className="tw-h-8 tw-py-1 tw-text-sm"
                     value={node.data.loopVariable || 'i'}
-                    onChange={(e: { target: { value: any } }) =>
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
                         onUpdate(node.id, { loopVariable: e.target.value })
                     }
                     placeholder="Variable name (e.g. i, counter, index)"
@@ -80,7 +80,7 @@ export const LoopStartProperties: React.FC<LoopStartPropertiesProps> = ({ node, 
                         id="loop-collection-variable"
                         className="tw-h-8 tw-py-1 tw-text-sm"
                         value={node.data.collectionVariable || ''}
-                        onChange={(e: { target: { value: any } }) =>
+                        onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
                             onUpdate(node.id, { collectionVariable: e.target.value })
                         }
                         placeholder="Variable name to check (e.g. tasks)"

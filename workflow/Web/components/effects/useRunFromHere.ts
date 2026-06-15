@@ -1,6 +1,10 @@
 import type { WorkflowNodes } from '@nodes/Nodes'
 import { useEffect } from 'react'
 
+interface RunFromHereDetail {
+    nodeId?: string
+}
+
 /**
  * Hook to handle run-from-here events from the node UI.
  */
@@ -11,8 +15,11 @@ export const useRunFromHere = (
     isPaused: boolean
 ) => {
     useEffect(() => {
-        const handler = (e: any) => {
-            const nodeId = e?.detail?.nodeId
+        const handler = (e: Event) => {
+            const detail: RunFromHereDetail | undefined = (
+                e as CustomEvent<RunFromHereDetail>
+            ).detail
+            const nodeId = detail?.nodeId
             if (!nodeId) return
             if (isPaused) return
             const outputs: Record<string, string> = {}
@@ -22,7 +29,7 @@ export const useRunFromHere = (
             }
             onResume(nodeId, outputs)
         }
-        window.addEventListener('nebula-run-from-here' as any, handler as any)
-        return () => window.removeEventListener('nebula-run-from-here' as any, handler as any)
+        window.addEventListener('nebula-run-from-here', handler)
+        return () => window.removeEventListener('nebula-run-from-here', handler)
     }, [nodeResults, nodes, onResume, isPaused])
 }

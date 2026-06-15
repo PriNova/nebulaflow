@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access */
 import { MarkdownPreviewModal } from '@modals/MarkdownPreviewModal'
 import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react'
 import type React from 'react'
@@ -29,7 +30,7 @@ export const PreviewNode: React.FC<BaseNodeProps & { data: BaseNodeData }> = ({
 
     const dispatchEditEvent = useCallback(
         (action: 'start' | 'commit' | 'cancel', payload?: any) => {
-            const detail: any = { id, action }
+            const detail: Record<string, unknown> = { id, action }
             if (payload?.content !== undefined) {
                 detail.content = payload.content
             }

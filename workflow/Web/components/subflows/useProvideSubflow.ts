@@ -1,19 +1,29 @@
 import type { Edge } from '@graph/CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '@nodes/Nodes'
 import { useEffect } from 'react'
-import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
+import type {
+    ExtensionToWorkflow,
+    SubflowDefinitionDTO,
+    SubflowPortDTO,
+    WorkflowNodeDTO,
+    WorkflowToExtension,
+} from '../../services/Protocol'
 import { toWorkflowNodeDTO } from '../../utils/nodeDto'
 import type { GenericVSCodeWrapper } from '../../utils/vscode'
 
-const PROVIDE_SUBFLOW_EVT = 'nebula-subflow-provide' as const
+const PROVIDE_SUBFLOW_EVT = 'nebula-subflow-provide'
 
 export interface SubflowMeta {
     id: string
     title: string
     version: string
-    inputs: Array<{ id: string; name: string; index: number }>
-    outputs: Array<{ id: string; name: string; index: number }>
+    inputs: SubflowPortDTO[]
+    outputs: SubflowPortDTO[]
 }
+
+// Detail type alias for the provide_subflow event payload.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+interface ProvideSubflowDetail extends SubflowDefinitionDTO {}
 
 /**
  * Hook to handle subflow data provided by the extension.
@@ -25,7 +35,7 @@ export const useProvideSubflow = (
     pendingSubflowRename: { id: string; newTitle: string } | null,
     notify: (p: { type: 'success' | 'error'; text: string }) => void,
     computeDisabledOutputHandles: (
-        dtoNodes: Array<{ id: string; type: string; data?: any }>,
+        dtoNodes: WorkflowNodeDTO[],
         dtoEdges: Array<{ source: string; target: string }>
     ) => Set<string>,
     setDisabledOutputsBySubflowId: React.Dispatch<React.SetStateAction<Map<string, Set<string>>>>,
@@ -43,73 +53,91 @@ export const useProvideSubflow = (
     >
 ) => {
     useEffect(() => {
-        const provideHandler = (e: any) => {
-            const def = e?.detail
+        const provideHandler = (e: Event) => {
+            const def: ProvideSubflowDetail | undefined = (
+                e as CustomEvent<ProvideSubflowDetail>
+            ).detail
             if (!def) return
             // If rename requested, update title and persist without opening
             if (pendingSubflowRename && def.id === pendingSubflowRename.id) {
                 const renamed = { ...def, title: pendingSubflowRename.newTitle }
-                vscodeAPI.postMessage({ type: 'create_subflow', data: renamed } as any)
+                vscodeAPI.postMessage({ type: 'create_subflow', data: renamed })
                 setPendingSubflowRename(null)
                 notify({ type: 'success', text: 'Subflow renamed' })
-                vscodeAPI.postMessage({ type: 'get_subflows' } as any)
+                vscodeAPI.postMessage({ type: 'get_subflows' })
                 return
             }
 
-            const dtoNodes = (def.graph?.nodes || []) as any[]
-            const dtoEdges = (def.graph?.edges || []) as any[]
+            const dtoNodes: WorkflowNodeDTO[] = def.graph?.nodes ?? []
+            const dtoEdges = (def.graph?.edges ?? []) as Array<{
+                id: string
+                source: string
+                target: string
+                sourceHandle?: string
+                targetHandle?: string
+            }>
 
             // Cache disabled outputs for this subflow id (for top-level visual dimming)
             try {
-                const disabled = computeDisabledOutputHandles(dtoNodes as any, dtoEdges as any)
+                const disabled = computeDisabledOutputHandles(dtoNodes, dtoEdges)
                 setDisabledOutputsBySubflowId(prev => {
                     const next = new Map(prev)
                     next.set(def.id, disabled)
                     return next
                 })
-            } catch {}
+            } catch {
+                // computeDisabledOutputHandles may throw on malformed data; safe to ignore
+            }
 
-            const uiNodes = dtoNodes.map(n => {
-                const baseData = {
-                    title: '',
-                    content: '',
-                    active: true,
-                    ...n.data,
+            const fanInTypes = new Set([
+                NodeType.CLI,
+                NodeType.LLM,
+                NodeType.PREVIEW,
+                NodeType.ACCUMULATOR,
+                NodeType.INPUT,
+            ])
+
+            const uiNodes: WorkflowNodes[] = dtoNodes.map(n => {
+                const nodeType = n.type as NodeType
+                const nodeData = (n.data ?? {}) as Partial<WorkflowNodes['data']>
+                const baseData: WorkflowNodes['data'] = {
+                    title: nodeData.title ?? '',
+                    content: nodeData.content ?? '',
+                    active: nodeData.active ?? true,
+                    // Include all other data properties (bypass, iterations, model, etc.)
+                    ...nodeData,
                 }
                 // Enable fan-in for common types to ensure handles render
-                const fanInTypes = new Set([
-                    NodeType.CLI,
-                    NodeType.LLM,
-                    NodeType.PREVIEW,
-                    NodeType.ACCUMULATOR,
-                    NodeType.INPUT,
-                ])
-                if (fanInTypes.has(n.type as NodeType)) {
-                    ;(baseData as any).fanInEnabled = true
+                if (fanInTypes.has(nodeType)) {
+                    baseData.fanInEnabled = true
                 }
                 return {
                     id: n.id,
-                    type: n.type as NodeType,
+                    type: nodeType,
                     data: baseData,
                     position: n.position,
-                    selected: n.selected,
-                } as any
+                }
             })
-            const uiEdges = dtoEdges.map(e => ({
+
+            const uiEdges: Edge[] = dtoEdges.map(e => ({
                 id: e.id,
                 source: e.source,
                 target: e.target,
-                sourceHandle: e.sourceHandle,
-                targetHandle: e.targetHandle,
-            })) as any
+                sourceHandle: e.sourceHandle ?? undefined,
+                targetHandle: e.targetHandle ?? undefined,
+            }))
 
             // Capture subflow meta for simple ports editor (rename/reorder outputs)
             try {
-                const outs = Array.isArray(def.outputs)
-                    ? [...def.outputs].sort((a: any, b: any) => (a.index ?? 0) - (b.index ?? 0))
+                const outs = def.outputs
+                    ? [...(def.outputs)].sort(
+                          (a, b) => (a.index ?? 0) - (b.index ?? 0)
+                      )
                     : []
-                const ins = Array.isArray(def.inputs)
-                    ? [...def.inputs].sort((a: any, b: any) => (a.index ?? 0) - (b.index ?? 0))
+                const ins = def.inputs
+                    ? [...(def.inputs)].sort(
+                          (a, b) => (a.index ?? 0) - (b.index ?? 0)
+                      )
                     : []
                 setSubflowMeta({
                     id: def.id,
@@ -118,53 +146,61 @@ export const useProvideSubflow = (
                     inputs: ins,
                     outputs: outs,
                 })
-            } catch {}
+            } catch {
+                // Port metadata may be malformed; safe to skip
+            }
 
-            setNodes(uiNodes as any)
-            setEdges(uiEdges as any)
+            setNodes(uiNodes)
+            setEdges(uiEdges)
             // Establish baseline for dirty-check
             try {
-                const nodeDTOs = (uiNodes as any[]).map(n => toWorkflowNodeDTO(n))
-                nodeDTOs.sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)))
-                const edgeDTOs = (uiEdges as any[]).map(e => ({
+                const nodeDTOs = uiNodes.map(n => toWorkflowNodeDTO(n))
+                nodeDTOs.sort((a, b) => String(a.id).localeCompare(String(b.id)))
+                const edgeDTOs = uiEdges.map(e => ({
                     id: e.id,
                     source: e.source,
                     target: e.target,
-                    sourceHandle: (e as any).sourceHandle,
-                    targetHandle: (e as any).targetHandle,
+                    sourceHandle: e.sourceHandle ?? undefined,
+                    targetHandle: e.targetHandle ?? undefined,
                 }))
-                edgeDTOs.sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)))
+                edgeDTOs.sort((a, b) => String(a.id).localeCompare(String(b.id)))
                 const outs = Array.isArray(def.outputs)
-                    ? [...def.outputs].sort((a: any, b: any) => (a.index ?? 0) - (b.index ?? 0))
+                    ? [...(def.outputs)].sort(
+                          (a, b) => (a.index ?? 0) - (b.index ?? 0)
+                      )
                     : []
                 const outputsSig = JSON.stringify(
-                    outs.map((o: any) => ({ id: o.id, name: o.name, index: o.index }))
+                    outs.map(o => ({ id: o.id, name: o.name, index: o.index }))
                 )
                 subflowBaselineRef.current = {
                     nodes: JSON.stringify(nodeDTOs),
                     edges: JSON.stringify(edgeDTOs),
                     outputs: outputsSig,
                 }
-            } catch {}
+            } catch {
+                // Baseline computation may fail; safe to skip
+            }
             requestFitOnNextRender()
 
             // Hydrate RightSidebar results from subflow node data (result/output) for immediate visibility
             try {
                 const initialResults = new Map<string, string>()
-                for (const n of uiNodes as any[]) {
-                    const r =
-                        (n?.data?.result as string | undefined) ??
-                        (n?.data?.output as string | undefined)
-                    if (typeof r === 'string' && r.length > 0) {
-                        initialResults.set(n.id, r)
+                for (const n of uiNodes) {
+                    const r = (n.data as Record<string, unknown>).result as string | undefined
+                    const o = (n.data as Record<string, unknown>).output as string | undefined
+                    const val = r ?? o
+                    if (typeof val === 'string' && val.length > 0) {
+                        initialResults.set(n.id, val)
                     }
                 }
                 setNodeResults(prev => new Map([...prev, ...initialResults]))
-            } catch {}
+            } catch {
+                // Hydration is best-effort; failures safe to ignore
+            }
         }
-        window.addEventListener(PROVIDE_SUBFLOW_EVT as any, provideHandler as any)
+        window.addEventListener(PROVIDE_SUBFLOW_EVT, provideHandler)
         return () => {
-            window.removeEventListener(PROVIDE_SUBFLOW_EVT as any, provideHandler as any)
+            window.removeEventListener(PROVIDE_SUBFLOW_EVT, provideHandler)
         }
     }, [
         vscodeAPI,

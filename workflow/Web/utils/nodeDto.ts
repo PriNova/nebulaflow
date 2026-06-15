@@ -12,7 +12,7 @@ function sanitizeValue(value: unknown, seen: WeakSet<object> = new WeakSet()): u
     if (value === null) return null
 
     if (typeof value === 'object') {
-        const obj = value as object
+        const obj = value
         if (seen.has(obj)) return undefined
         seen.add(obj)
 
@@ -24,7 +24,7 @@ function sanitizeValue(value: unknown, seen: WeakSet<object> = new WeakSet()): u
         }
         if (isPlainObject(value)) {
             const out: Record<string, unknown> = {}
-            for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+            for (const [k, v] of Object.entries(value)) {
                 const sv = sanitizeValue(v, seen)
                 if (sv !== undefined) out[k] = sv
             }
@@ -43,11 +43,12 @@ export function toWorkflowNodeDTO(node: WorkflowNodes): WorkflowNodeDTO {
     const data = sanitizeValue(node.data) as Record<string, unknown>
     // Ensure any render-time callbacks are gone
     if (data && 'onUpdate' in data) {
-        ;(data as any).onUpdate = undefined
+        data.onUpdate = undefined
     }
 
     // ReactFlow injects selection state; keep selected if present but ensure boolean
-    const selected = typeof (node as any).selected === 'boolean' ? (node as any).selected : undefined
+    const selected: boolean | undefined =
+        typeof node.selected === 'boolean' ? node.selected : undefined
 
     return {
         id: node.id,

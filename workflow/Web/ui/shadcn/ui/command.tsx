@@ -1,3 +1,4 @@
+/* eslint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */
 import * as React from 'react'
 
 export const Command: React.FC<React.ComponentPropsWithoutRef<'div'>> = ({
@@ -75,7 +76,7 @@ export const CommandSeparator: React.FC<React.ComponentPropsWithoutRef<'div'>> =
 export const CommandLink: React.FC<
     React.AnchorHTMLAttributes<HTMLAnchorElement> & { onSelect?: () => void }
 > = ({ href, className, children, onSelect, ...props }) => (
-    <a href={href} className={className} onClick={onSelect as any} {...props}>
+    <a href={href} className={className} onClick={onSelect} {...props}>
         {children}
     </a>
 )

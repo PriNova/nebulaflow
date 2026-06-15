@@ -1,6 +1,12 @@
 // Type-only imports from pi ESM packages cause TS1541 in CJS context.
 // We use dynamic import() for values; types are used via declaration merging.
-/* eslint-disable @typescript-eslint/no-redundant-type-constituents */
+
+interface PiModelInfo {
+    id: string
+    provider: string
+    name: string
+    api: unknown
+}
 
 /**
  * List all available models from pi's built-in model registry.
@@ -13,7 +19,7 @@ export async function listPiModels(): Promise<Array<{ id: string; provider: stri
     const models: Array<{ id: string; provider: string; title: string }> = []
 
     for (const provider of providers) {
-        const providerModels = getModels(provider as any) as any[]
+        const providerModels = getModels(provider) as unknown as PiModelInfo[]
         for (const model of providerModels) {
             // pi model objects store id and provider separately.
             // Combine them so downstream code (ModelSelector grouping,
@@ -37,7 +43,7 @@ export async function listPiModels(): Promise<Array<{ id: string; provider: stri
  * Legacy keys like "openai-completions/gpt-5.1" are mapped to the correct pi provider.
  * Returns undefined if no match is found.
  */
-export async function resolvePiModel(modelKey: string): Promise<{ id: string; provider: string; name: string; api: any } | undefined> {
+export async function resolvePiModel(modelKey: string): Promise<PiModelInfo | undefined> {
     const { getModels, getProviders } = await import('@earendil-works/pi-ai')
     const providers = getProviders()
 
@@ -45,9 +51,9 @@ export async function resolvePiModel(modelKey: string): Promise<{ id: string; pr
     const key = normalizeLegacyProviderPrefix(modelKey)
 
     for (const provider of providers) {
-        const providerModels = getModels(provider as any) as any[]
+        const providerModels = getModels(provider) as unknown as PiModelInfo[]
         const found = providerModels.find(
-            (m: any) =>
+            (m) =>
                 m.id === key ||
                 `${m.provider}/${m.id}` === key
         )

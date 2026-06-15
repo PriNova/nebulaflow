@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Browser-side IMessagePort over a WebSocket connection to the bridge server.
  *

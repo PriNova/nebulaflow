@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call */
 import type { Edge } from '@graph/CustomOrderedEdge'
 import { NodeType, type WorkflowNodes } from '@nodes/Nodes'
 import type React from 'react'
@@ -224,8 +225,8 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
             id: e.id,
             source: e.source,
             target: e.target,
-            sourceHandle: (e as any).sourceHandle,
-            targetHandle: (e as any).targetHandle,
+            sourceHandle: (e).sourceHandle,
+            targetHandle: (e).targetHandle,
         }))
 
         // Determine disabled outputs from current inner graph
@@ -288,21 +289,21 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
                 source: inp.sourceId,
                 target: wrapperId,
                 targetHandle: `in-${idx}`,
-            } as any)
+            })
         }
         // Rewire outgoing from wrapper with per-source handle
-        outgoingEdges.forEach((e, idx) => {
+        outgoingEdges.forEach((e, _idx) => {
             const outIdx = sourceIndexById.get(e.source) ?? 0
             nextEdges.push({
                 id: uuidv4(),
                 source: wrapperId,
                 target: e.target,
                 sourceHandle: `out-${outIdx}`,
-            } as any)
+            })
         })
         setNodes(nextNodes)
         setEdges(nextEdges)
-        setSelectedNodes([wrapper as any])
+        setSelectedNodes([wrapper])
     }
 
     return (

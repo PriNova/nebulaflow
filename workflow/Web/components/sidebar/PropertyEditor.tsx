@@ -123,7 +123,7 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                     id="node-title"
                     className="tw-h-8 tw-py-1 tw-text-sm"
                     value={node.data.title}
-                    onChange={(e: { target: { value: any } }) =>
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                         onUpdate(node.id, { title: e.target.value })
                     }
                 />
@@ -134,7 +134,7 @@ export const PropertyEditor: React.FC<PropertyEditorProps> = ({
                             size="sm"
                             onClick={() => {
                                 window.dispatchEvent(
-                                    new CustomEvent('nebula-save-subflow' as any, {
+                                    new CustomEvent('nebula-save-subflow', {
                                         detail: { nodeId: node.id },
                                     })
                                 )

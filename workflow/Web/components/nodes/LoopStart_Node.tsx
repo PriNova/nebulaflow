@@ -57,11 +57,11 @@ export const LoopStartNode: React.FC<BaseNodeProps> = ({ id, data, selected }) =
                 <span>{data.title}</span>
                 <span className="tw-text-sm tw-opacity-70">
                     Iterations: {data.iterations || 1}
-                    {(data as any).overrideIterations ? ' (overridden)' : ''}
+                    {(data as Record<string, unknown>).overrideIterations ? ' (overridden)' : ''}
                 </span>
                 <span
                     className={
-                        (data as any).overrideIterations
+                        (data as Record<string, unknown>).overrideIterations
                             ? 'tw-text-xs tw-text-[var(--vscode-testing-iconPassed)]'
                             : 'tw-text-xs tw-opacity-50'
                     }

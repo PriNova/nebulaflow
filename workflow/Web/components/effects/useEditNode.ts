@@ -1,12 +1,19 @@
 import { useEffect } from 'react'
 
+interface EditNodeDetail {
+    id?: string
+    action?: string
+    content?: string
+    title?: string
+}
+
 /**
  * Hook to handle node editing events from the UI.
  */
-export const useEditNode = (onNodeUpdate: (id: string, partial: any) => void) => {
+export const useEditNode = (onNodeUpdate: (id: string, partial: Record<string, unknown>) => void) => {
     useEffect(() => {
-        const handleEditNode = (e: any) => {
-            const detail = e?.detail
+        const handleEditNode = (e: Event) => {
+            const detail: EditNodeDetail | undefined = (e as CustomEvent<EditNodeDetail>).detail
             if (!detail) return
             const { id, action, content, title } = detail
             if (!id) return
@@ -16,7 +23,7 @@ export const useEditNode = (onNodeUpdate: (id: string, partial: any) => void) =>
                     onNodeUpdate(id, { isEditing: true })
                     break
                 case 'commit': {
-                    const updates: Record<string, any> = { isEditing: false }
+                    const updates: Record<string, unknown> = { isEditing: false }
                     if (content !== undefined) {
                         updates.content = content
                     }
@@ -31,7 +38,7 @@ export const useEditNode = (onNodeUpdate: (id: string, partial: any) => void) =>
                     break
             }
         }
-        window.addEventListener('nebula-edit-node' as any, handleEditNode as any)
-        return () => window.removeEventListener('nebula-edit-node' as any, handleEditNode as any)
+        window.addEventListener('nebula-edit-node', handleEditNode)
+        return () => window.removeEventListener('nebula-edit-node', handleEditNode)
     }, [onNodeUpdate])
 }

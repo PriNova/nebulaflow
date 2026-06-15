@@ -19,7 +19,8 @@ async function main() {
     await port.connect()
 
     // Expose for the acquireVsCodeApi shim in index.html
-    ;(window as any).__nebulaPort = port
+    ;// eslint-disable-next-line @typescript-eslint/no-explicit-any
+;(window as any).__nebulaPort = port
 
     const rootEl = document.getElementById('root')
     if (!rootEl) throw new Error('Missing #root element')

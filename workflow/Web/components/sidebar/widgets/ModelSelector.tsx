@@ -26,7 +26,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ node, models, onUp
     )
 
     useEffect(() => {
-        setSelectedModel(node.data.model as any)
+        setSelectedModel(node.data.model)
     }, [node])
 
     const groupedModels = useMemo(() => {
@@ -60,7 +60,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ node, models, onUp
         (model: { id: string; provider: string; title?: string }) => {
             setSelectedModel(model)
             setOpen(false)
-            onUpdate(node.id, { model: { ...model } as any })
+            onUpdate(node.id, { model: { ...model } })
         },
         [node.id, onUpdate]
     )

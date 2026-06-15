@@ -1,3 +1,4 @@
+/* eslint-disable jsx-a11y/no-noninteractive-element-interactions */
 import type React from 'react'
 import { createContext, useContext, useState } from 'react'
 import { createPortal } from 'react-dom'

@@ -34,7 +34,8 @@ export function resolveToolName(nameOrAlias: string): string | undefined {
     const trimmed = nameOrAlias.trim()
 
     // Direct match
-    if (Object.values(BUILTIN_TOOL_NAMES).includes(trimmed as any)) {
+    const values: readonly string[] = Object.values(BUILTIN_TOOL_NAMES)
+    if (values.includes(trimmed)) {
         return trimmed
     }
 

@@ -16,7 +16,7 @@ function getNodesConnectedByDirection(
     return edges
         .filter(edge => (isSourceDirection ? edge.source === nodeId : edge.target === nodeId))
         .map(edge => nodes.find(node => node.id === (isSourceDirection ? edge.target : edge.source))!)
-        .filter(Boolean) as WorkflowNodes[]
+        .filter(Boolean)
 }
 
 function getChildNodesFrom(
@@ -467,7 +467,7 @@ function getLoopIterations(
         return 1
     }
 
-    const baseIterations = ((loopStart as any).data?.iterations ?? 1) as number
+    const baseIterations = (loopStart as { data: { iterations?: number } }).data?.iterations ?? 1
     const min = 1
     const max = 100
 
@@ -488,7 +488,7 @@ function getLoopIterations(
             continue
         }
 
-        const raw = ((sourceNode as any).data?.content ?? '') as string
+        const raw = (sourceNode as { data: { content?: string } }).data?.content ?? ''
         const parsed = Number.parseInt(raw, 10)
         if (Number.isNaN(parsed) || parsed < min) {
             break

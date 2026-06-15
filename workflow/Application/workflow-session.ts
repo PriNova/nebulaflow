@@ -6,6 +6,9 @@ import {
     NodeType,
     type WorkflowNodes,
 } from '../Core/models'
+import type {
+    WorkflowPayloadDTO,
+} from '../Core/Contracts/Protocol'
 import {
     type SliceEnv,
     registerHandlers as registerLLMHandlers,
@@ -53,7 +56,7 @@ interface ExecutionContext {
 const sessionRegistry = new WeakMap<IMessagePort, ExecutionContext>()
 const activeAbortControllers = new Set<AbortController>()
 
-let inMemoryClipboard: any | null = null
+let inMemoryClipboard: WorkflowPayloadDTO | null = null
 
 function getOrCreateSessionContext(port: IMessagePort): ExecutionContext {
     let context = sessionRegistry.get(port)
@@ -132,7 +135,7 @@ export function setupWorkflowMessageHandling(
     isDev: boolean,
     updatePanelTitle: (uri?: string) => void
 ) {
-    const router = new Map<string, (message: any, env: SliceEnv) => Promise<void> | void>()
+    const router = new Map<string, (message: unknown, env: SliceEnv) => Promise<void> | void>()
 
     registerPersistenceHandlers(router)
     registerLibraryHandlers(router)
@@ -145,13 +148,14 @@ export function setupWorkflowMessageHandling(
         if (!isWorkflowToExtension(message)) {
             return
         }
-        const handler = router.get((message as any).type)
+        // message is narrowed to WorkflowToExtension by the guard above
+        const handler = router.get(message.type)
         if (handler) {
-            await handler(message as any, env)
+            await handler(message, env)
             return
         }
 
-        switch ((message as any).type) {
+        switch (message.type) {
             case 'reset_results': {
                 const ctx = getOrCreateSessionContext(port)
                 ctx.subflowCache.clear()
@@ -167,11 +171,11 @@ export function setupWorkflowMessageHandling(
             case 'execute_workflow': {
                 const ctx = getOrCreateSessionContext(port)
 
-                const data = (message as any).data
-                if (data?.nodes && data?.edges) {
+                const payload = message.data
+                if (payload.nodes && payload.edges) {
                     // Parse nodes and edges
-                    const { nodes, edges } = fromProtocolPayload(data)
-                    const resume = data.resume
+                    const { nodes, edges } = fromProtocolPayload(payload)
+                    const resume = payload.resume
 
                     // Compute filtered nodes and edges based on resume (if any)
                     let filteredResume = resume
@@ -179,7 +183,6 @@ export function setupWorkflowMessageHandling(
                     let execEdges = edges
 
                     if (resume?.fromNodeId) {
-                        // ... (same pruning logic as before)
                         const allowed = new Set<string>()
                         const bySource = new Map<string, typeof edges>()
                         for (const e of edges) {
@@ -198,38 +201,37 @@ export function setupWorkflowMessageHandling(
                         }
                         execNodes = nodes.filter(n => allowed.has(n.id))
                         execEdges = edges.filter(e => allowed.has(e.target))
-                        // ... seeds filtering ...
                         const allowedIds = allowed
                         const bypassIds = new Set(
-                            execNodes.filter(n => (n as any)?.data?.bypass === true).map(n => n.id)
+                            execNodes.filter(n => n.data?.bypass === true).map(n => n.id)
                         )
                         const outputs = Object.entries(
-                            (resume?.seeds?.outputs as Record<string, string>) || {}
+                            resume?.seeds?.outputs ?? {}
                         ).filter(([id]) => !allowedIds.has(id) || bypassIds.has(id))
                         const decisions = Object.entries(
-                            (resume?.seeds?.decisions as Record<string, 'true' | 'false'>) || {}
+                            resume?.seeds?.decisions ?? {}
                         ).filter(([id]) => !allowedIds.has(id) || bypassIds.has(id))
                         filteredResume = {
                             ...resume,
                             seeds: {
                                 outputs: Object.fromEntries(outputs),
                                 decisions: Object.fromEntries(decisions),
-                                variables: (resume?.seeds as any)?.variables,
+                                variables: resume?.seeds?.variables,
                             },
                         }
                     } else if (resume?.seeds?.outputs && process.env.NEBULAFLOW_FILTER_PAUSE_SEEDS) {
                         const bypassIds = new Set(
-                            nodes.filter(n => (n as any)?.data?.bypass === true).map(n => n.id)
+                            nodes.filter(n => n.data?.bypass === true).map(n => n.id)
                         )
                         const outputs = Object.entries(
-                            (resume?.seeds?.outputs as Record<string, string>) || {}
+                            resume.seeds.outputs
                         ).filter(([id]) => bypassIds.has(id))
                         filteredResume = {
                             ...resume,
                             seeds: {
                                 outputs: Object.fromEntries(outputs),
-                                decisions: (resume?.seeds as any)?.decisions,
-                                variables: (resume?.seeds as any)?.variables,
+                                decisions: resume.seeds?.decisions,
+                                variables: resume.seeds?.variables,
                             },
                         }
                     }
@@ -241,7 +243,7 @@ export function setupWorkflowMessageHandling(
                         void host.window.showInformationMessage(
                             `Cannot start workflow: LLM node limit of ${LLM_CAP} would be exceeded (currently ${currentTotal}, requested ${newLlmCount})`
                         )
-                        await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
+                        await safePost(port, { type: 'execution_completed' }, {
                             strict: isDev,
                         })
                         break
@@ -265,7 +267,7 @@ export function setupWorkflowMessageHandling(
                             host,
                             abortController.signal,
                             approvalHandler,
-                            filteredResume,
+                            filteredResume as { fromNodeId: string; seeds?: { outputs?: Record<string, string> } } | undefined,
                             pauseRef,
                             ctx.subflowCache
                         )
@@ -283,7 +285,7 @@ export function setupWorkflowMessageHandling(
                     break
                 }
                 // Parse node
-                const nodeDTO = (message as any).data.node
+                const nodeDTO = message.data.node
                 if (!nodeDTO) {
                     void host.window.showErrorMessage('No node data provided')
                     break
@@ -301,7 +303,7 @@ export function setupWorkflowMessageHandling(
                     void host.window.showInformationMessage(
                         `Cannot start node: LLM node limit of ${LLM_CAP} would be exceeded (currently ${currentTotal}, requested ${newLlmCount})`
                     )
-                    await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
+                    await safePost(port, { type: 'execution_completed' }, {
                         strict: isDev,
                     })
                     break
@@ -313,18 +315,18 @@ export function setupWorkflowMessageHandling(
                 ctx.abortController = null
                 try {
                     const approvalHandler = createWaitForApproval(port, abortController.signal)
-                    await safePost(port, { type: 'execution_started' } as ExtensionToWorkflow, {
+                    await safePost(port, { type: 'execution_started' }, {
                         strict: isDev,
                     })
                     await executeSingleNode(
-                        (message as any).data,
+                        message.data,
                         port,
                         host,
                         abortController.signal,
                         approvalHandler
                     )
                 } finally {
-                    await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
+                    await safePost(port, { type: 'execution_completed' }, {
                         strict: isDev,
                     })
                     ctx.activeExecutions.delete(abortController)
@@ -338,16 +340,15 @@ export function setupWorkflowMessageHandling(
                     void host.window.showInformationMessage('Cannot start chat while paused')
                     break
                 }
-                const data = (message as any).data
                 // Parse node to count LLM nodes (should be 1)
-                const { nodes } = fromProtocolPayload({ nodes: [data.node], edges: [] })
+                const { nodes } = fromProtocolPayload({ nodes: [message.data.node], edges: [] })
                 const newLlmCount = countLlmNodes(nodes)
                 const currentTotal = getTotalLlmRunning(ctx)
                 if (currentTotal + newLlmCount > LLM_CAP) {
                     void host.window.showInformationMessage(
                         `Cannot start chat: LLM node limit of ${LLM_CAP} would be exceeded (currently ${currentTotal}, requested ${newLlmCount})`
                     )
-                    await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
+                    await safePost(port, { type: 'execution_completed' }, {
                         strict: isDev,
                     })
                     break
@@ -362,55 +363,57 @@ export function setupWorkflowMessageHandling(
                 let nodeId: string | undefined
                 try {
                     const approvalHandler = createWaitForApproval(port, abortController.signal)
-                    await safePost(port, { type: 'execution_started' } as ExtensionToWorkflow, {
+                    await safePost(port, { type: 'execution_started' }, {
                         strict: isDev,
                     })
-                    const node = nodes[0] as any
+                    const node = nodes[0]
                     if (!node) {
                         void host.window.showErrorMessage('LLM chat failed: node not found')
                         break
                     }
                     nodeId = node.id
-                    await safePost(port, {
+                    const statusMsg: ExtensionToWorkflow = {
                         type: 'node_execution_status',
                         data: { nodeId, status: 'running' },
-                    } as ExtensionToWorkflow)
+                    }
+                    await safePost(port, statusMsg)
 
                     try {
                         const result = await executeLLMChatTurn(
                             node,
-                            data.threadID as string,
-                            data.message as string,
+                            message.data.threadID,
+                            message.data.message,
                             abortController.signal,
                             port,
                             approvalHandler
                         )
-                        await safePost(port, {
+                        const completedMsg: ExtensionToWorkflow = {
                             type: 'node_execution_status',
                             data: { nodeId, status: 'completed', result: result ?? '' },
-                        } as ExtensionToWorkflow)
+                        }
+                        await safePost(port, completedMsg)
                     } catch (error) {
                         const aborted = abortController.signal.aborted || error instanceof AbortedError
-                        const msg = error instanceof Error ? error.message : String(error)
+                        const errMsg = error instanceof Error ? error.message : String(error)
                         if (aborted) {
                             await safePost(port, {
                                 type: 'node_execution_status',
-                                data: { nodeId: nodeId ?? data.node?.id, status: 'interrupted' },
-                            } as ExtensionToWorkflow)
+                                data: { nodeId: nodeId ?? message.data.node.id, status: 'interrupted' },
+                            })
                         } else {
-                            void host.window.showErrorMessage(`LLM Chat Error: ${msg}`)
+                            void host.window.showErrorMessage(`LLM Chat Error: ${errMsg}`)
                             await safePost(port, {
                                 type: 'node_execution_status',
                                 data: {
-                                    nodeId: nodeId ?? data.node?.id,
+                                    nodeId: nodeId ?? message.data.node.id,
                                     status: 'error',
-                                    result: msg,
+                                    result: errMsg,
                                 },
-                            } as ExtensionToWorkflow)
+                            })
                         }
                     }
                 } finally {
-                    await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
+                    await safePost(port, { type: 'execution_completed' }, {
                         strict: isDev,
                     })
                     ctx.activeExecutions.delete(abortController)
@@ -437,7 +440,7 @@ export function setupWorkflowMessageHandling(
                     c.abort()
                     activeAbortControllers.delete(c)
                 } else if (ctx.pauseRequested) {
-                    await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow, {
+                    await safePost(port, { type: 'execution_completed' }, {
                         strict: isDev,
                     })
                 }
@@ -445,19 +448,19 @@ export function setupWorkflowMessageHandling(
                 break
             }
             case 'calculate_tokens': {
-                const text = (message as any).data.text || ''
+                const text = message.data.text || ''
                 await safePost(
                     port,
                     {
                         type: 'token_count',
-                        data: { nodeId: (message as any).data.nodeId, count: text.length },
-                    } as ExtensionToWorkflow,
+                        data: { nodeId: message.data.nodeId, count: text.length },
+                    },
                     { strict: isDev }
                 )
                 break
             }
             case 'copy_selection': {
-                const payload = (message as any).data
+                const payload = message.data
                 if (payload && isWorkflowPayloadDTO(payload)) {
                     inMemoryClipboard = payload
                     try {
@@ -473,21 +476,23 @@ export function setupWorkflowMessageHandling(
                 try {
                     const text = await host.clipboard.readText()
                     if (text) {
-                        const parsed = JSON.parse(text)
+                        const parsed: unknown = JSON.parse(text)
                         if (isWorkflowPayloadDTO(parsed)) {
                             payload = parsed
                             inMemoryClipboard = parsed
                         }
                     }
-                } catch {}
+                } catch {
+                    // clipboard read or parse failed — use in-memory fallback
+                }
                 if (payload && isWorkflowPayloadDTO(payload)) {
                     await safePost(
                         port,
-                        { type: 'clipboard_paste', data: payload } as ExtensionToWorkflow,
+                        { type: 'clipboard_paste', data: payload },
                         { strict: isDev }
                     )
                 } else {
-                    await safePost(port, { type: 'clipboard_paste' } as ExtensionToWorkflow, {
+                    await safePost(port, { type: 'clipboard_paste' }, {
                         strict: isDev,
                     })
                 }
@@ -499,7 +504,7 @@ export function setupWorkflowMessageHandling(
                     ctx.pendingApproval.removeAbortListener?.()
                     ctx.pendingApproval.resolve({
                         type: 'approved',
-                        command: (message as any).data.modifiedCommand,
+                        command: message.data.modifiedCommand,
                     })
                     ctx.pendingApproval = null
                 }

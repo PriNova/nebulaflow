@@ -131,6 +131,7 @@ export type SubflowNode = Omit<WorkflowNode, 'data'> & {
         pendingSubflow?: {
             inputs: Array<{ id: string; name: string; index: number }>
             outputs: Array<{ id: string; name: string; index: number }>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             graph: { nodes: any[]; edges: any[] }
         }
     }
@@ -157,7 +158,7 @@ export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
                 ...node,
                 id,
                 data: { ...node.data, needsUserApproval: false, fanInEnabled: true },
-            } as CLINode
+            }
         case NodeType.LLM: {
             const llmNode = node as Omit<LLMNode, 'id'>
             return {
@@ -168,18 +169,18 @@ export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
                     reasoningEffort: llmNode.data.reasoningEffort ?? DEFAULT_LLM_REASONING_EFFORT,
                     fanInEnabled: true,
                 },
-            } as LLMNode
+            }
         }
         case NodeType.PREVIEW:
-            return { ...node, id, data: { ...node.data, fanInEnabled: true } } as PreviewNode
+            return { ...node, id, data: { ...node.data, fanInEnabled: true } }
         case NodeType.ACCUMULATOR:
-            return { ...node, id, data: { ...node.data, fanInEnabled: true } } as AccumulatorNode
+            return { ...node, id, data: { ...node.data, fanInEnabled: true } }
         case NodeType.INPUT:
             return {
                 ...node,
                 id,
                 data: { ...node.data, isEditing: false, fanInEnabled: true },
-            } as TextNode
+            }
         case NodeType.IF_ELSE:
             return {
                 ...node,
@@ -189,7 +190,7 @@ export const createNode = (node: Omit<WorkflowNodes, 'id'>): WorkflowNodes => {
         case NodeType.LOOP_START:
             return { ...node, id, data: { ...node.data, overrideIterations: false } } as LoopStartNode
         case NodeType.SUBFLOW:
-            return { ...node, id, data: { ...node.data, fanInEnabled: true } } as SubflowNode
+            return { ...node, id, data: { ...node.data, fanInEnabled: true } }
         default:
             return { ...node, id }
     }

@@ -1,25 +1,26 @@
-import type { WorkflowNodes } from '../../Core/models'
+import type { LLMNode, WorkflowNodes } from '../../Core/models'
 import { PI_TOOL_NAMES } from '../../PiIntegration/Application/pi-tools'
 
 /**
  * Compute pi Agent settings from a NebulaFlow LLM node configuration.
  * Replaces the old computeLLMAmpSettings which used Amp SDK's resolveToolName.
  */
-export async function computePiAgentSettings(node: WorkflowNodes): Promise<{
+export function computePiAgentSettings(node: WorkflowNodes): {
     settings: Record<string, unknown>
     debug: { disabledTools: string[]; dangerouslyAllowAll: boolean; reasoningEffort: string }
-}> {
-    const data = (node as any)?.data ?? {}
+} {
+    const llmNode = node as LLMNode
+    const data = llmNode.data
 
-    const disabledToolsRaw: unknown = data.disabledTools
+    const disabledToolsRaw = data.disabledTools
     const disabledTools: string[] = Array.isArray(disabledToolsRaw)
         ? disabledToolsRaw.filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
         : []
 
-    const rawReasoningEffort: string | undefined = data.reasoningEffort
-    const validEfforts = new Set(['minimal', 'low', 'medium', 'high'])
-    const reasoningEffort = validEfforts.has(rawReasoningEffort as any)
-        ? (rawReasoningEffort as 'minimal' | 'low' | 'medium' | 'high')
+    const rawReasoningEffort = data.reasoningEffort
+    const validEfforts = new Set<string>(['minimal', 'low', 'medium', 'high'])
+    const reasoningEffort = rawReasoningEffort && validEfforts.has(rawReasoningEffort)
+        ? rawReasoningEffort
         : 'medium'
 
     const dangerouslyAllowAll: boolean = data.dangerouslyAllowAll === true
@@ -79,7 +80,7 @@ function normalizeDisabledTools(list: string[]): string[] {
     for (const raw of list) {
         const trimmed = raw.trim()
         const resolved = ampToPi[trimmed] ?? trimmed.toLowerCase()
-        if (Object.values(PI_TOOL_NAMES).includes(resolved as any)) {
+        if (Object.values(PI_TOOL_NAMES).includes(resolved as typeof PI_TOOL_NAMES[keyof typeof PI_TOOL_NAMES])) {
             normalized.add(resolved)
         }
     }

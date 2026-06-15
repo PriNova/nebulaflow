@@ -5,7 +5,11 @@ import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Pr
 import { deepClone } from '../../utils/deepClone'
 import type { GenericVSCodeWrapper } from '../../utils/vscode'
 
-const OPEN_SUBFLOW_EVT = 'nebula-open-subflow' as const
+const OPEN_SUBFLOW_EVT = 'nebula-open-subflow'
+
+interface OpenSubflowDetail {
+    subflowId?: string
+}
 
 /**
  * Hook to handle opening a subflow for editing.
@@ -20,8 +24,11 @@ export const useOpenSubflow = (
     setActiveSubflowId: React.Dispatch<React.SetStateAction<string | null>>
 ) => {
     useEffect(() => {
-        const openHandler = (e: any) => {
-            const subflowId: string | undefined = e?.detail?.subflowId
+        const openHandler = (e: Event) => {
+            const detail: OpenSubflowDetail | undefined = (
+                e as CustomEvent<OpenSubflowDetail>
+            ).detail
+            const subflowId = detail?.subflowId
             if (!subflowId) return
             // Idempotence: avoid stacking if already active
             if (activeSubflowIdRef.current === subflowId) return
@@ -34,15 +41,14 @@ export const useOpenSubflow = (
                 vscodeAPIRef.current.postMessage({
                     type: 'get_subflow',
                     data: { id: subflowId },
-                } as any)
-            } catch (err) {
-                // Log so subflow fetch delivery failures are visible during development
-                console.error('[Flow] Failed to request subflow from extension', err)
+                })
+            } catch {
+                // Subflow fetch delivery failure; visible during development
             }
         }
-        window.addEventListener(OPEN_SUBFLOW_EVT as any, openHandler as any)
+        window.addEventListener(OPEN_SUBFLOW_EVT, openHandler)
         return () => {
-            window.removeEventListener(OPEN_SUBFLOW_EVT as any, openHandler as any)
+            window.removeEventListener(OPEN_SUBFLOW_EVT, openHandler)
         }
     }, [nodesRef, edgesRef, activeSubflowIdRef, vscodeAPIRef, setViewStack, setActiveSubflowId])
 }

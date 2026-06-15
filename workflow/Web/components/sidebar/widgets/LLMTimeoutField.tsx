@@ -32,9 +32,9 @@ export const LLMTimeoutField: React.FC<LLMTimeoutFieldProps> = ({ node, onUpdate
             type="number"
             min={0}
             value={val}
-            onChange={(e: { target: { value: string } }) => setVal(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVal(e.target.value)}
             onBlur={commit}
-            onKeyDown={(e: any) => {
+            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                 if (e.key === 'Enter') commit()
             }}
             placeholder="300"

@@ -3,7 +3,9 @@ import { NodeType, type WorkflowNodes } from '@nodes/Nodes'
 import { useCallback, useEffect, useRef } from 'react'
 import type { AssistantContentItem } from '../../../Core/models'
 import type {
+    EdgeDTO,
     ExtensionToWorkflow,
+    WorkflowNodeDTO,
     WorkflowPayloadDTO,
     WorkflowToExtension,
 } from '../../services/Protocol'
@@ -38,7 +40,7 @@ const getDownstreamPreviewNodes = (
 }
 
 const computePreviewContent = (
-    previewNode: WorkflowNodes,
+    _previewNode: WorkflowNodes,
     parentEdges: Edge[],
     nodeResults: Map<string, string>,
     edgeOrderMap: Map<string, number>,
@@ -82,10 +84,10 @@ const filterInitialUserMessage = (items: AssistantContentItem[]): AssistantConte
 
 // Migration: normalize old workflows to dynamic fan-in inputs.
 function migrateToFanIn(
-    nodes: WorkflowNodes[],
-    edges: Edge[]
-): { nodes: WorkflowNodes[]; edges: Edge[] } {
-    const fanInTypes = new Set<NodeType>([
+    nodes: WorkflowNodeDTO[],
+    edges: EdgeDTO[]
+): { nodes: WorkflowNodeDTO[]; edges: EdgeDTO[] } {
+    const fanInTypes = new Set<string>([
         NodeType.CLI,
         NodeType.LLM,
         NodeType.PREVIEW,
@@ -97,8 +99,7 @@ function migrateToFanIn(
     const nodeById = new Map(nodes.map(n => [n.id, n]))
     const migratedNodes = nodes.map(n => {
         if (fanInTypes.has(n.type)) {
-            const data: any = { ...n.data, fanInEnabled: true }
-            return { ...n, data }
+            return { ...n, data: { ...n.data, fanInEnabled: true } }
         }
         return n
     })
@@ -120,8 +121,7 @@ function migrateToFanIn(
         // Assign sequential handles (in-0, in-1, ...) in the order they appear
         // This fixes: missing handles, duplicates, or legacy single-port graphs.
         idxs.forEach((edgeIdx, i) => {
-            const edge = migratedEdges[edgeIdx] as any
-            edge.targetHandle = `in-${i}`
+            migratedEdges[edgeIdx].targetHandle = `in-${i}`
         })
     }
 
@@ -144,7 +144,7 @@ export const useMessageHandler = (
     setModels: React.Dispatch<React.SetStateAction<{ id: string; provider: string; title?: string }[]>>,
     vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>,
     setCustomNodes: React.Dispatch<React.SetStateAction<WorkflowNodes[]>>,
-    setNodeAssistantContent: React.Dispatch<React.SetStateAction<Map<string, any[]>>>,
+    setNodeAssistantContent: React.Dispatch<React.SetStateAction<Map<string, AssistantContentItem[]>>>,
     setIfElseDecisions: React.Dispatch<React.SetStateAction<Map<string, 'true' | 'false'>>>,
     setNodeThreadIDs: React.Dispatch<React.SetStateAction<Map<string, string>>>,
     setNodeSubAgentContent: React.Dispatch<
@@ -158,7 +158,7 @@ export const useMessageHandler = (
                         parentThreadID?: string
                         agentType: string
                         status: 'running' | 'done' | 'error' | 'cancelled'
-                        content: any[]
+                        content: AssistantContentItem[]
                     }
                 >
             >
@@ -248,7 +248,7 @@ export const useMessageHandler = (
                     nodeMultiResultsRef.current.set(nodeId, multi)
                 }
                 if (node?.type === NodeType.PREVIEW) {
-                    onNodeUpdate(node.id, { content: result as any })
+                    onNodeUpdate(node.id, { content: result })
                 } else {
                     // Propagate completion to downstream Preview nodes
                     const downstreamPreviews = getDownstreamPreviewNodes(nodeId, edges, nodes)
@@ -274,36 +274,39 @@ export const useMessageHandler = (
                     }
                 }
             } else {
-                setExecutingNodeIds(prev => new Set())
+                setExecutingNodeIds(() => new Set())
             }
             setNodeResults(prev => new Map(prev).set(nodeId, result ?? ''))
         }
     }
 
     useEffect(() => {
-        vscodeAPI.postMessage({ type: 'get_models' } as any)
+        vscodeAPI.postMessage({ type: 'get_models' })
     }, [vscodeAPI])
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: message handler relies on stable refs and setter identity; exhaustive deps not desired here
     useEffect(() => {
-        const messageHandler = (event: MessageEvent<ExtensionToWorkflow>) => {
-            switch (event.data.type) {
+         
+        const messageHandler = (event: MessageEvent) => {
+            const msg = event.data as ExtensionToWorkflow
+            switch (msg.type) {
                 case 'workflow_loaded': {
-                    const { nodes, edges, state } = event.data.data as any
-                    if (nodes && edges) {
-                        const migrated = migrateToFanIn(nodes as any, edges as any)
-                        calculatePreviewNodeTokens(migrated.nodes as any)
-                        setNodes(migrated.nodes as any)
-                        setEdges(migrated.edges as any)
+                    const loadedData = (msg).data
+                    if (loadedData?.nodes && loadedData?.edges) {
+                        const { nodes: loadedNodes, edges: loadedEdges, state } = loadedData
+                        const migrated = migrateToFanIn(loadedNodes, loadedEdges)
+                        calculatePreviewNodeTokens(migrated.nodes as unknown as WorkflowNodes[])
+                        setNodes(migrated.nodes as unknown as WorkflowNodes[])
+                        setEdges(migrated.edges)
                         setNodeErrors(new Map())
 
                         // Hydrate saved state if present
                         if (state?.nodeResults) {
                             const results = new Map<string, string>()
                             for (const [nodeId, savedState] of Object.entries(
-                                state.nodeResults as any
+                                state.nodeResults
                             )) {
-                                results.set(nodeId, (savedState as any).output || '')
+                                results.set(nodeId, savedState.output || '')
                             }
                             setNodeResults(results)
                         }
@@ -322,25 +325,35 @@ export const useMessageHandler = (
                     break
                 }
                 case 'workflow_saved': {
-                    notify({ type: 'success', text: `Saved: ${event.data.data?.path ?? ''}` })
+                    notify({
+                        type: 'success',
+                        text: `Saved: ${(msg).data?.path ?? ''}`,
+                    })
                     break
                 }
                 case 'workflow_save_failed': {
-                    notify({ type: 'error', text: event.data.data?.error ?? 'Save failed' })
+                    notify({
+                        type: 'error',
+                        text:
+                            (msg).data
+                                ?.error ?? 'Save failed',
+                    })
                     break
                 }
                 case 'node_execution_status': {
-                    const payload = event.data.data as any
+                    const payload = (msg).data
                     applyNodeExecutionStatus(
                         payload.nodeId,
                         payload.status,
                         payload.result,
-                        (payload as any)?.multi
+                        payload.multi
                     )
                     break
                 }
                 case 'node_output_chunk': {
-                    const { nodeId, chunk, stream } = event.data.data as any
+                    const { nodeId, chunk } = (
+                        msg
+                    ).data
                     // Append chunk to node result
                     setNodeResults(prev => {
                         const current = prev.get(nodeId) || ''
@@ -350,14 +363,16 @@ export const useMessageHandler = (
                     break
                 }
                 case 'subflow_node_execution_status': {
-                    const { subflowId, payload } = (event.data as any).data || {}
+                    const subflowData = (
+                        msg
+                    ).data
                     // Apply regardless of active subflow view; filtering is done by applyNodeExecutionStatus which uses nodes array
-                    if (payload && subflowId) {
+                    if (subflowData?.payload) {
                         applyNodeExecutionStatus(
-                            payload.nodeId,
-                            payload.status,
-                            payload.result,
-                            (payload as any)?.multi
+                            subflowData.payload.nodeId,
+                            subflowData.payload.status,
+                            subflowData.payload.result,
+                            subflowData.payload.multi
                         )
                     }
                     break
@@ -369,33 +384,32 @@ export const useMessageHandler = (
                     lastExecutedNodeIdRef.current = null
                     break
                 case 'execution_completed': {
-                    const eventData = event.data as any
+                    const compEvent = msg
                     setIsExecuting(false)
                     setIsPaused?.(false)
                     setExecutingNodeIds(new Set())
-                    const stoppedAtFromEvent = eventData.stoppedAtNodeId
-                    const stoppedAt = stoppedAtFromEvent || lastExecutedNodeIdRef.current
-                    setStoppedAtNodeId(stoppedAt)
+                    setStoppedAtNodeId(compEvent.stoppedAtNodeId || lastExecutedNodeIdRef.current)
                     break
                 }
                 case 'execution_paused': {
-                    const eventData = event.data as any
+                    const pausedEvent = msg
                     setIsExecuting(true)
                     setIsPaused?.(true)
                     setExecutingNodeIds(new Set())
-                    const stoppedAtFromEvent = eventData.stoppedAtNodeId
-                    const stoppedAt = stoppedAtFromEvent || lastExecutedNodeIdRef.current
-                    setStoppedAtNodeId(stoppedAt)
+                    setStoppedAtNodeId(pausedEvent.stoppedAtNodeId || lastExecutedNodeIdRef.current)
                     break
                 }
                 case 'token_count': {
-                    const { count, nodeId } = event.data.data as any
+                    const { count, nodeId } = (msg).data
                     const updates = new Map([[`${nodeId}_tokens`, String(count)]])
                     batchUpdateNodeResults(updates)
                     break
                 }
                 case 'node_assistant_content': {
-                    const { nodeId, content, threadID } = event.data.data as any
+                    const acData = (
+                        msg
+                    ).data
+                    const { nodeId, content, threadID } = acData
                     // If assistant content arrives, mark node as executing (handles mid-run opens)
                     if (nodeId) {
                         setExecutingNodeIds(prev => {
@@ -407,14 +421,18 @@ export const useMessageHandler = (
                             setNodeThreadIDs(prev => new Map(prev).set(nodeId, threadID))
                         }
                     }
-                    const normalizedContent: AssistantContentItem[] = filterInitialUserMessage(content)
+                    const normalizedContent: AssistantContentItem[] =
+                        filterInitialUserMessage(content)
                     // Latest snapshot from SDK becomes the current assistant timeline for this node
                     setNodeAssistantContent(prev => new Map(prev).set(nodeId, normalizedContent))
                     break
                 }
                 case 'node_sub_agent_content': {
-                    const { nodeId, subThreadID, parentThreadID, agentType, status, content } = event
-                        .data.data as any
+                    const subData = (
+                        msg
+                    ).data
+                    const { nodeId, subThreadID, parentThreadID, agentType, status, content } =
+                        subData
                     if (nodeId && subThreadID && agentType) {
                         // Mark node as executing when sub-agent updates arrive
                         setExecutingNodeIds(prev => {
@@ -426,7 +444,7 @@ export const useMessageHandler = (
                         const normalizedContent: AssistantContentItem[] =
                             filterInitialUserMessage(content)
                         setNodeSubAgentContent(prev => {
-                            const nodeMap = prev.get(nodeId) || new Map()
+                            const nodeMap = prev.get(nodeId) ?? new Map<string, { subThreadID: string; parentThreadID?: string; agentType: string; status: 'running' | 'done' | 'error' | 'cancelled'; content: AssistantContentItem[] }>()
                             nodeMap.set(subThreadID, {
                                 subThreadID,
                                 parentThreadID,
@@ -440,15 +458,11 @@ export const useMessageHandler = (
                     break
                 }
                 case 'subflow_node_sub_agent_content': {
-                    const {
-                        subflowId,
-                        nodeId,
-                        subThreadID,
-                        parentThreadID,
-                        agentType,
-                        status,
-                        content,
-                    } = event.data.data as any
+                    const subflowSAData = (
+                        msg
+                    ).data
+                    const { nodeId, subThreadID, parentThreadID, agentType, status, content } =
+                        subflowSAData
                     if (nodeId && subThreadID && agentType) {
                         // Mark node as executing when sub-agent updates arrive
                         setExecutingNodeIds(prev => {
@@ -460,7 +474,7 @@ export const useMessageHandler = (
                         const normalizedContent: AssistantContentItem[] =
                             filterInitialUserMessage(content)
                         setNodeSubAgentContent(prev => {
-                            const nodeMap = prev.get(nodeId) || new Map()
+                            const nodeMap = prev.get(nodeId) ?? new Map<string, { subThreadID: string; parentThreadID?: string; agentType: string; status: 'running' | 'done' | 'error' | 'cancelled'; content: AssistantContentItem[] }>()
                             nodeMap.set(subThreadID, {
                                 subThreadID,
                                 parentThreadID,
@@ -474,48 +488,59 @@ export const useMessageHandler = (
                     break
                 }
                 case 'subflow_node_assistant_content': {
-                    const { subflowId, nodeId, content, threadID } = (event.data as any).data || {}
-                    if (subflowId && nodeId) {
+                    const subflowACData = (
+                        msg as {
+                            type: 'subflow_node_assistant_content'
+                            data?: {
+                                subflowId: string
+                                nodeId: string
+                                threadID?: string
+                                content: AssistantContentItem[]
+                                mode?: 'workflow' | 'single-node'
+                            }
+                        }
+                    ).data
+                    if (subflowACData?.nodeId) {
                         // If assistant content arrives, mark node as executing (handles mid-run opens)
                         setExecutingNodeIds(prev => {
                             const next = new Set(prev)
-                            next.add(nodeId)
+                            next.add(subflowACData.nodeId)
                             return next
                         })
                         const normalizedContent: AssistantContentItem[] =
-                            filterInitialUserMessage(content)
-                        setNodeAssistantContent(prev => new Map(prev).set(nodeId, normalizedContent))
-                        if (typeof threadID === 'string' && threadID) {
-                            setNodeThreadIDs(prev => new Map(prev).set(nodeId, threadID))
+                            filterInitialUserMessage(subflowACData.content)
+                        setNodeAssistantContent(prev =>
+                            new Map(prev).set(subflowACData.nodeId, normalizedContent)
+                        )
+                        if (
+                            typeof subflowACData.threadID === 'string' &&
+                            subflowACData.threadID
+                        ) {
+                            setNodeThreadIDs(prev =>
+                                subflowACData.threadID ? new Map(prev).set(subflowACData.nodeId, subflowACData.threadID) : prev
+                            )
                         }
                     }
                     break
                 }
                 case 'models_loaded': {
-                    const models = event.data.data as any
-                    console.log(
-                        '[nebulaflow webview] models_loaded received:',
-                        Array.isArray(models) ? models.length : typeof models,
-                        'models',
-                        Array.isArray(models) && models.length > 0 ? models[0] : ''
-                    )
+                    const models = (msg).data
                     if (models) {
                         setModels(models)
                     }
                     break
                 }
                 case 'provide_custom_nodes': {
-                    const customNodes = event.data.data as any
+                    const customNodes = (msg).data
                     if (customNodes) {
-                        setCustomNodes(customNodes as any)
+                        setCustomNodes(customNodes as unknown as WorkflowNodes[])
                     }
                     break
                 }
                 case 'storage_scope': {
-                    const info = (event.data as any)?.data as {
-                        scope: 'workspace' | 'user'
-                        basePath?: string
-                    }
+                    const info = (
+                        msg
+                    ).data
                     setStorageScope?.(info || null)
                     break
                 }
@@ -525,65 +550,60 @@ export const useMessageHandler = (
                 }
                 case 'provide_subflow': {
                     try {
-                        const def = (event.data as any)?.data
+                        const def = (msg).data
                         window.dispatchEvent(
-                            new CustomEvent('nebula-subflow-provide' as any, { detail: def })
+                            new CustomEvent('nebula-subflow-provide', { detail: def })
                         )
-                    } catch (err) {
-                        console.error('[messageHandling] Failed to dispatch provide_subflow event', err)
+                    } catch {
+                        // Failed to dispatch provide_subflow event
                     }
                     break
                 }
                 case 'provide_subflows': {
                     try {
-                        const list = (event.data as any)?.data
+                        const list = (msg).data
                         window.dispatchEvent(
-                            new CustomEvent('nebula-subflows-provide' as any, { detail: list })
+                            new CustomEvent('nebula-subflows-provide', { detail: list })
                         )
-                    } catch (err) {
-                        console.error('[messageHandling] Failed to dispatch provide_subflows event', err)
+                    } catch {
+                        // Failed to dispatch provide_subflows event
                     }
                     break
                 }
                 case 'subflow_copied': {
                     try {
-                        const info = (event.data as any)?.data
+                        const info = (msg).data
                         if (info?.nodeId && info?.newId) {
                             onNodeUpdate(info.nodeId, { subflowId: info.newId })
                         }
-                    } catch (err) {
-                        console.error('[messageHandling] Failed to handle subflow_copied event', err)
+                    } catch {
+                        // Failed to handle subflow_copied event
                     }
                     break
                 }
                 case 'clipboard_paste': {
-                    const payload = (event.data as any)?.data as WorkflowPayloadDTO | undefined
-                    console.log('[messageHandling] clipboard_paste received', {
-                        hasPayload: !!payload,
-                        nodeCount: payload?.nodes?.length ?? 0,
-                        edgeCount: payload?.edges?.length ?? 0,
-                    })
+                    const payload = (
+                        msg
+                    ).data
                     if (payload && Array.isArray(payload.nodes) && payload.nodes.length > 0) {
                         try {
                             onClipboardPaste?.(payload)
-                        } catch (err) {
-                            console.error(
-                                '[messageHandling] Failed to apply clipboard_paste payload',
-                                err
-                            )
+                        } catch {
+                            // Failed to apply clipboard_paste payload
                         }
                     }
                     break
                 }
             }
         }
-        const off = vscodeAPI.onMessage(messageHandler as any)
+         
+        const off = vscodeAPI.onMessage(messageHandler)
         // Request storage scope after listener is active to avoid race conditions
-        vscodeAPI.postMessage({ type: 'get_storage_scope' } as any)
+        vscodeAPI.postMessage({ type: 'get_storage_scope' })
 
         if (!hasRequestedLastWorkflowRef.current) {
             hasRequestedLastWorkflowRef.current = true
-            vscodeAPI.postMessage({ type: 'load_last_workflow' } as any)
+            vscodeAPI.postMessage({ type: 'load_last_workflow' })
         }
 
         return () => off()

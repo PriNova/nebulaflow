@@ -36,11 +36,11 @@ type LoopStartData = {
     maxSafeIterations?: number
 }
 
-export async function executeLoopStartNode(
+export function executeLoopStartNode(
     node: WorkflowNodes,
     context: IndexedExecutionContext
-): Promise<string> {
-    const allEdgesForNode = (context.edgeIndex.byTarget.get(node.id) || []) as Edge[]
+): string {
+    const allEdgesForNode = (context.edgeIndex.byTarget.get(node.id) || [])
 
     const getInputsFromEdges = (edges: Edge[]) =>
         combineParentOutputsByConnectionOrder(node.id, {
@@ -57,7 +57,7 @@ export async function executeLoopStartNode(
     const mainInputs = getInputsFromEdges(mainEdges)
     const iterationOverrides = getInputsFromEdges(overrideEdges)
 
-    const data = (node as any).data as LoopStartData
+    const data = node.data as unknown as LoopStartData
     const loopMode = data.loopMode ?? 'fixed'
 
     const rawMaxSafe = data.maxSafeIterations

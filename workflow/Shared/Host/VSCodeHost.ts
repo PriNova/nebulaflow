@@ -27,7 +27,7 @@ export class VSCodeFileSystem implements IFileSystem {
 
     async readDirectory(path: string): Promise<[string, FileType][]> {
         const result = await vscode.workspace.fs.readDirectory(vscode.Uri.file(path))
-        return result.map(([name, type]) => [name, type as unknown as FileType])
+        return result.map(([name, type]) => [name, type])
     }
 
     async delete(path: string, options?: { recursive?: boolean }): Promise<void> {
@@ -46,11 +46,11 @@ export class VSCodeFileSystem implements IFileSystem {
 
 export class VSCodeWindow implements IWindow {
     async showErrorMessage(message: string): Promise<void> {
-        void vscode.window.showErrorMessage(message)
+        await vscode.window.showErrorMessage(message)
     }
 
     async showInformationMessage(message: string): Promise<void> {
-        void vscode.window.showInformationMessage(message)
+        await vscode.window.showInformationMessage(message)
     }
 
     async showOpenDialog(options?: OpenDialogOptions): Promise<string[] | undefined> {
@@ -110,7 +110,7 @@ export class VSCodeWorkspace implements IWorkspace {
         return config.get<T>(section, defaultValue as T)
     }
 
-    async updateConfiguration(section: string, value: any, target: ConfigurationTarget): Promise<void> {
+    async updateConfiguration(section: string, value: unknown, target: ConfigurationTarget): Promise<void> {
         const config = vscode.workspace.getConfiguration()
         await config.update(section, value, target)
     }
@@ -147,7 +147,7 @@ export class VSCodeMessagePort implements IMessagePort {
         return await this.webview.postMessage(message)
     }
 
-    onDidReceiveMessage(listener: (e: unknown) => any, thisArgs?: any, disposables?: any[]): any {
-        return this.webview.onDidReceiveMessage(listener, thisArgs, disposables)
+    onDidReceiveMessage(listener: (e: unknown) => unknown, thisArgs?: unknown, disposables?: unknown[]): unknown {
+        return this.webview.onDidReceiveMessage(listener, thisArgs, disposables as vscode.Disposable[] | undefined)
     }
 }

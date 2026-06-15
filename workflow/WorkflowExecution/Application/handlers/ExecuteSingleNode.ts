@@ -1,8 +1,8 @@
 import { fromProtocolPayload } from '../../../Application/messaging/converters'
-import type { ExtensionToWorkflow, WorkflowNodeDTO } from '../../../Core/Contracts/Protocol'
+import type { WorkflowNodeDTO } from '../../../Core/Contracts/Protocol'
 import type { ApprovalResult } from '../../../Core/models'
 import { AbortedError } from '../../../Core/models'
-import type { SubflowNode, WorkflowNodes } from '../../../Core/models'
+import type { CLINode, SubflowNode, WorkflowNodes } from '../../../Core/models'
 import { NodeType } from '../../../Core/models'
 import { loadSubflow } from '../../../DataAccess/fs'
 import type { IHostEnvironment, IMessagePort } from '../../../Shared/Host/index'
@@ -13,8 +13,6 @@ import { runCLICore } from '../node-runners/run-cli'
 import { runLLMCore } from '../node-runners/run-llm'
 import type { IndexedExecutionContext } from './ExecuteWorkflow'
 import { routeNodeExecution } from './NodeDispatch'
-
-const DEFAULT_LLM_TIMEOUT_MS = 300_000
 
 export interface ExecuteNodePayload {
     node: WorkflowNodeDTO
@@ -33,7 +31,7 @@ export async function executeSingleNode(
     const { node: nodeDTO, inputs = [], variables } = payload
 
     const { nodes } = fromProtocolPayload({ nodes: [nodeDTO], edges: [] })
-    const node = nodes[0] as WorkflowNodes
+    const node = nodes[0]
 
     await safePost(port, {
         type: 'node_execution_status',
@@ -42,55 +40,52 @@ export async function executeSingleNode(
 
     try {
         const result = await routeNodeExecution(node, 'single-node', {
-            runCLI: (..._args: any[]) =>
+            runCLI: (..._args: unknown[]) =>
                 executeSingleCLINode(node, inputs, abortSignal, port, host, approvalHandler, variables),
-            runLLM: (..._args: any[]) =>
+            runLLM: (..._args: unknown[]) =>
                 executeSingleLLMNode(node, inputs, abortSignal, port, approvalHandler, variables),
-            runPreview: (..._args: any[]) => executeSinglePreviewNode(node, inputs, port, variables),
-            runInput: (..._args: any[]) => executeSingleInputNode(node, inputs, variables),
-            runVariable: (..._args: any[]) => executeSingleVariableNode(node, inputs, variables),
-            runIfElse: (..._args: any[]) => executeSingleIfElseNode(node, inputs, variables),
+            runPreview: (..._args: unknown[]) => executeSinglePreviewNode(node, inputs, port, variables),
+            runInput: (..._args: unknown[]) => executeSingleInputNode(node, inputs, variables),
+            runVariable: (..._args: unknown[]) => executeSingleVariableNode(node, inputs, variables),
+            runIfElse: (..._args: unknown[]) => executeSingleIfElseNode(node, inputs, variables),
             runAccumulator: undefined,
             runLoopStart: undefined,
             runLoopEnd: undefined,
-            runSubflow: async (..._args: any[]) =>
+            runSubflow: (..._args: unknown[]) =>
                 runSingleSubflow(node, inputs, abortSignal, port, host),
         })
 
         const safeResult = Array.isArray(result) ? result.join('\n') : String(result)
-        await safePost(port, {
+        void safePost(port, {
             type: 'node_execution_status',
             data: { nodeId: node.id, status: 'completed', result: safeResult },
         })
-        const completedEvent: ExtensionToWorkflow = {
+        void safePost(port, {
             type: 'execution_completed',
             stoppedAtNodeId: node.id,
-        }
-        await safePost(port, completedEvent)
+        })
     } catch (error) {
         if (abortSignal.aborted || error instanceof AbortedError) {
-            await safePost(port, {
+            void safePost(port, {
                 type: 'node_execution_status',
                 data: { nodeId: nodeDTO.id, status: 'interrupted' },
             })
-            const interruptedEvent: ExtensionToWorkflow = {
+            void safePost(port, {
                 type: 'execution_completed',
                 stoppedAtNodeId: nodeDTO.id,
-            }
-            await safePost(port, interruptedEvent)
+            })
             return
         }
         const msg = error instanceof Error ? error.message : String(error)
         void host.window.showErrorMessage(`Node Error: ${msg}`)
-        await safePost(port, {
+        void safePost(port, {
             type: 'node_execution_status',
             data: { nodeId: nodeDTO.id, status: 'error', result: msg },
         })
-        const errorEvent: ExtensionToWorkflow = {
+        void safePost(port, {
             type: 'execution_completed',
             stoppedAtNodeId: nodeDTO.id,
-        }
-        await safePost(port, errorEvent)
+        })
     }
 }
 
@@ -102,7 +97,7 @@ async function executeSingleLLMNode(
     approvalHandler: (nodeId: string) => Promise<ApprovalResult>,
     variables?: Record<string, string>
 ): Promise<string> {
-    const template = ((node as any).data?.content || '').toString()
+    const template = node.data.content || ''
     const hasTemplate = template.trim().length > 0
     const hasParentResult = (inputs || []).some(v => typeof v === 'string' && v.trim().length > 0)
     if (!hasTemplate && !hasParentResult) {
@@ -110,10 +105,10 @@ async function executeSingleLLMNode(
     }
 
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
-        ? { variableValues: new Map(Object.entries(variables)) as any }
+        ? { variableValues: new Map(Object.entries(variables)) }
         : undefined
     const prompt = hasTemplate
-        ? replaceIndexedInputs(template, inputs, ctx as any)
+        ? replaceIndexedInputs(template, inputs, ctx as IndexedExecutionContext)
         : (inputs[0] ?? '').toString()
 
     const { getActiveWorkspaceRoots } = await import('../../../Shared/Infrastructure/workspace.js')
@@ -141,7 +136,7 @@ async function executeSingleCLINode(
     variables?: Record<string, string>
 ): Promise<string> {
     abortSignal.throwIfAborted()
-    const template = ((node as any).data?.content || '').toString()
+    const template = node.data.content || ''
     const hasTemplate = template.trim().length > 0
     const hasParentResult = (inputs || []).some(v => typeof v === 'string' && v.trim().length > 0)
     if (!hasTemplate && !hasParentResult) {
@@ -149,12 +144,13 @@ async function executeSingleCLINode(
     }
 
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
-        ? { variableValues: new Map(Object.entries(variables)) as any }
+        ? { variableValues: new Map(Object.entries(variables)) }
         : undefined
 
-    const mode = (((node as any).data?.mode as any) || 'command') as 'command' | 'script'
+    const cliNode = node as CLINode
+    const mode: 'command' | 'script' = cliNode.data.mode || 'command'
     const base = hasTemplate
-        ? replaceIndexedInputs(template, inputs, ctx as any)
+        ? replaceIndexedInputs(template, inputs, ctx as IndexedExecutionContext)
         : (inputs[0] ?? '').toString()
 
     const onChunk = (chunk: string, stream: 'stdout' | 'stderr') => {
@@ -165,7 +161,7 @@ async function executeSingleCLINode(
                 chunk,
                 stream,
             },
-        } as ExtensionToWorkflow)
+        })
     }
 
     const { output } = await runCLICore({
@@ -192,7 +188,7 @@ async function executeSinglePreviewNode(
 ): Promise<string> {
     const inputJoined = (inputs || []).join('\n')
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
-        ? { variableValues: new Map(Object.entries(variables)) as any }
+        ? { variableValues: new Map(Object.entries(variables)) }
         : undefined
     const processed = evalTemplate(inputJoined, inputs, ctx)
     const trimmed = processed.trim()
@@ -201,42 +197,42 @@ async function executeSinglePreviewNode(
     return trimmed
 }
 
-async function executeSingleInputNode(
+function executeSingleInputNode(
     node: WorkflowNodes,
     inputs: string[],
     variables?: Record<string, string>
-): Promise<string> {
-    const template = ((node as any).data?.content || '').toString()
+): string {
+    const template = node.data.content || ''
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
-        ? { variableValues: new Map(Object.entries(variables)) as any }
+        ? { variableValues: new Map(Object.entries(variables)) }
         : undefined
     const text = evalTemplate(template, inputs, ctx)
     return text.trim()
 }
 
-async function executeSingleVariableNode(
+function executeSingleVariableNode(
     node: WorkflowNodes,
     inputs: string[],
     variables?: Record<string, string>
-): Promise<string> {
-    const template = ((node as any).data?.content || '').toString()
+): string {
+    const template = node.data.content || ''
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
-        ? { variableValues: new Map(Object.entries(variables)) as any }
+        ? { variableValues: new Map(Object.entries(variables)) }
         : undefined
     const value = evalTemplate(template, inputs, ctx)
     return value
 }
 
-async function executeSingleIfElseNode(
+function executeSingleIfElseNode(
     node: WorkflowNodes,
     inputs: string[],
     variables?: Record<string, string>
-): Promise<string> {
-    const template = ((node as any).data?.content || '').toString()
+): string {
+    const template = node.data.content || ''
     const ctx: Partial<IndexedExecutionContext> | undefined = variables
-        ? { variableValues: new Map(Object.entries(variables)) as any }
+        ? { variableValues: new Map(Object.entries(variables)) }
         : undefined
-    const condition = template ? replaceIndexedInputs(template, inputs, ctx as any) : ''
+    const condition = template ? replaceIndexedInputs(template, inputs, ctx as IndexedExecutionContext) : ''
     const parts = condition.trim().split(/\s+(===|!==)\s+/)
     if (parts.length !== 3) {
         // Fallback: non-standard condition resolves to false
@@ -259,21 +255,25 @@ async function runSingleSubflow(
     const def = await loadSubflow(subflowId)
     if (!def) throw new Error(`Subflow not found: ${subflowId}`)
 
-    const inner = fromProtocolPayload({ nodes: def.graph.nodes as any, edges: def.graph.edges as any })
+    const inner = fromProtocolPayload({ nodes: def.graph.nodes, edges: def.graph.edges })
     const seeds: Record<string, string> = {}
     for (let i = 0; i < def.inputs.length; i++) {
         const port = def.inputs[i]
         const val = inputs[i] ?? ''
         const match = inner.nodes.find(
-            n => (n as any).type === NodeType.SUBFLOW_INPUT && (n as any).data?.portId === port.id
+            n =>
+                n.type === NodeType.SUBFLOW_INPUT &&
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+                (n.data as any).portId === port.id
         )
         if (match) seeds[match.id] = val
     }
-    const outNodes = inner.nodes.filter(n => (n as any).type === NodeType.SUBFLOW_OUTPUT)
+    const outNodes = inner.nodes.filter(n => n.type === NodeType.SUBFLOW_OUTPUT)
     if (!outNodes || outNodes.length === 0) throw new Error('Subflow definition missing output nodes')
     const outNodeIdToPortId = new Map<string, string>()
     for (const n of outNodes) {
-        const pid = (n as any)?.data?.portId as string | undefined
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+        const pid = (n.data as any).portId as string | undefined
         if (pid) outNodeIdToPortId.set(n.id, pid)
     }
 
@@ -282,47 +282,59 @@ async function runSingleSubflow(
         inner.nodes
             .filter(
                 n =>
-                    (n as any).data?.active !== false &&
-                    (n as any).type !== NodeType.SUBFLOW_INPUT &&
-                    (n as any).type !== NodeType.SUBFLOW_OUTPUT
+                    n.data.active !== false &&
+                    n.type !== NodeType.SUBFLOW_INPUT &&
+                    n.type !== NodeType.SUBFLOW_OUTPUT
             )
             .map(n => n.id)
     )
     const totalInner = eligibleInnerIds.size
     let completedInner = 0
     if (totalInner > 0) {
-        await safePost(port, {
+        void safePost(port, {
             type: 'node_execution_status',
             data: {
                 nodeId: wrapperNode.id,
                 status: 'running',
                 result: `${completedInner}/${totalInner}`,
             },
-        } as any)
+        })
     }
 
     const resultByPortId = new Map<string, string>()
     const callbacks: ParallelCallbacks = {
-        runNode: async (node, _pctx, _signal) => {
-            return await routeNodeExecution(node, 'single-node', {
-                runCLI: (..._args: any[]) =>
-                    executeSingleCLINode(node, [], abortSignal, port, host, async () => ({
-                        type: 'approved',
-                    })),
-                runLLM: (..._args: any[]) =>
-                    executeSingleLLMNode(node as any, [], abortSignal, port, async () => ({
-                        type: 'approved',
-                    })),
-                runPreview: (..._args: any[]) => executeSinglePreviewNode(node as any, [], port),
-                runInput: (..._args: any[]) => executeSingleInputNode(node as any, []),
-                runVariable: (..._args: any[]) => executeSingleVariableNode(node as any, []),
-                runIfElse: (..._args: any[]) => executeSingleIfElseNode(node as any, []),
+        runNode: async (node, _pctx, _signal): Promise<string | string[]> => {
+            const res = await routeNodeExecution(node, 'single-node', {
+                runCLI: (..._args: unknown[]) =>
+                    executeSingleCLINode(
+                        node,
+                        [],
+                        abortSignal,
+                        port,
+                        host,
+                        // eslint-disable-next-line @typescript-eslint/require-await
+                        async () => ({ type: 'approved' as const }),
+                    ),
+                runLLM: (..._args: unknown[]) =>
+                    executeSingleLLMNode(
+                        node,
+                        [],
+                        abortSignal,
+                        port,
+                        // eslint-disable-next-line @typescript-eslint/require-await
+                        async () => ({ type: 'approved' as const }),
+                    ),
+                runPreview: (..._args: unknown[]) => executeSinglePreviewNode(node, [], port),
+                runInput: (..._args: unknown[]) => executeSingleInputNode(node, []),
+                runVariable: (..._args: unknown[]) => executeSingleVariableNode(node, []),
+                runIfElse: (..._args: unknown[]) => executeSingleIfElseNode(node, []),
                 runAccumulator: undefined,
                 runLoopStart: undefined,
                 runLoopEnd: undefined,
-                runSubflowOutput: async (..._args: any[]) => '',
-                runSubflowInput: async (..._args: any[]) => '',
+                runSubflowOutput: (..._args: unknown[]) => '',
+                runSubflowInput: (..._args: unknown[]) => '',
             })
+            return (Array.isArray(res) ? res : [String(res)]) as string[]
         },
         onStatus: payload => {
             if (
@@ -347,14 +359,14 @@ async function runSingleSubflow(
                             status: 'running',
                             result: `${completedInner}/${totalInner}`,
                         },
-                    } as any)
+                    })
                 }
             }
         },
     }
     await executeWorkflowParallel(
-        inner.nodes as any,
-        inner.edges as any,
+        inner.nodes,
+        inner.edges,
         callbacks,
         { onError: 'fail-fast', seeds: { outputs: seeds } },
         abortSignal

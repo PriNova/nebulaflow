@@ -21,8 +21,10 @@ async function readNebulaflowSettingsFromRoot(
     const warn = (message: string, error?: unknown) => {
         if (!options?.warnOnError) return
         const tag = options.debugTag ?? 'nebulaflow-settings'
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         const reason = error instanceof Error ? error.message : error ? String(error) : ''
         const suffix = reason ? `: ${reason}` : ''
+        // eslint-disable-next-line no-console
         console.warn(
             `[${tag}] Ignoring .nebulaflow/settings.json at ${settingsPath} ${message}${suffix}`
         )
@@ -30,9 +32,9 @@ async function readNebulaflowSettingsFromRoot(
 
     try {
         const raw = await fs.readFile(settingsPath, 'utf8')
-        let parsed: any
+        let parsed: unknown
         try {
-            parsed = JSON.parse(raw)
+            parsed = JSON.parse(raw) as unknown
         } catch (error) {
             warn('due to invalid JSON', error)
             return {}
@@ -43,19 +45,21 @@ async function readNebulaflowSettingsFromRoot(
             return {}
         }
 
-        const nebulaflowSection = (parsed as any).nebulaflow
+        const rootObj = parsed as Record<string, unknown>
+        const nebulaflowSection = rootObj.nebulaflow
         if (!nebulaflowSection || typeof nebulaflowSection !== 'object') {
             warn('because it does not contain a valid "nebulaflow" object')
             return {}
         }
 
-        const nebulaflowSettings = (nebulaflowSection as any).settings
+        const nebulaflowObj = nebulaflowSection as Record<string, unknown>
+        const nebulaflowSettings = nebulaflowObj.settings
         if (!nebulaflowSettings || typeof nebulaflowSettings !== 'object') {
             warn('because it does not contain a valid "nebulaflow.settings" object')
             return {}
         }
 
-        return { ...nebulaflowSettings }
+        return { ...nebulaflowSettings as Record<string, unknown> }
     } catch (error) {
         warn('because it could not be read', error)
         return {}
@@ -83,6 +87,7 @@ export async function readNebulaflowSettingsFromHost(
         return {}
     }
 
-    const firstRoot = roots[0]
+    const firstRoot = roots[0] as string | undefined
+    if (!firstRoot) return {}
     return readNebulaflowSettingsFromRoot(firstRoot, options)
 }

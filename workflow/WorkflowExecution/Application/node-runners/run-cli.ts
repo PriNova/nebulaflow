@@ -1,7 +1,7 @@
 import {
     AbortedError,
     type ApprovalResult,
-    type ExtensionToWorkflow,
+    type CLINode,
     type WorkflowNodes,
 } from '../../../Core/models'
 import {
@@ -75,11 +75,11 @@ export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
     }
 
     // Approval path (show script/command text)
-    if ((node as any).data?.needsUserApproval) {
+    if (node.data.needsUserApproval) {
         await safePost(port, {
             type: 'node_execution_status',
             data: { nodeId: node.id, status: 'pending_approval', result: `${base}` },
-        } as ExtensionToWorkflow)
+        })
         const approval = await approvalHandler(node.id)
         if (approval.type === 'aborted') {
             throw new AbortedError()
@@ -90,18 +90,13 @@ export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
     }
 
     // Safety level (default safe). In safe+command, apply denylist. In script mode, skip denylist.
+    const cliNode = node as CLINode
     const safety: 'safe' | 'advanced' =
-        ((node as any).data?.safetyLevel as any) === 'advanced' ? 'advanced' : 'safe'
+        cliNode.data.safetyLevel === 'advanced' ? 'advanced' : 'safe'
 
     if (mode === 'script') {
         // Build stdin for script
-        const stdinCfg = ((node as any).data?.stdin ?? {}) as {
-            source?: 'none' | 'parents-all' | 'parent-index' | 'literal'
-            parentIndex?: number
-            literal?: string
-            stripCodeFences?: boolean
-            normalizeCRLF?: boolean
-        }
+        const stdinCfg = cliNode.data.stdin ?? {}
         let stdinText: string | undefined
         const source = stdinCfg.source || 'none'
         if (source === 'parents-all') {
@@ -110,7 +105,11 @@ export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
             const idx = Math.max(1, Number(stdinCfg.parentIndex || 1)) - 1
             stdinText = inputs[idx] ?? ''
         } else if (source === 'literal') {
-            stdinText = replaceIndexedInputs(stdinCfg.literal || '', inputs, context as any)
+            stdinText = replaceIndexedInputs(
+                stdinCfg.literal || '',
+                inputs,
+                context as IndexedExecutionContext
+            )
         }
         if (stdinText != null) {
             const hasFences = /(\n|^)```/.test(stdinText)
@@ -132,11 +131,7 @@ export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
         }
 
         // Env mapping
-        const envCfg = ((node as any).data?.env ?? {}) as {
-            exposeParents?: boolean
-            names?: string[]
-            static?: Record<string, string>
-        }
+        const envCfg = cliNode.data.env ?? {}
         const extraEnv: Record<string, string> = {}
         if (envCfg.exposeParents) {
             if (Array.isArray(envCfg.names) && envCfg.names.length > 0) {
@@ -152,14 +147,17 @@ export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
         }
         if (envCfg.static && typeof envCfg.static === 'object') {
             for (const [k, v] of Object.entries(envCfg.static)) {
-                extraEnv[k] = replaceIndexedInputs(String(v ?? ''), inputs, context as any)
+                extraEnv[k] = replaceIndexedInputs(
+                    String(v ?? ''),
+                    inputs,
+                    context as IndexedExecutionContext
+                )
             }
         }
 
         // Shell and flags
-        const shell =
-            ((node as any).data?.shell as any) || (process.platform === 'win32' ? 'pwsh' : 'bash')
-        const flags = ((node as any).data?.flags ?? {}) as any
+        const shell = cliNode.data.shell || (process.platform === 'win32' ? 'pwsh' : 'bash')
+        const flags = cliNode.data.flags ?? {}
 
         try {
             const { output, exitCode } = await shellExecuteScript({
@@ -179,7 +177,7 @@ export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
                 abortSignal,
                 onChunk,
             })
-            if (exitCode !== '0' && (node as any).data?.shouldAbort) {
+            if (exitCode !== '0' && cliNode.data.shouldAbort) {
                 throw new Error(output)
             }
             return { output, exitCode }
@@ -203,8 +201,10 @@ export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
     }
 
     try {
-        const userSpawn = Boolean((node as any).data?.streamOutput)
-        const autoSpawn = !userSpawn && (filteredCommand.length > 200 || /[|><]/.test(filteredCommand))
+        const userSpawn = Boolean(cliNode.data.streamOutput)
+        const autoSpawn =
+            !userSpawn &&
+            (filteredCommand.length > 200 || /[|><]/.test(filteredCommand))
         let output: string
         let exitCode: string
         if (userSpawn || autoSpawn) {
@@ -217,7 +217,7 @@ export async function runCLICore(args: CLICoreArgs): Promise<CLICoreResult> {
         } else {
             ;({ output, exitCode } = await shellExecute(filteredCommand, abortSignal, { cwd }, onChunk))
         }
-        if (exitCode !== '0' && (node as any).data?.shouldAbort) {
+        if (exitCode !== '0' && cliNode.data.shouldAbort) {
             throw new Error(output)
         }
         return { output, exitCode }
@@ -241,11 +241,12 @@ export async function executeCLINode(
     const inputs = combineParentOutputsByConnectionOrder(node.id, context)
 
     // Determine mode (command | script). Default to command for back-compat.
-    const mode = ((node as any).data?.mode as 'command' | 'script') || 'command'
+    const cliNode = node as CLINode
+    const mode: 'command' | 'script' = cliNode.data.mode || 'command'
 
     // Determine shell type for proper escaping
     const shell =
-        ((node as any).data?.shell as 'bash' | 'sh' | 'zsh' | 'pwsh' | 'cmd') ||
+        cliNode.data.shell ||
         (process.platform === 'win32' ? 'pwsh' : 'bash')
 
     // Base content after templating (with shell-aware escaping)
@@ -254,14 +255,14 @@ export async function executeCLINode(
     ).toString()
 
     const onChunk = (chunk: string, stream: 'stdout' | 'stderr') => {
-        safePost(port, {
+        void safePost(port, {
             type: 'node_output_chunk',
             data: {
                 nodeId: node.id,
                 chunk,
                 stream,
             },
-        } as ExtensionToWorkflow)
+        })
     }
 
     const { output, exitCode } = await runCLICore({

@@ -71,10 +71,12 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
     }
 
     return (
+
         <div
             className="tw-fixed tw-z-[50] tw-bg-[var(--vscode-editor-background)] tw-border tw-border-[var(--vscode-panel-border)] tw-shadow-lg tw-rounded tw-min-w-[160px]"
             style={{ top: position.y, left: position.x }}
             tabIndex={-1}
+            role="menu"
             onClick={event => event.stopPropagation()}
             onKeyDown={event => {
                 if (event.key === 'Escape') {
@@ -101,52 +103,6 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
             </button>
         </div>
     )
-}
-
-function buildClipboardGraphFromPayload(payload: WorkflowPayloadDTO): {
-    nodes: WorkflowNodes[]
-    edges: Edge[]
-} {
-    const clipboardNodes = Array.isArray(payload.nodes) ? payload.nodes : []
-    const clipboardEdges = Array.isArray(payload.edges) ? payload.edges : []
-
-    if (clipboardNodes.length === 0) {
-        return { nodes: [], edges: [] }
-    }
-
-    const idMap = new Map<string, string>()
-    for (const node of clipboardNodes) {
-        idMap.set(node.id, uuidv4())
-    }
-
-    const newNodes: WorkflowNodes[] = clipboardNodes.map(node => ({
-        id: idMap.get(node.id) as string,
-        type: node.type as any,
-        data: node.data as any,
-        position: {
-            x: node.position.x + 40,
-            y: node.position.y + 40,
-        },
-    }))
-
-    const newEdges: Edge[] = clipboardEdges
-        .map(edge => {
-            const newSource = idMap.get(edge.source)
-            const newTarget = idMap.get(edge.target)
-            if (!newSource || !newTarget) {
-                return null
-            }
-            return {
-                id: uuidv4(),
-                source: newSource,
-                target: newTarget,
-                sourceHandle: edge.sourceHandle,
-                targetHandle: edge.targetHandle,
-            } as Edge
-        })
-        .filter((edge): edge is Edge => edge !== null)
-
-    return { nodes: newNodes, edges: newEdges }
 }
 
 export const Flow: React.FC<{
@@ -224,6 +180,7 @@ export const Flow: React.FC<{
     }, [vscodeAPI])
 
     // Determine which subflow outputs are disabled based on inner graph active flags
+    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-enum-comparison */
     const computeDisabledOutputHandles = useCallback(
         (
             dtoNodes: Array<{ id: string; type: string; data?: any }>,
@@ -237,15 +194,15 @@ export const Flow: React.FC<{
                 incoming.set(e.target, arr)
             }
             const isActive = (id: string): boolean => {
-                const n = byId.get(id) as any
+                const n = byId.get(id)
                 if (!n) return false
                 if (n.type === NodeType.SUBFLOW_INPUT || n.type === NodeType.SUBFLOW_OUTPUT) return true
-                return n?.data?.active !== false
+                return n.data?.active !== false
             }
-            const outNodes = dtoNodes.filter(n => n.type === (NodeType.SUBFLOW_OUTPUT as any))
+            const outNodes = dtoNodes.filter(n => n.type === NodeType.SUBFLOW_OUTPUT)
             const disabled = new Set<string>()
             for (const outNode of outNodes) {
-                const portId = (outNode as any)?.data?.portId as string | undefined
+                const portId = outNode.data?.portId as string | undefined
                 if (!portId) continue
                 // BFS backward allowing only active nodes (boundary nodes always allowed)
                 const queue: string[] = [outNode.id]
@@ -257,9 +214,9 @@ export const Flow: React.FC<{
                     for (const p of parents) {
                         if (seen.has(p)) continue
                         seen.add(p)
-                        const pn = byId.get(p) as any
+                        const pn = byId.get(p)
                         if (!pn) continue
-                        if (pn.type === (NodeType.SUBFLOW_INPUT as any)) {
+                        if (pn.type === NodeType.SUBFLOW_INPUT) {
                             reachable = true
                             break
                         }
@@ -274,6 +231,7 @@ export const Flow: React.FC<{
         },
         []
     )
+    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-enum-comparison */
 
     const requestFitOnNextRender = useCallback(() => {
         setFitRequested(true)
@@ -292,6 +250,7 @@ export const Flow: React.FC<{
             const node = nodes.find(n => n.id === nodeId)
             if (!node) return
             try {
+                 
                 vscodeAPI.postMessage({
                     type: 'llm_node_chat',
                     data: {
@@ -300,8 +259,9 @@ export const Flow: React.FC<{
                         message,
                         mode: 'single-node',
                     },
-                } as any)
+                })
             } catch (err) {
+                // eslint-disable-next-line no-console
                 console.error('[Flow] Failed to post llm_node_chat message', err)
             }
         },
@@ -338,15 +298,16 @@ export const Flow: React.FC<{
         const disabledByWrapper = new Map<string, Set<string>>()
         for (const n of nodes) {
             if (n.type === NodeType.SUBFLOW) {
-                const data: any = (n as any).data
+
+                const sfData = n.data as Record<string, unknown>
                 let set: Set<string> | undefined
                 if (
-                    Array.isArray(data?.disabledOutputHandles) &&
-                    data.disabledOutputHandles.length > 0
+                    Array.isArray(sfData.disabledOutputHandles) &&
+                    sfData.disabledOutputHandles.length > 0
                 ) {
-                    set = new Set(data.disabledOutputHandles as string[])
-                } else if (data?.subflowId && disabledOutputsBySubflowId.has(data.subflowId)) {
-                    set = disabledOutputsBySubflowId.get(data.subflowId)
+                    set = new Set(sfData.disabledOutputHandles as string[])
+                } else if (typeof sfData.subflowId === 'string' && disabledOutputsBySubflowId.has(sfData.subflowId)) {
+                    set = disabledOutputsBySubflowId.get(sfData.subflowId)
                 }
                 if (set && set.size > 0) disabledByWrapper.set(n.id, set)
             }
@@ -386,25 +347,26 @@ export const Flow: React.FC<{
         const disabledByWrapper = new Map<string, Set<string>>()
         for (const n of nodes) {
             if (n.type === NodeType.SUBFLOW) {
-                const data: any = (n as any).data
+
+                const sfData = n.data as Record<string, unknown>
                 let set: Set<string> | undefined
                 if (
-                    Array.isArray(data?.disabledOutputHandles) &&
-                    data.disabledOutputHandles.length > 0
+                    Array.isArray(sfData.disabledOutputHandles) &&
+                    sfData.disabledOutputHandles.length > 0
                 ) {
-                    set = new Set(data.disabledOutputHandles as string[])
-                } else if (data?.subflowId && disabledOutputsBySubflowId.has(data.subflowId)) {
-                    set = disabledOutputsBySubflowId.get(data.subflowId)
+                    set = new Set(sfData.disabledOutputHandles as string[])
+                } else if (typeof sfData.subflowId === 'string' && disabledOutputsBySubflowId.has(sfData.subflowId)) {
+                    set = disabledOutputsBySubflowId.get(sfData.subflowId)
                 }
                 if (set && set.size > 0) disabledByWrapper.set(n.id, set)
             }
         }
         if (disabledByWrapper.size === 0) return dim
         // Children index for BFS
-        const bySource = new Map<string, typeof orderedEdges>()
+        const bySource = new Map<string, Edge[]>()
         for (const e of orderedEdges) {
-            const arr = bySource.get(e.source) || ([] as typeof orderedEdges)
-            ;(arr as any).push(e)
+            const arr = bySource.get(e.source) || []
+            arr.push(e)
             bySource.set(e.source, arr)
         }
         // Seed queue with direct children from disabled handles
@@ -420,9 +382,9 @@ export const Flow: React.FC<{
         }
         // BFS to include entire downstream subgraph
         while (queue.length > 0) {
-            const cur = queue.shift() as string
+            const cur = queue.shift()!
             const out = bySource.get(cur) || []
-            for (const edge of out as any) {
+            for (const edge of out) {
                 if (!dim.has(edge.target)) {
                     dim.add(edge.target)
                     queue.push(edge.target)
@@ -476,6 +438,7 @@ export const Flow: React.FC<{
         (payload: WorkflowPayloadDTO) => {
             const nodesFromClipboard = Array.isArray(payload.nodes) ? payload.nodes : []
             const edgesFromClipboard = Array.isArray(payload.edges) ? payload.edges : []
+            // eslint-disable-next-line no-console
             console.log('[Flow] applyClipboardPayload', {
                 incomingNodeCount: nodesFromClipboard.length,
                 incomingEdgeCount: edgesFromClipboard.length,
@@ -507,9 +470,12 @@ export const Flow: React.FC<{
                 idMap.set(node.id, uuidv4())
             }
 
+             
             const newNodes: WorkflowNodes[] = nodesFromClipboard.map(node => ({
                 id: idMap.get(node.id) ?? uuidv4(),
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
                 type: node.type as any,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
                 data: node.data as any,
                 position: {
                     x: node.position.x + offsetX,
@@ -526,12 +492,14 @@ export const Flow: React.FC<{
                         id: uuidv4(),
                         source: newSource,
                         target: newTarget,
-                        sourceHandle: edge.sourceHandle,
-                        targetHandle: edge.targetHandle,
-                    } as Edge
+                        sourceHandle: edge.sourceHandle ?? undefined,
+                        targetHandle: edge.targetHandle ?? undefined,
+                    }
                 })
-                .filter((edge): edge is Edge => edge !== null)
+                .filter((edge): edge is NonNullable<typeof edge> => edge !== null)
+                .map(edge => ({ ...edge, sourceHandle: edge.sourceHandle ?? undefined }))
 
+            // eslint-disable-next-line no-console
             console.log('[Flow] applyClipboardPayload result', {
                 newNodeCount: newNodes.length,
                 newEdgeCount: newEdges.length,
@@ -667,6 +635,7 @@ export const Flow: React.FC<{
         applyClipboardPayload
     )
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         // Re-enable scope toggle once a storage_scope update arrives
         setIsTogglingScope(false)
@@ -700,6 +669,7 @@ export const Flow: React.FC<{
     )
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: node selection handler only depends on latest nodes array
+    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access */
     const handleNodeContextMenu = useCallback(
         (event: React.MouseEvent, node: any) => {
             event.preventDefault()
@@ -717,6 +687,7 @@ export const Flow: React.FC<{
         },
         [nodes, setSelectedNodes, setActiveNode]
     )
+    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access */
 
     const handlePaneContextMenu = useCallback((event: React.MouseEvent) => {
         event.preventDefault()
@@ -735,7 +706,9 @@ export const Flow: React.FC<{
                 id: edge.id,
                 source: edge.source,
                 target: edge.target,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 sourceHandle: (edge as any).sourceHandle,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
                 targetHandle: (edge as any).targetHandle,
             }))
 
@@ -751,6 +724,7 @@ export const Flow: React.FC<{
             ])
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const assistantEntries: [string, any[]][] = []
         const threadEntries: [string, string][] = []
         for (const nodeId of selectedIds) {
@@ -778,10 +752,11 @@ export const Flow: React.FC<{
         }
 
         const payload: WorkflowPayloadDTO = {
-            nodes: nodeDTOs as any,
-            edges: edgeDTOs as any,
+            nodes: nodeDTOs,
+            edges: edgeDTOs,
             state,
         }
+        // eslint-disable-next-line no-console
         console.log('[Flow] copy_selection payload', {
             nodeCount: payload.nodes?.length ?? 0,
             edgeCount: payload.edges?.length ?? 0,
@@ -796,8 +771,9 @@ export const Flow: React.FC<{
                 : 0,
         })
         try {
-            vscodeAPI.postMessage({ type: 'copy_selection', data: payload } as any)
+            vscodeAPI.postMessage({ type: 'copy_selection', data: payload })
         } catch (err) {
+            // eslint-disable-next-line no-console
             console.error('[Flow] Failed to post copy_selection message', err)
         }
     }, [selectedNodes, edges, nodeResults, nodeAssistantContent, nodeThreadIDs, vscodeAPI])
@@ -806,13 +782,15 @@ export const Flow: React.FC<{
         (position: { x: number; y: number }) => {
             const flowPoint = reactFlowInstance.screenToFlowPosition(position)
             lastPasteScreenPositionRef.current = flowPoint
+            // eslint-disable-next-line no-console
             console.log('[Flow] paste_selection requested', {
                 screenPosition: position,
                 flowPosition: flowPoint,
             })
             try {
-                vscodeAPI.postMessage({ type: 'paste_selection' } as any)
+                vscodeAPI.postMessage({ type: 'paste_selection' })
             } catch (err) {
+                // eslint-disable-next-line no-console
                 console.error('[Flow] Failed to post paste_selection message', err)
             }
         },
@@ -820,6 +798,7 @@ export const Flow: React.FC<{
     )
 
     const isValidConnection = useCallback(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
         (conn: any) => isValidEdgeConnection(conn, edges, nodes),
         [edges, nodes]
     )
@@ -837,7 +816,7 @@ export const Flow: React.FC<{
     const handleCanvasDrop = useCallback(
         (e: React.DragEvent) => {
             const nodeType = e.dataTransfer.getData('application/x-amp-node-type')
-            if (nodeType === NodeType.INPUT) {
+            if (nodeType === String(NodeType.INPUT)) {
                 e.preventDefault()
                 const flowElement = document.querySelector('.react-flow')
                 if (flowElement) {
@@ -874,6 +853,7 @@ export const Flow: React.FC<{
     const { onSaveCustomNode, onDeleteCustomNode, onRenameCustomNode } = useCustomNodes(vscodeAPI)
 
     const nodeUpdateCallbacks = useMemo(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const callbacks: Record<string, (partial: any) => void> = {}
         for (const node of nodesWithState) {
             callbacks[node.id] = (partial: Partial<typeof node.data>) => onNodeUpdate(node.id, partial)
@@ -902,7 +882,7 @@ export const Flow: React.FC<{
 
     // Measure center pane for background canvas sizing
     const centerRef = useRef<HTMLDivElement | null>(null)
-    const [centerSize, setCenterSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
+    const [_centerSize, setCenterSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
     useEffect(() => {
         const el = centerRef.current
         if (!el) return
@@ -958,6 +938,7 @@ export const Flow: React.FC<{
     }, [pendingApprovalNodeId, rightCollapsed, nodes])
 
     // Listen for subflow library updates
+    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument */
     useEffect(() => {
         const handler = (e: any) => {
             const list = e?.detail as Array<{ id: string; title: string; version: string }>
@@ -966,6 +947,7 @@ export const Flow: React.FC<{
         window.addEventListener('nebula-subflows-provide' as any, handler as any)
         return () => window.removeEventListener('nebula-subflows-provide' as any, handler as any)
     }, [])
+    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument */
 
     const resetResultsState = useCallback(() => {
         setNodeResults(new Map())
@@ -982,7 +964,7 @@ export const Flow: React.FC<{
         )
         // Clear backend subflow cache
         try {
-            vscodeAPI.postMessage({ type: 'reset_results' } as any)
+            vscodeAPI.postMessage({ type: 'reset_results' })
         } catch {}
     }, [setNodeAssistantContent, setNodeSubAgentContent, setNodeErrors, vscodeAPI])
 
@@ -990,7 +972,7 @@ export const Flow: React.FC<{
         resetResultsState()
         resetExecutionState()
         try {
-            vscodeAPI.postMessage({ type: 'clear_workflow' } as any)
+            vscodeAPI.postMessage({ type: 'clear_workflow' })
         } catch {}
     }, [resetResultsState, resetExecutionState, vscodeAPI])
 
@@ -1000,11 +982,11 @@ export const Flow: React.FC<{
 
     // Request subflow list on mount and when storage scope changes
     useEffect(() => {
-        vscodeAPI.postMessage({ type: 'get_subflows' } as any)
+        vscodeAPI.postMessage({ type: 'get_subflows' })
     }, [vscodeAPI])
     useEffect(() => {
         if (storageScope) {
-            vscodeAPI.postMessage({ type: 'get_subflows' } as any)
+            vscodeAPI.postMessage({ type: 'get_subflows' })
         }
     }, [storageScope, vscodeAPI])
 

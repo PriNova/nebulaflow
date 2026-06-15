@@ -1,5 +1,12 @@
 import { NodeType, PausedError } from '../../../Core/models'
-import type { ApprovalResult, Edge, ExtensionToWorkflow, WorkflowNodes } from '../../../Core/models'
+import type {
+    AccumulatorNode,
+    ApprovalResult,
+    Edge,
+    ExtensionToWorkflow,
+    VariableNode,
+    WorkflowNodes,
+} from '../../../Core/models'
 import type { IHostEnvironment, IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
 import { type ParallelCallbacks, executeWorkflowParallel } from '../../Core/engine/parallel-scheduler'
@@ -14,8 +21,6 @@ import { executeLoopStartNode } from '../node-runners/run-loop-start'
 import { executePreviewNode } from '../node-runners/run-preview'
 import { runSubflowWrapper } from '../subflow/run-subflow'
 import { routeNodeExecution } from './NodeDispatch'
-
-const DEFAULT_LLM_TIMEOUT_MS = 300_000
 
 // Panel-scoped subflow cache is provided by the caller and passed through to subflow execution.
 
@@ -52,7 +57,7 @@ export async function executeWorkflow(
     // Early guard: invalid resume target
     if (resume?.fromNodeId && !nodes.some(n => n.id === resume.fromNodeId)) {
         void host.window.showErrorMessage(`Resume failed: node ${resume.fromNodeId} not found`)
-        await safePost(port, { type: 'execution_completed' } as ExtensionToWorkflow)
+        await safePost(port, { type: 'execution_completed' })
         return
     }
 
@@ -60,47 +65,50 @@ export async function executeWorkflow(
     let lastExecutedNodeId: string | null = null
     let interruptedNodeId: string | null = null
     let paused = false
-    await safePost(port, { type: 'execution_started' } as ExtensionToWorkflow)
+    await safePost(port, { type: 'execution_started' })
     try {
         const callbacks: ParallelCallbacks = {
-            runNode: async (node, pctx, signal) => {
+            runNode: async (node, pctx, signal): Promise<string | string[]> => {
                 const ctx = pctx as unknown as IndexedExecutionContext
-                return await routeNodeExecution(node, 'workflow', {
-                    runCLI: (..._args: any[]) =>
+                const res = await routeNodeExecution(node, 'workflow', {
+                    runCLI: (..._args: unknown[]) =>
                         executeCLINode(node, signal, port, host, approvalHandler, ctx),
-                    runLLM: (..._args: any[]) =>
+                    runLLM: (..._args: unknown[]) =>
                         executeLLMNode(node, ctx, signal, port, approvalHandler),
-                    runPreview: (..._args: any[]) => executePreviewNode(node.id, port, ctx),
-                    runInput: (..._args: any[]) => executeInputNode(node, ctx),
-                    runIfElse: (..._args: any[]) => executeIfElseNode(ctx, node),
-                    runAccumulator: async (..._args: any[]) => {
-                        const inputs = combineParentOutputsByConnectionOrder(node.id, ctx)
-                        const template = ((node as any).data?.content || '').toString()
+                    runPreview: (..._args: unknown[]) => executePreviewNode(node.id, port, ctx),
+                    runInput: (..._args: unknown[]) => executeInputNode(node, ctx),
+                    runIfElse: (..._args: unknown[]) => executeIfElseNode(ctx, node),
+                    runAccumulator: (..._args: unknown[]) => {
+                        const acc = node as AccumulatorNode
+                        const inputs = combineParentOutputsByConnectionOrder(acc.id, ctx)
+                        const template = acc.data.content || ''
                         const inputValue = evalTemplate(template, inputs, ctx)
-                        const variableName = (node as any).data.variableName as string
-                        const initialValue = (node as any).data.initialValue as string | undefined
+                        const variableName = acc.data.variableName
+                        const initialValue = acc.data.initialValue
                         let accumulatedValue =
                             ctx.accumulatorValues?.get(variableName) || initialValue || ''
                         accumulatedValue += '\n' + inputValue
                         ctx.accumulatorValues?.set(variableName, accumulatedValue)
                         return accumulatedValue
                     },
-                    runVariable: async (..._args: any[]) => {
-                        const inputs = combineParentOutputsByConnectionOrder(node.id, ctx)
-                        const template = ((node as any).data?.content || '').toString()
+                    runVariable: (..._args: unknown[]) => {
+                        const vn = node as VariableNode
+                        const inputs = combineParentOutputsByConnectionOrder(vn.id, ctx)
+                        const template = vn.data.content || ''
                         const inputValue = evalTemplate(template, inputs, ctx)
-                        const variableName = (node as any).data.variableName as string
-                        const initialValue = (node as any).data.initialValue as string | undefined
+                        const variableName = vn.data.variableName
+                        const initialValue = vn.data.initialValue
                         let variableValue = ctx.variableValues?.get(variableName) || initialValue || ''
                         variableValue = inputValue
                         ctx.variableValues?.set(variableName, variableValue)
                         return variableValue
                     },
-                    runLoopStart: async (..._args: any[]) => executeLoopStartNode(node, ctx),
-                    runLoopEnd: async (..._args: any[]) => executeLoopEndNode(node, ctx),
-                    runSubflow: async (..._args: any[]) =>
+                    runLoopStart: (..._args: unknown[]) => executeLoopStartNode(node, ctx),
+                    runLoopEnd: (..._args: unknown[]) => executeLoopEndNode(node, ctx),
+                    runSubflow: (..._args: unknown[]) =>
                         runSubflowWrapper(node, ctx, signal, port, host, subflowCache),
                 })
+                return (Array.isArray(res) ? res : [String(res)]) as string[]
             },
             onStatus: payload => {
                 if (payload.status === 'completed') {
@@ -111,7 +119,7 @@ export async function executeWorkflow(
                 return safePost(port, {
                     type: 'node_execution_status',
                     data: payload,
-                } as ExtensionToWorkflow)
+                })
             },
         }
 

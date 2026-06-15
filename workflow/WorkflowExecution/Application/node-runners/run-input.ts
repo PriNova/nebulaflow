@@ -3,12 +3,12 @@ import { combineParentOutputsByConnectionOrder } from '../../Core/execution/comb
 import { evalTemplate } from '../../Core/execution/inputs'
 import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
 
-export async function executeInputNode(
+export function executeInputNode(
     node: WorkflowNode,
     context: IndexedExecutionContext
-): Promise<string> {
+): string {
     const inputs = combineParentOutputsByConnectionOrder(node.id, context)
-    const template = ((node as any).data?.content || '').toString()
+    const template = node.data.content || ''
     const text = evalTemplate(template, inputs, context)
     return text.trim()
 }

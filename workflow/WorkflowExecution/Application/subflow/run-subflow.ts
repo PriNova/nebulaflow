@@ -1,9 +1,19 @@
+import type { NodeExecutionPayload } from '../../../Core/Contracts/Protocol'
 import { fromProtocolPayload } from '../../../Application/messaging/converters'
-import { NodeType, type SubflowNode, type WorkflowNodes } from '../../../Core/models'
+import {
+    NodeType,
+    type AccumulatorNode,
+    type SubflowNode,
+    type VariableNode,
+    type WorkflowNodes,
+} from '../../../Core/models'
 import { loadSubflow } from '../../../DataAccess/fs'
 import type { IHostEnvironment, IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
-import { type ParallelCallbacks, executeWorkflowParallel } from '../../Core/engine/parallel-scheduler'
+import {
+    type ParallelCallbacks,
+    executeWorkflowParallel,
+} from '../../Core/engine/parallel-scheduler'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
 import { evalTemplate } from '../../Core/execution/inputs'
 import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
@@ -31,9 +41,7 @@ export async function runSubflowWrapper(
     if (!def) throw new Error(`Subflow not found: ${subflowId}`)
 
     // Prepare inner graph
-    const inner = fromProtocolPayload({ nodes: def.graph.nodes as any, edges: def.graph.edges as any })
-    // Index for seeds: map SubflowInput nodes by port id
-    const byId = new Map(inner.nodes.map(n => [n.id, n]))
+    const inner = fromProtocolPayload({ nodes: def.graph.nodes, edges: def.graph.edges })
     const inputs = combineParentOutputsByConnectionOrder(wrapperNode.id, outerCtx)
 
     const seeds: Record<string, string> = {}
@@ -43,7 +51,10 @@ export async function runSubflowWrapper(
         const val = inputs[i] ?? ''
         // Find SubflowInput node with matching port id
         const match = inner.nodes.find(
-            n => (n as any).type === NodeType.SUBFLOW_INPUT && (n as any).data?.portId === portDef.id
+            n =>
+                n.type === NodeType.SUBFLOW_INPUT &&
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+                (n.data as any).portId === portDef.id
         )
         if (match) seeds[match.id] = val
     }
@@ -52,8 +63,8 @@ export async function runSubflowWrapper(
         const prev = subflowCache?.get(subflowId)
         if (prev && typeof prev === 'object') {
             for (const [nid, val] of Object.entries(prev)) {
-                const nn: any = inner.nodes.find(n => n.id === nid)
-                if (nn && nn.data?.bypass === true && typeof val === 'string') {
+                const nn = inner.nodes.find(n => n.id === nid)
+                if (nn && nn.data.bypass === true && typeof val === 'string') {
                     seeds[nid] = val
                 }
             }
@@ -61,11 +72,12 @@ export async function runSubflowWrapper(
     } catch {}
 
     // Identify all SubflowOutput nodes and map by portId
-    const outNodes = inner.nodes.filter(n => (n as any).type === NodeType.SUBFLOW_OUTPUT)
+    const outNodes = inner.nodes.filter(n => n.type === NodeType.SUBFLOW_OUTPUT)
     if (!outNodes || outNodes.length === 0) throw new Error('Subflow definition missing output nodes')
     const outNodeIdToPortId = new Map<string, string>()
     for (const n of outNodes) {
-        const pid = (n as any)?.data?.portId as string | undefined
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+        const pid = (n.data as any).portId as string | undefined
         if (pid) outNodeIdToPortId.set(n.id, pid)
     }
 
@@ -73,39 +85,43 @@ export async function runSubflowWrapper(
     try {
         // Minimal local edge index for parent lookups
         const byTarget = new Map<string, { source: string; target: string }[]>()
-        const byId = new Map<string, { source: string; target: string }>()
-        for (const e of inner.edges as any[]) {
+        const byIdEdge = new Map<string, { source: string; target: string }>()
+        for (const e of inner.edges) {
             const arr = byTarget.get(e.target) || []
             arr.push({ source: e.source, target: e.target })
             byTarget.set(e.target, arr)
-            byId.set(e.id, { source: e.source, target: e.target })
+            byIdEdge.set(e.id, { source: e.source, target: e.target })
         }
-        const tmpCtx: any = {
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        const tmpCtx = {
             nodeOutputs: new Map<string, string | string[]>(Object.entries(seeds)),
             nodeIndex: new Map(inner.nodes.map(n => [n.id, n])),
-            edgeIndex: { byTarget, byId },
-        }
+            edgeIndex: { byTarget, byId: byIdEdge },
+        } as any as IndexedExecutionContext
+        /* eslint-enable @typescript-eslint/no-explicit-any */
         // Iterate to propagate pass-through seeds along bypass chains
         const maxIters = inner.nodes.length
         for (let iter = 0; iter < maxIters; iter++) {
             let progressed = false
             for (const n of inner.nodes) {
-                const isBypass = (n as any)?.data?.bypass === true
+                const isBypass = n.data.bypass === true
                 if (!isBypass) continue
-                if (tmpCtx.nodeOutputs.has(n.id)) continue
+                if (tmpCtx.nodeOutputs?.has(n.id)) continue
                 // Compute using currently available parent outputs
                 const vals = combineParentOutputsByConnectionOrder(n.id, tmpCtx)
                 if (vals && vals.length > 0) {
-                    tmpCtx.nodeOutputs.set(n.id, vals.join('\n'))
+                    tmpCtx.nodeOutputs?.set(n.id, vals.join('\n'))
                     progressed = true
                 }
             }
             if (!progressed) break
         }
         // Merge computed pass-through seeds back into seeds map
-        for (const [k, v] of tmpCtx.nodeOutputs as Map<string, string | string[]>) {
-            const s = Array.isArray(v) ? v.join('\n') : (v as string)
-            seeds[k] = s
+        if (tmpCtx.nodeOutputs) {
+            for (const [k, v] of tmpCtx.nodeOutputs) {
+                const s = Array.isArray(v) ? v.join('\n') : v
+                seeds[k] = s
+            }
         }
     } catch {
         // Best-effort; ignore seeding errors
@@ -116,64 +132,59 @@ export async function runSubflowWrapper(
         inner.nodes
             .filter(
                 n =>
-                    (n as any).data?.active !== false &&
-                    (n as any).type !== NodeType.SUBFLOW_INPUT &&
-                    (n as any).type !== NodeType.SUBFLOW_OUTPUT
+                    n.data.active !== false &&
+                    n.type !== NodeType.SUBFLOW_INPUT &&
+                    n.type !== NodeType.SUBFLOW_OUTPUT
             )
             .map(n => n.id)
     )
     const totalInner = eligibleInnerIds.size
     let completedInner = 0
     if (totalInner > 0) {
-        await safePost(port, {
+        void safePost(port, {
             type: 'node_execution_status',
             data: {
                 nodeId: wrapperNode.id,
                 status: 'running',
                 result: `${completedInner}/${totalInner}`,
             },
-        } as any)
+        })
     }
 
     const resultByPortId = new Map<string, string>()
     const lastOutputs = new Map<string, string>()
 
     // Proxy inner node events to subflow-scoped events for the outer webview
+    /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
     const subflowWebviewProxy: IMessagePort = {
-        postMessage: async (innerMsg: any) => {
+        postMessage: async (innerMsg) => {
             try {
-                if (innerMsg?.type === 'node_execution_status' && innerMsg?.data) {
+                const msg = innerMsg as Record<string, unknown>
+                if (msg.type === 'node_execution_status' && msg.data) {
                     await safePost(port, {
                         type: 'subflow_node_execution_status',
-                        data: { subflowId, payload: innerMsg.data },
+                        data: { subflowId, payload: msg.data as NodeExecutionPayload },
                     } as any)
-                } else if (innerMsg?.type === 'node_assistant_content' && innerMsg?.data) {
+                } else if (msg.type === 'node_assistant_content' && msg.data) {
                     await safePost(port, {
                         type: 'subflow_node_assistant_content',
                         data: {
                             subflowId,
-                            nodeId: innerMsg.data.nodeId,
-                            threadID: innerMsg.data.threadID,
-                            content: innerMsg.data.content,
-                            mode: innerMsg.data.mode,
+                            ...(msg.data as any),
                         },
                     } as any)
-                } else if (innerMsg?.type === 'node_sub_agent_content' && innerMsg?.data) {
+                } else if (msg.type === 'node_sub_agent_content' && msg.data) {
                     await safePost(port, {
                         type: 'subflow_node_sub_agent_content',
                         data: {
                             subflowId,
-                            nodeId: innerMsg.data.nodeId,
-                            subThreadID: innerMsg.data.subThreadID,
-                            parentThreadID: innerMsg.data.parentThreadID,
-                            agentType: innerMsg.data.agentType,
-                            status: innerMsg.data.status,
-                            content: innerMsg.data.content,
+                            ...(msg.data as any),
                         },
                     } as any)
                 }
             } catch (err) {
                 // Log forwarding failures so message delivery issues are diagnosable
+                // eslint-disable-next-line no-console
                 console.error('[subflowWebviewProxy] Failed to forward inner message', err)
             }
             return true
@@ -182,68 +193,81 @@ export async function runSubflowWrapper(
             return { dispose: () => {} }
         },
     }
+    /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
 
     const callbacks: ParallelCallbacks = {
-        runNode: async (node, pctx, signal) => {
+        runNode: async (node, pctx, signal): Promise<string | string[]> => {
             const ctx = pctx as unknown as IndexedExecutionContext
-            return await routeNodeExecution(node, 'workflow', {
-                runCLI: (..._args: any[]) =>
+            const res = await routeNodeExecution(node, 'workflow', {
+                runCLI: (..._args: unknown[]) =>
                     executeCLINode(
                         node,
                         signal,
                         subflowWebviewProxy,
                         host,
-                        async () => ({ type: 'approved' }),
+                        // eslint-disable-next-line @typescript-eslint/require-await
+                        async () => ({ type: 'approved' as const }),
                         ctx
                     ),
-                runLLM: (..._args: any[]) =>
-                    executeLLMNode(node, ctx, signal, subflowWebviewProxy, async () => ({
-                        type: 'approved',
-                    })),
-                runPreview: (..._args: any[]) => executePreviewNode(node.id, subflowWebviewProxy, ctx),
-                runInput: (..._args: any[]) => executeInputNode(node, ctx),
-                runIfElse: (..._args: any[]) => executeIfElseNode(ctx, node),
-                runAccumulator: async (..._args: any[]) => {
-                    const vals = combineParentOutputsByConnectionOrder(node.id, ctx)
-                    const template = ((node as any).data?.content || '').toString()
+                runLLM: (..._args: unknown[]) =>
+                    executeLLMNode(
+                        node,
+                        ctx,
+                        signal,
+                        subflowWebviewProxy,
+                        // eslint-disable-next-line @typescript-eslint/require-await
+                        async () => ({ type: 'approved' as const }),
+                    ),
+                runPreview: (..._args: unknown[]) =>
+                    executePreviewNode(node.id, subflowWebviewProxy, ctx),
+                runInput: (..._args: unknown[]) => executeInputNode(node, ctx),
+                runIfElse: (..._args: unknown[]) => executeIfElseNode(ctx, node),
+                runAccumulator: (..._args: unknown[]) => {
+                    const acc = node as AccumulatorNode
+                    const vals = combineParentOutputsByConnectionOrder(acc.id, ctx)
+                    const template = acc.data.content || ''
                     const content = evalTemplate(template, vals, ctx)
-                    const variableName = (node as any).data.variableName as string
-                    const initialValue = (node as any).data.initialValue as string | undefined
-                    let accumulatedValue = ctx.accumulatorValues?.get(variableName) || initialValue || ''
+                    const variableName = acc.data.variableName
+                    const initialValue = acc.data.initialValue
+                    let accumulatedValue =
+                        ctx.accumulatorValues?.get(variableName) || initialValue || ''
                     accumulatedValue += '\n' + content
                     ctx.accumulatorValues?.set(variableName, accumulatedValue)
                     return accumulatedValue
                 },
-                runVariable: async (..._args: any[]) => {
-                    const vals = combineParentOutputsByConnectionOrder(node.id, ctx)
-                    const template = ((node as any).data?.content || '').toString()
+                runVariable: (..._args: unknown[]) => {
+                    const vn = node as VariableNode
+                    const vals = combineParentOutputsByConnectionOrder(vn.id, ctx)
+                    const template = vn.data.content || ''
                     const text = evalTemplate(template, vals, ctx)
-                    const variableName = (node as any).data.variableName as string
-                    const initialValue = (node as any).data.initialValue as string | undefined
-                    let variableValue = ctx.variableValues?.get(variableName) || initialValue || ''
+                    const variableName = vn.data.variableName
+                    const initialValue = vn.data.initialValue
+                    let variableValue =
+                        ctx.variableValues?.get(variableName) || initialValue || ''
                     variableValue = text
                     ctx.variableValues?.set(variableName, variableValue)
                     return variableValue
                 },
-                runLoopStart: async (..._args: any[]) => executeLoopStartNode(node, ctx),
-                runLoopEnd: async (..._args: any[]) => executeLoopEndNode(node, ctx),
-                runSubflowOutput: async (..._args: any[]) => {
+                runLoopStart: (..._args: unknown[]) => executeLoopStartNode(node, ctx),
+                runLoopEnd: (..._args: unknown[]) => executeLoopEndNode(node, ctx),
+                runSubflowOutput: (..._args: unknown[]) => {
                     const vals = combineParentOutputsByConnectionOrder(node.id, ctx)
                     return (vals || []).join('\n').trim()
                 },
-                runSubflowInput: async (..._args: any[]) => {
+                runSubflowInput: (..._args: unknown[]) => {
                     // Should generally be seeded; return seeded value if any
                     const v = ctx.nodeOutputs.get(node.id)
                     return Array.isArray(v) ? v.join('\n') : v ?? ''
                 },
             })
+            return (Array.isArray(res) ? res : [String(res)]) as string[]
         },
         onStatus: payload => {
             // Forward inner node status while subflow view is open
             void safePost(port, {
                 type: 'subflow_node_execution_status',
                 data: { subflowId, payload },
-            } as any)
+            })
 
             if (payload.status === 'completed' && payload.nodeId) {
                 if (outNodeIdToPortId.has(payload.nodeId)) {
@@ -269,7 +293,7 @@ export async function runSubflowWrapper(
                             status: 'running',
                             result: `${completedInner}/${totalInner}`,
                         },
-                    } as any)
+                    })
                 }
             }
         },
@@ -277,8 +301,8 @@ export async function runSubflowWrapper(
 
     const options = { onError: 'fail-fast', seeds: { outputs: seeds } } as const
     await executeWorkflowParallel(
-        inner.nodes as any,
-        inner.edges as any,
+        inner.nodes,
+        inner.edges,
         callbacks,
         options,
         abortSignal

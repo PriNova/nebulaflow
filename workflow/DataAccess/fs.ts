@@ -34,7 +34,7 @@ function getConfig() {
         h.workspace.getConfiguration<string>('nebulaFlow.storageScope', 'user') === 'workspace'
             ? 'workspace'
             : 'user'
-    ) as 'workspace' | 'user'
+    )
     const globalStoragePath = h.workspace.getConfiguration('nebulaFlow.globalStoragePath', '')
     const baseGlobal =
         globalStoragePath && path.isAbsolute(globalStoragePath) ? globalStoragePath : os.homedir()
@@ -51,25 +51,21 @@ function getRootForScope(): { scope: 'workspace' | 'user'; root?: string } {
     return { scope: 'user', root: baseGlobal }
 }
 
-function dirUri(root: string, sub: string): string {
-    return path.join(root, sub)
+function isValidPosition(v: unknown): v is { x: number; y: number } {
+    return typeof v === 'object' && v !== null && typeof (v as Record<string, unknown>).x === 'number' && typeof (v as Record<string, unknown>).y === 'number'
 }
 
-function isValidPosition(v: any): v is { x: number; y: number } {
-    return v && typeof v.x === 'number' && typeof v.y === 'number'
-}
+type UnknownRecord = Record<string, unknown>
 
-function isValidCustomNode(n: any): n is WorkflowNodes {
-    return (
-        n &&
-        typeof n === 'object' &&
-        typeof n.type === 'string' &&
-        Object.values(NodeType).includes(n.type) &&
-        n.data &&
-        typeof n.data.title === 'string' &&
-        n.data.title.length > 0 &&
-        isValidPosition(n.position)
-    )
+function isValidCustomNode(n: unknown): n is WorkflowNodes {
+    if (typeof n !== 'object' || n === null) return false
+    const obj = n as UnknownRecord
+    if (typeof obj.type !== 'string' || !Object.values(NodeType).includes(obj.type as NodeType)) return false
+    if (typeof obj.data !== 'object' || obj.data === null) return false
+    const data = obj.data as UnknownRecord
+    if (typeof data.title !== 'string' || data.title.length === 0) return false
+    if (typeof obj.position !== 'object' || obj.position === null) return false
+    return isValidPosition(obj.position)
 }
 
 function isSupportedVersion(version: unknown): boolean {
@@ -111,8 +107,9 @@ export async function saveSubflow(
         const data = { ...def, id }
         await h.fs.writeFile(file, Buffer.from(JSON.stringify(data, null, 2), 'utf-8'))
         return { id }
-    } catch (error: any) {
-        return { error: error?.message || 'save-failed' }
+    } catch (error: unknown) {
+        const errMsg = error instanceof Error ? error.message : 'save-failed'
+        return { error: errMsg }
     }
 }
 
@@ -180,8 +177,10 @@ export async function getSubflows(): Promise<
 function cryptoRandomId(): string {
     try {
         const array = new Uint8Array(16)
-        // @ts-ignore
-        ;(globalThis.crypto || (require('node:crypto') as any).webcrypto).getRandomValues(array)
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
+        const cryptoModule = require('node:crypto') as { webcrypto: any }
+        const cryptoSource = globalThis.crypto || cryptoModule.webcrypto
+        cryptoSource.getRandomValues(array)
         return Array.from(array)
             .map(b => b.toString(16).padStart(2, '0'))
             .join('')
@@ -196,32 +195,24 @@ async function normalizeModelsInWorkflow(data: WorkflowPayloadDTO): Promise<Work
     try {
         const nodes = await Promise.all(
             (data.nodes ?? []).map(async (node) => {
-                if (!node || typeof node !== 'object' || (node as any).type !== 'llm') return node
-                const n: any = node
-                let model = n.data?.model
+                if (!node || typeof node !== 'object' || (node as unknown as UnknownRecord).type !== 'llm') return node
+                const n = node as unknown as UnknownRecord
+                const nodeData = (n.data as UnknownRecord | undefined) ?? {}
+                let model = nodeData.model as { id?: string; provider?: string; title?: string } | undefined
 
-                if (!model) {
+                if (!model || typeof model.id !== 'string') {
                     model = { id: DEFAULT_LLM_MODEL_ID, provider: DEFAULT_LLM_MODEL_ID.split('/')[0], title: DEFAULT_LLM_MODEL_TITLE }
                 }
 
-                const id = model?.id
-                if (!id || typeof id !== 'string') {
-                    return {
-                        ...node,
-                        data: {
-                            ...n.data,
-                            model: { id: DEFAULT_LLM_MODEL_ID, provider: DEFAULT_LLM_MODEL_ID.split('/')[0], title: DEFAULT_LLM_MODEL_TITLE },
-                        },
-                    }
-                }
+                const id = model.id
 
                 // Attempt migration from Amp SDK model ID to pi format
-                const migratedId = await migrateAmpModelId(id)
+                const migratedId = id ? await migrateAmpModelId(id) : undefined
                 if (migratedId && migratedId !== id) {
-                    return { ...node, data: { ...n.data, model: { ...model, id: migratedId } } }
+                    return { ...node, data: { ...nodeData, model: { ...model, id: migratedId } } }
                 }
 
-                return { ...node, data: { ...n.data, model } }
+                return { ...node, data: { ...nodeData, model } }
             })
         )
         return { ...data, nodes }
@@ -296,16 +287,16 @@ async function readWorkflowFromUri(
     try {
         const h = getHost()
         const content = await h.fs.readFile(uri)
-        const data = JSON.parse(Buffer.from(content).toString('utf-8'))
+        const data = JSON.parse(Buffer.from(content).toString('utf-8')) as UnknownRecord
 
-        if (!isSupportedVersion((data as any).version)) {
+        if (!isSupportedVersion(data.version)) {
             if (opts.interactive) {
                 void h.window.showErrorMessage('Unsupported workflow file version')
             }
             return null
         }
 
-        const { version, ...payloadData } = data as any
+        const { version: _version, ...payloadData } = data
         if (!isWorkflowPayloadDTO(payloadData)) {
             if (opts.interactive) {
                 void h.window.showErrorMessage('Invalid workflow schema')
@@ -313,12 +304,14 @@ async function readWorkflowFromUri(
             return null
         }
 
-        return await normalizeModelsInWorkflow({ ...payloadData, state: (payloadData as any).state })
+        return await normalizeModelsInWorkflow({
+            ...payloadData,
+            state: payloadData.state as WorkflowPayloadDTO['state'],
+        })
     } catch (error) {
         if (opts.interactive) {
-            const h = getHost()
             const errorMsg = error instanceof Error ? error.message : String(error)
-            void h.window.showErrorMessage(`Failed to load workflow: ${errorMsg}`)
+            void getHost().window.showErrorMessage(`Failed to load workflow: ${errorMsg}`)
         }
         return null
     }
@@ -328,7 +321,7 @@ export async function saveWorkflow(
     data: WorkflowPayloadDTO
 ): Promise<{ uri: string } | { error: string } | null> {
     const h = getHost()
-    const { scope, root } = getRootForScope()
+    const { root } = getRootForScope()
     const defaultFilePath = root ? path.join(root, WORKFLOWS_DIR + '/workflow.json') : 'workflow.json'
 
     const result = await h.window.showSaveDialog({
@@ -344,6 +337,7 @@ export async function saveWorkflow(
                 await h.fs.createDirectory(parent)
             } catch (dirError) {
                 const errorMsg = dirError instanceof Error ? dirError.message : String(dirError)
+                // eslint-disable-next-line no-console
                 console.error('Failed to create workflow directory', {
                     parent,
                     error: errorMsg,
@@ -447,10 +441,11 @@ export async function getCustomNodes(): Promise<WorkflowNodes[]> {
                 try {
                     const fileUri = path.join(nodesDir, filename)
                     const fileData = await h.fs.readFile(fileUri)
-                    const node = JSON.parse(Buffer.from(fileData).toString('utf-8'))
+                    const node = JSON.parse(Buffer.from(fileData).toString('utf-8')) as unknown
                     if (!isValidCustomNode(node)) {
+                        // eslint-disable-next-line no-console
                         console.error(`Invalid custom node schema in "${filename}"`)
-                        h.window.showErrorMessage(
+                        void h.window.showErrorMessage(
                             `Invalid custom node schema in "${filename}": missing type, title, or position`
                         )
                         continue
@@ -460,19 +455,23 @@ export async function getCustomNodes(): Promise<WorkflowNodes[]> {
                         id: 'custom:' + sanitizeFilename(node.data.title),
                     }
                     nodes.push(normalizedNode)
-                } catch (error: any) {
-                    console.error(`Failed to load custom node "${filename}": ${error?.message}`)
-                    h.window.showErrorMessage(
-                        `Failed to load custom node "${filename}": ${error?.message}`
+                } catch (error: unknown) {
+                    const errMsg = error instanceof Error ? error.message : String(error)
+                    // eslint-disable-next-line no-console
+                    console.error(`Failed to load custom node "${filename}": ${errMsg}`)
+                    void h.window.showErrorMessage(
+                        `Failed to load custom node "${filename}": ${errMsg}`
                     )
                 }
             }
         }
         return nodes
-    } catch (error: any) {
+    } catch (error: unknown) {
         const h = getHost()
-        console.error(`Failed to load custom nodes: ${error?.message}`)
-        h.window.showErrorMessage(`Failed to load custom nodes: ${error?.message}`)
+        const errMsg = error instanceof Error ? error.message : String(error)
+        // eslint-disable-next-line no-console
+        console.error(`Failed to load custom nodes: ${errMsg}`, error)
+        void h.window.showErrorMessage(`Failed to load custom nodes: ${errMsg}`)
         return []
     }
 }
@@ -493,40 +492,16 @@ export async function saveCustomNode(node: WorkflowNodes): Promise<void> {
         } catch {}
 
         const fileUri = getNodeFileUri(root, node.data.title)
-        if (await h.fs.exists(fileUri)) {
-            // NOTE: standard vscode.window.showWarningMessage does not support modal/custom buttons in generic interface easily
-            // but our wrapper simulates it or we rely on string returns.
-            // VS Code signature: showWarningMessage<T>(message: string, options: MessageOptions, ...items: T[]): Promise<T | undefined>
-            // My Interface: showErrorMessage/showInformationMessage only.
-            // I need to add showWarningMessage to IWindow interface if I want to support this.
-            // OR simplify.
-            // For now, I'll skip the confirmation or assume overwrite, OR add showWarningMessage.
-            // Let's assume we add showWarningMessage to IWindow.
-            // But I didn't add it yet. I'll use showInformationMessage but that doesn't return selection.
-            // I'll stick to overwrite for now or throw error.
-            // Actually, I should add showWarningMessage to IHostEnvironment.
-            // Let's assume I'll add it.
-            /*
-            const confirmed = await h.window.showWarningMessage(
-                `A custom node named "${node.data.title}" already exists. Overwrite?`,
-                ['Overwrite']
-            )
-            if (confirmed !== 'Overwrite') {
-                return
-            }
-            */
-            // For safety/speed in this refactor, I will just overwrite for now or log warning.
-            // The original code had a modal dialog.
-            // I will skip the check for now to avoid interface churn, or come back to it.
-            // Actually, let's just overwrite.
-        }
+        void h.fs.exists(fileUri)
+        // Overwrite without confirmation for now
 
-        const { id, ...nodeToSave } = node as any
+        const { id: _unused, ...nodeToSave } = node
         await h.fs.writeFile(fileUri, Buffer.from(JSON.stringify(nodeToSave, null, 2), 'utf-8'))
         void h.window.showInformationMessage(`Custom node "${node.data.title}" saved successfully.`)
-    } catch (error: any) {
+    } catch (error: unknown) {
         const h = getHost()
-        h.window.showErrorMessage(`Failed to save custom node: ${error?.message}`)
+        const errMsg = error instanceof Error ? error.message : String(error)
+        void h.window.showErrorMessage(`Failed to save custom node: ${errMsg}`)
     }
 }
 
@@ -542,7 +517,7 @@ export async function deleteCustomNode(nodeTitle: string): Promise<void> {
         }
         const fileUri = getNodeFileUri(root, nodeTitle)
         if (!(await h.fs.exists(fileUri))) {
-            h.window.showErrorMessage(`Custom node with title "${nodeTitle}" not found.`)
+            void h.window.showErrorMessage(`Custom node with title "${nodeTitle}" not found.`)
             return
         }
         // Skip confirmation for now (see above)
@@ -550,9 +525,10 @@ export async function deleteCustomNode(nodeTitle: string): Promise<void> {
         void h.window.showInformationMessage(
             `Custom node with title "${nodeTitle}" deleted successfully.`
         )
-    } catch (error: any) {
+    } catch (error: unknown) {
         const h = getHost()
-        h.window.showErrorMessage(`Failed to delete custom node: ${error?.message}`)
+        const errMsg = error instanceof Error ? error.message : String(error)
+        void h.window.showErrorMessage(`Failed to delete custom node: ${errMsg}`)
     }
 }
 
@@ -568,7 +544,7 @@ export async function renameCustomNode(oldNodeTitle: string, newNodeTitle: strin
         }
         const oldFileUri = getNodeFileUri(root, oldNodeTitle)
         if (!(await h.fs.exists(oldFileUri))) {
-            h.window.showErrorMessage(`Custom node with title "${oldNodeTitle}" not found.`)
+            void h.window.showErrorMessage(`Custom node with title "${oldNodeTitle}" not found.`)
             return
         }
         const fileData = await h.fs.readFile(oldFileUri)
@@ -580,7 +556,7 @@ export async function renameCustomNode(oldNodeTitle: string, newNodeTitle: strin
             // Skip confirmation
         }
 
-        const { id, ...nodeToSave } = node as any
+        const { id: _unused, ...nodeToSave } = node
         await h.fs.writeFile(newFileUri, Buffer.from(JSON.stringify(nodeToSave, null, 2), 'utf-8'))
         if (newFileUri !== oldFileUri) {
             await h.fs.delete(oldFileUri)
@@ -588,9 +564,10 @@ export async function renameCustomNode(oldNodeTitle: string, newNodeTitle: strin
         void h.window.showInformationMessage(
             `Custom node "${oldNodeTitle}" renamed to "${newNodeTitle}" successfully.`
         )
-    } catch (error: any) {
+    } catch (error: unknown) {
         const h = getHost()
-        h.window.showErrorMessage(`Failed to rename custom node: ${error?.message}`)
+        const errMsg = error instanceof Error ? error.message : String(error)
+        void h.window.showErrorMessage(`Failed to rename custom node: ${errMsg}`)
     }
 }
 

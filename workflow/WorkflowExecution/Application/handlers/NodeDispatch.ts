@@ -3,27 +3,27 @@ import { NodeType, type WorkflowNode, type WorkflowNodes } from '../../../Core/m
 export type Mode = 'workflow' | 'single-node'
 
 export interface NodeImplementations {
-    runCLI?: (...args: any[]) => Promise<any>
-    runLLM?: (...args: any[]) => Promise<any>
-    runPreview?: (...args: any[]) => Promise<any>
-    runInput?: (...args: any[]) => Promise<any>
-    runIfElse?: (...args: any[]) => Promise<any>
-    runAccumulator?: (...args: any[]) => Promise<any>
-    runVariable?: (...args: any[]) => Promise<any>
-    runLoopStart?: (...args: any[]) => Promise<any>
-    runLoopEnd?: (...args: any[]) => Promise<any>
-    runSubflow?: (...args: any[]) => Promise<any>
-    runSubflowOutput?: (...args: any[]) => Promise<any>
-    runSubflowInput?: (...args: any[]) => Promise<any>
+    runCLI?: (...args: unknown[]) => Promise<unknown>
+    runLLM?: (...args: unknown[]) => Promise<unknown>
+    runPreview?: (...args: unknown[]) => unknown
+    runInput?: (...args: unknown[]) => unknown
+    runIfElse?: (...args: unknown[]) => unknown
+    runAccumulator?: (...args: unknown[]) => unknown
+    runVariable?: (...args: unknown[]) => unknown
+    runLoopStart?: (...args: unknown[]) => unknown
+    runLoopEnd?: (...args: unknown[]) => unknown
+    runSubflow?: (...args: unknown[]) => unknown
+    runSubflowOutput?: (...args: unknown[]) => unknown
+    runSubflowInput?: (...args: unknown[]) => unknown
 }
 
 export async function routeNodeExecution(
     node: WorkflowNodes | WorkflowNode,
     mode: Mode,
     impl: NodeImplementations,
-    ...args: any[]
-): Promise<any> {
-    switch ((node as WorkflowNodes).type) {
+    ...args: unknown[]
+): Promise<unknown> {
+    switch ((node).type) {
         case NodeType.CLI: {
             if (!impl.runCLI) return unsupported(node, mode)
             return impl.runCLI(...args)
@@ -72,11 +72,14 @@ export async function routeNodeExecution(
             if (!impl.runSubflowInput) return unsupported(node, mode)
             return impl.runSubflowInput(...args)
         }
-        default:
-            throw new Error(`Unknown node type: ${(node as any).type}`)
+        default: {
+            const n = node as { type: string }
+            throw new Error(`Unknown node type: ${n.type}`)
+        }
     }
 }
 
 function unsupported(node: WorkflowNodes | WorkflowNode, mode: Mode): never {
-    throw new Error(`Run mode "${mode}" is not supported for node type: ${(node as any).type}`)
+    const n = node as { type: string }
+    throw new Error(`Run mode "${mode}" is not supported for node type: ${n.type}`)
 }

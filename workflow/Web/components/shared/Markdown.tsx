@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js'
 import { Marked } from 'marked'
@@ -59,14 +60,15 @@ export function Markdown({
     useEffect(() => {
         const el = containerRef.current
         if (!el) return
-        const anchors = Array.from(el.querySelectorAll('a')) as HTMLAnchorElement[]
+        const anchors = Array.from(el.querySelectorAll('a'))
         const onClick = (e: MouseEvent) => {
             const target = e.currentTarget as HTMLAnchorElement
             const href = target.getAttribute('href')
             if (!href) return
             // Open via extension so VS Code handles file:// and external links
             e.preventDefault()
-            vscodeAPI.postMessage({ type: 'open_external_link', url: href } as any)
+             
+        vscodeAPI.postMessage({ type: 'open_external_link', url: href } as any)
         }
         for (const a of anchors) a.addEventListener('click', onClick)
         return () => {

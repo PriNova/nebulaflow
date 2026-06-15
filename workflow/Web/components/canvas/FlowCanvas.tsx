@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { CustomOrderedEdgeComponent } from '@graph/CustomOrderedEdge'
 import type { Edge } from '@graph/CustomOrderedEdge'
 import { HelpModal } from '@modals/HelpModal'
@@ -30,9 +31,9 @@ const FitViewHandler: React.FC<FitViewHandlerProps> = ({ fitRequested, nodes, on
 
         const performFit = () => {
             if (nodes.length === 0) {
-                reactFlow.setViewport({ x: 0, y: 0, zoom: 1 })
+                void reactFlow.setViewport({ x: 0, y: 0, zoom: 1 })
             } else {
-                reactFlow.fitView({ padding: 0.2, minZoom: 0.5, maxZoom: 1.5 })
+                void reactFlow.fitView({ padding: 0.2, minZoom: 0.5, maxZoom: 1.5 })
             }
             onFitComplete()
         }
@@ -157,22 +158,22 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
                                 // Confirm before discarding unsaved subflow edits
                                 try {
                                     if (activeSubflowId) {
-                                        const nodeDTOs = (nodes as any[]).map(n => toWorkflowNodeDTO(n))
-                                        nodeDTOs.sort((a: any, b: any) =>
+                                        const nodeDTOs = (nodes).map(n => toWorkflowNodeDTO(n))
+                                        nodeDTOs.sort((a, b) =>
                                             String(a.id).localeCompare(String(b.id))
                                         )
-                                        const edgeDTOs = (edges as any[]).map(e => ({
+                                        const edgeDTOs = (edges).map(e => ({
                                             id: e.id,
                                             source: e.source,
                                             target: e.target,
-                                            sourceHandle: (e as any).sourceHandle,
-                                            targetHandle: (e as any).targetHandle,
+                                            sourceHandle: (e).sourceHandle,
+                                            targetHandle: (e).targetHandle,
                                         }))
-                                        edgeDTOs.sort((a: any, b: any) =>
+                                        edgeDTOs.sort((a, b) =>
                                             String(a.id).localeCompare(String(b.id))
                                         )
                                         const outputs = Array.isArray(subflowMeta?.outputs)
-                                            ? subflowMeta!.outputs.map(o => ({
+                                            ? subflowMeta.outputs.map(o => ({
                                                   id: o.id,
                                                   name: o.name,
                                                   index: o.index,

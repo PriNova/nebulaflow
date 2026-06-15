@@ -15,9 +15,10 @@ export async function safePost(
     if (!isExtensionToWorkflow(msg)) {
         if (opts?.strict) {
             throw new Error(
-                `Invalid ExtensionToWorkflow message: ${JSON.stringify({ type: (msg as any)?.type })}`
+                `Invalid ExtensionToWorkflow message: ${JSON.stringify({ type: (msg as Record<string, unknown>)?.type })}`
             )
         }
+        // eslint-disable-next-line no-console
         console.warn('Dropped invalid message', msg)
         return
     }
@@ -40,6 +41,7 @@ export async function safePost(
         // For other unexpected errors, avoid crashing the extension process.
         // Log once in development, remain silent otherwise for robustness.
         if (opts?.strict) {
+            // eslint-disable-next-line no-console
             console.warn('[safePost] postMessage failed:', message)
         }
         // Do not rethrow to keep extension resilient.

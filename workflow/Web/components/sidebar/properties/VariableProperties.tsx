@@ -39,7 +39,7 @@ export const VariableProperties: React.FC<VariablePropertiesProps> = ({
                     id="variable-variable-name"
                     className="tw-h-8 tw-py-1 tw-text-sm"
                     value={node.data.variableName || ''}
-                    onChange={(e: { target: { value: any } }) =>
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
                         onUpdate(node.id, { variableName: e.target.value })
                     }
                     placeholder="Unique variable name to access variable value (e.g., summaryText)"
@@ -52,7 +52,7 @@ export const VariableProperties: React.FC<VariablePropertiesProps> = ({
                     id="node-input"
                     className="tw-min-h-[48px] tw-text-sm tw-py-1"
                     value={node.data.content || ''}
-                    onChange={(e: { target: { value: any } }) =>
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
                         onUpdate(node.id, { content: e.target.value })
                     }
                     onDoubleClick={() => {

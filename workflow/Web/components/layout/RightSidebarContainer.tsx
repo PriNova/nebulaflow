@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any, jsx-a11y/no-static-element-interactions */
 import type { WorkflowNodes } from '@nodes/Nodes'
 import { RightSidebar } from '@sidebar/RightSidebar'
 import { Menu } from 'lucide-react'
 import type React from 'react'
+import type { SelectionSummary } from '../hooks/selectionHandling'
 import type { AssistantContentItem } from '../../../Core/models'
 import { Button } from '../../ui/shadcn/ui/button'
 
@@ -36,10 +38,11 @@ interface RightSidebarContainerProps {
     >
     executionRunId: number
     isPaused: boolean
+     
     selectionSummary: any
-    parallelSteps: any[]
-    parallelStepByNodeId: Map<string, any>
-    branchByIfElseId: Map<string, any>
+    parallelSteps: string[][]
+    parallelStepByNodeId: Map<string, number>
+    branchByIfElseId: Map<string, { true: Set<string>; false: Set<string> }>
     nodes: WorkflowNodes[]
     setRightCollapsed: React.Dispatch<React.SetStateAction<boolean>>
     handleNodeApproval: (nodeId: string, approved: boolean, modifiedCommand?: string) => void

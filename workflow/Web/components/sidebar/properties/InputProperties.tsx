@@ -38,7 +38,7 @@ export const InputProperties: React.FC<InputPropertiesProps> = ({
                     id="node-input"
                     className="tw-min-h-[48px] tw-text-sm tw-py-1"
                     value={node.data.content || ''}
-                    onChange={(e: { target: { value: any } }) =>
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
                         onUpdate(node.id, { content: e.target.value })
                     }
                     onDoubleClick={() => {

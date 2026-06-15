@@ -32,7 +32,7 @@ export interface PiToolOptions {
  * Returns only the tools that are enabled per node config.
  * Uses dynamic import to handle pi's ESM packages from CJS context.
  */
-export async function buildPiTools(options: PiToolOptions): Promise<any[]> {
+export async function buildPiTools(options: PiToolOptions): Promise<unknown[]> {
     const {
         createBashTool,
         createReadTool,
@@ -43,14 +43,14 @@ export async function buildPiTools(options: PiToolOptions): Promise<any[]> {
         createGrepTool,
     } = await import('@earendil-works/pi-coding-agent')
 
-    const { cwd, disabledTools = [], allowAll = false } = options
+    const { cwd, disabledTools = [], allowAll: _allowAll = false } = options
     const disabledSet = new Set(
         disabledTools
             .filter((t) => typeof t === 'string')
             .map((t) => t.trim().toLowerCase())
     )
 
-    const tools: any[] = []
+    const tools: unknown[] = []
 
     if (!disabledSet.has(PI_TOOL_NAMES.BASH)) {
         tools.push(createBashTool(cwd))

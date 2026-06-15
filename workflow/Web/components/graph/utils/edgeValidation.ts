@@ -10,7 +10,7 @@ export const isValidEdgeConnection = (
     if (connection.source === connection.target) return false
 
     const targetNode = nodes?.find(n => n.id === connection.target)
-    const isFanInTarget = targetNode?.data && (targetNode.data as any).fanInEnabled === true
+    const isFanInTarget = targetNode?.data && (targetNode.data as Record<string, unknown>).fanInEnabled === true
 
     // For fan-in targets, only allow connecting to the rightmost free handle.
     if (isFanInTarget) {
@@ -19,7 +19,7 @@ export const isValidEdgeConnection = (
         const usedIdx = new Set<number>()
         for (const e of existingEdges) {
             if (e.target === connection.target) {
-                const m = ((e as any).targetHandle as string | undefined | null)?.match(/^in-(\d+)$/)
+                const m = ((e as Record<string, unknown>).targetHandle as string | undefined | null)?.match(/^in-(\d+)$/)
                 if (m) {
                     const idx = Number.parseInt(m[1], 10)
                     if (!Number.isNaN(idx)) usedIdx.add(idx)

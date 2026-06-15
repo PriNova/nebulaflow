@@ -2,6 +2,7 @@
 // Keep checks narrow and low-cost; avoid external deps.
 
 import type {
+    AssistantContentItem,
     BaseWorkflowMessage,
     EdgeDTO,
     ExtensionToWorkflow,
@@ -13,7 +14,11 @@ import type {
     WorkflowToExtension,
 } from './Protocol'
 
-function isObject(value: unknown): value is Record<string, unknown> {
+// A non-any loose object type for type-narrowing guards that must
+// inspect properties on externally originating JSON-like values.
+type UnknownRecord = Record<string, unknown>
+
+function isObject(value: unknown): value is UnknownRecord {
     return typeof value === 'object' && value !== null
 }
 
@@ -26,27 +31,23 @@ function isNumber(value: unknown): value is number {
 }
 
 export function isBaseWorkflowMessage(value: unknown): value is BaseWorkflowMessage {
-    return isObject(value) && isString((value as any).type)
+    return isObject(value) && isString(value.type)
 }
 
 export function isEdgeDTO(value: unknown): value is EdgeDTO {
     if (!isObject(value)) return false
-    if (
-        !isString((value as any).id) ||
-        !isString((value as any).source) ||
-        !isString((value as any).target)
-    )
+    if (!isString(value.id) || !isString(value.source) || !isString(value.target))
         return false
     if (
         'sourceHandle' in value &&
-        (value as any).sourceHandle !== undefined &&
-        !isString((value as any).sourceHandle)
+        value.sourceHandle !== undefined &&
+        !isString(value.sourceHandle)
     )
         return false
     if (
         'targetHandle' in value &&
-        (value as any).targetHandle !== undefined &&
-        !isString((value as any).targetHandle)
+        value.targetHandle !== undefined &&
+        !isString(value.targetHandle)
     )
         return false
     return true
@@ -54,14 +55,14 @@ export function isEdgeDTO(value: unknown): value is EdgeDTO {
 
 export function isWorkflowNodeDTO(value: unknown): value is WorkflowNodeDTO {
     if (!isObject(value)) return false
-    if (!isString((value as any).id) || !isString((value as any).type)) return false
-    if (!isObject((value as any).data)) return false
-    const pos = (value as any).position
-    if (!isObject(pos) || !isNumber((pos as any).x) || !isNumber((pos as any).y)) return false
+    if (!isString(value.id) || !isString(value.type)) return false
+    if (!isObject(value.data)) return false
+    const pos = value.position
+    if (!isObject(pos) || !isNumber(pos.x) || !isNumber(pos.y)) return false
     if (
         'selected' in value &&
-        (value as any).selected !== undefined &&
-        typeof (value as any).selected !== 'boolean'
+        value.selected !== undefined &&
+        typeof value.selected !== 'boolean'
     )
         return false
     return true
@@ -69,19 +70,20 @@ export function isWorkflowNodeDTO(value: unknown): value is WorkflowNodeDTO {
 
 function isNodeSavedState(value: unknown): value is NodeSavedState {
     if (!isObject(value)) return false
-    const status = (value as any).status
+    const status = value.status
+    if (typeof status !== 'string') return false
     if (!['completed', 'error', 'interrupted'].includes(status)) return false
-    if (!isString((value as any).output)) return false
+    if (!isString(value.output)) return false
     if (
-        'error' in (value as any) &&
-        (value as any).error !== undefined &&
-        !isString((value as any).error)
+        'error' in value &&
+        value.error !== undefined &&
+        !isString(value.error)
     )
         return false
     if (
-        'tokenCount' in (value as any) &&
-        (value as any).tokenCount !== undefined &&
-        !isNumber((value as any).tokenCount)
+        'tokenCount' in value &&
+        value.tokenCount !== undefined &&
+        !isNumber(value.tokenCount)
     )
         return false
     return true
@@ -89,29 +91,29 @@ function isNodeSavedState(value: unknown): value is NodeSavedState {
 
 function isWorkflowStateDTO(value: unknown): value is WorkflowStateDTO {
     if (!isObject(value)) return false
-    const nodeResults = (value as any).nodeResults
+    const nodeResults = value.nodeResults
     if (!isObject(nodeResults)) return false
-    for (const [, result] of Object.entries(nodeResults)) {
+    for (const result of Object.values(nodeResults)) {
         if (!isNodeSavedState(result)) return false
     }
-    if ('ifElseDecisions' in (value as any) && (value as any).ifElseDecisions !== undefined) {
-        const decisions = (value as any).ifElseDecisions
+    if ('ifElseDecisions' in value && value.ifElseDecisions !== undefined) {
+        const decisions = value.ifElseDecisions
         if (!isObject(decisions)) return false
-        for (const [, decision] of Object.entries(decisions)) {
-            if (!['true', 'false'].includes(decision as string)) return false
+        for (const decision of Object.values(decisions)) {
+            if (typeof decision !== 'string' || !['true', 'false'].includes(decision)) return false
         }
     }
-    if ('nodeAssistantContent' in (value as any) && (value as any).nodeAssistantContent !== undefined) {
-        const content = (value as any).nodeAssistantContent
+    if ('nodeAssistantContent' in value && value.nodeAssistantContent !== undefined) {
+        const content = value.nodeAssistantContent
         if (!isObject(content)) return false
-        for (const [, items] of Object.entries(content)) {
+        for (const items of Object.values(content)) {
             if (!Array.isArray(items)) return false
         }
     }
-    if ('nodeThreadIDs' in (value as any) && (value as any).nodeThreadIDs !== undefined) {
-        const threads = (value as any).nodeThreadIDs
+    if ('nodeThreadIDs' in value && value.nodeThreadIDs !== undefined) {
+        const threads = value.nodeThreadIDs
         if (!isObject(threads)) return false
-        for (const [, id] of Object.entries(threads)) {
+        for (const id of Object.values(threads)) {
             if (!isString(id)) return false
         }
     }
@@ -120,51 +122,63 @@ function isWorkflowStateDTO(value: unknown): value is WorkflowStateDTO {
 
 export function isWorkflowPayloadDTO(value: unknown): value is WorkflowPayloadDTO {
     if (!isObject(value)) return false
-    if ('nodes' in (value as any) && (value as any).nodes !== undefined) {
-        if (!Array.isArray((value as any).nodes) || !(value as any).nodes.every(isWorkflowNodeDTO))
+    if ('nodes' in value && value.nodes !== undefined) {
+        const nodes = value.nodes
+        if (!Array.isArray(nodes) || !nodes.every(isWorkflowNodeDTO))
             return false
     }
-    if ('edges' in (value as any) && (value as any).edges !== undefined) {
-        if (!Array.isArray((value as any).edges) || !(value as any).edges.every(isEdgeDTO)) return false
+    if ('edges' in value && value.edges !== undefined) {
+        const edges = value.edges
+        if (!Array.isArray(edges) || !edges.every(isEdgeDTO)) return false
     }
-    if ('state' in (value as any) && (value as any).state !== undefined) {
-        if (!isWorkflowStateDTO((value as any).state)) return false
+    if ('state' in value && value.state !== undefined) {
+        if (!isWorkflowStateDTO(value.state)) return false
     }
     return true
 }
 
 export function isNodeExecutionPayload(value: unknown): value is NodeExecutionPayload {
     if (!isObject(value)) return false
-    if (!isString((value as any).nodeId)) return false
-    const status = (value as any).status
+    if (!isString(value.nodeId)) return false
+    const status = value.status
+    if (typeof status !== 'string') return false
     if (!['running', 'completed', 'error', 'interrupted', 'pending_approval'].includes(status))
         return false
     if (
-        'result' in (value as any) &&
-        (value as any).result !== undefined &&
-        !isString((value as any).result)
+        'result' in value &&
+        value.result !== undefined &&
+        !isString(value.result)
     )
         return false
     if (
-        'multi' in (value as any) &&
-        (value as any).multi !== undefined &&
-        !(Array.isArray((value as any).multi) && (value as any).multi.every((v: unknown) => isString(v)))
+        'multi' in value &&
+        value.multi !== undefined &&
+        !(Array.isArray(value.multi) && value.multi.every((v: unknown) => isString(v)))
     )
         return false
     if (
-        'command' in (value as any) &&
-        (value as any).command !== undefined &&
-        !isString((value as any).command)
+        'command' in value &&
+        value.command !== undefined &&
+        !isString(value.command)
     )
         return false
     return true
 }
 
+// Message guard helper: extracts the type string from a message, or returns null.
+function getMessageType(value: unknown): string | null {
+    if (!isBaseWorkflowMessage(value)) return null
+    const msg = value as unknown as UnknownRecord
+    const t = msg.type
+    return typeof t === 'string' ? t : null
+}
+
 // Message guards (webview -> extension)
 export function isWorkflowToExtension(value: unknown): value is WorkflowToExtension {
-    if (!isBaseWorkflowMessage(value)) return false
-    const msg = value as any
-    switch (msg.type) {
+    const msgType = getMessageType(value)
+    if (!msgType) return false
+    const msg = value as UnknownRecord
+    switch (msgType) {
         case 'open_external_link':
             return isString(msg.url)
         case 'save_workflow':
@@ -200,50 +214,50 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
         case 'create_subflow': {
             const d = msg.data
             if (!isObject(d)) return false
-            if (!isString((d as any).id) || !isString((d as any).title) || !isString((d as any).version))
+            if (!isString(d.id) || !isString(d.title) || !isString(d.version))
                 return false
-            const g = (d as any).graph
+            const g = d.graph
             if (!isObject(g)) return false
-            const nodes = (g as any).nodes
-            const edges = (g as any).edges
+            const nodes = g.nodes
+            const edges = g.edges
             if (!Array.isArray(nodes) || !nodes.every(isWorkflowNodeDTO)) return false
             if (!Array.isArray(edges) || !edges.every(isEdgeDTO)) return false
-            const inputs = (d as any).inputs
-            const outputs = (d as any).outputs
+            const inputs = d.inputs
+            const outputs = d.outputs
             if (!Array.isArray(inputs) || !Array.isArray(outputs)) return false
             return true
         }
         case 'get_subflow': {
             const d = msg.data
-            return isObject(d) && isString((d as any).id)
+            return isObject(d) && isString(d.id)
         }
         case 'get_subflows':
             return true
         case 'duplicate_subflow': {
             const d = msg.data
-            return isObject(d) && isString((d as any).id) && isString((d as any).nodeId)
+            return isObject(d) && isString(d.id) && isString(d.nodeId)
         }
         case 'execute_node': {
             const data = msg.data
             if (!isObject(data)) return false
-            if (!('node' in data) || !isWorkflowNodeDTO((data as any).node)) return false
+            if (!('node' in data) || !isWorkflowNodeDTO(data.node)) return false
             if (
                 'inputs' in data &&
-                (data as any).inputs !== undefined &&
+                data.inputs !== undefined &&
                 !(
-                    Array.isArray((data as any).inputs) &&
-                    (data as any).inputs.every((v: unknown) => isString(v))
+                    Array.isArray(data.inputs) &&
+                    data.inputs.every((v: unknown) => isString(v))
                 )
             )
                 return false
-            if ('runId' in data && (data as any).runId !== undefined && !isNumber((data as any).runId))
+            if ('runId' in data && data.runId !== undefined && !isNumber(data.runId))
                 return false
             if (
                 'variables' in data &&
-                (data as any).variables !== undefined &&
+                data.variables !== undefined &&
                 !(
-                    isObject((data as any).variables) &&
-                    Object.values((data as any).variables).every(v => isString(v))
+                    isObject(data.variables) &&
+                    Object.values(data.variables).every(v => isString(v))
                 )
             )
                 return false
@@ -252,14 +266,14 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
         case 'llm_node_chat': {
             const data = msg.data
             if (!isObject(data)) return false
-            if (!('node' in data) || !isWorkflowNodeDTO((data as any).node)) return false
-            if (!isString((data as any).threadID)) return false
-            if (!isString((data as any).message)) return false
+            if (!('node' in data) || !isWorkflowNodeDTO(data.node)) return false
+            if (!isString(data.threadID)) return false
+            if (!isString(data.message)) return false
             if (
                 'mode' in data &&
-                (data as any).mode !== undefined &&
-                (data as any).mode !== 'single-node' &&
-                (data as any).mode !== 'workflow'
+                data.mode !== undefined &&
+                data.mode !== 'single-node' &&
+                data.mode !== 'workflow'
             ) {
                 return false
             }
@@ -291,37 +305,37 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
 }
 
 // Runtime validator for assistant content items
-function isAssistantContentItem(value: unknown): boolean {
+function isAssistantContentItem(value: unknown): value is AssistantContentItem {
     if (!isObject(value)) return false
-    const t = (value as any).type
+    const t = value.type
     if (!isString(t)) return false
     switch (t) {
         case 'text':
-            return isString((value as any).text)
+            return isString(value.text)
         case 'user_message':
-            return isString((value as any).text)
+            return isString(value.text)
         case 'thinking':
-            return isString((value as any).thinking)
+            return isString(value.thinking)
         case 'tool_use':
             return (
-                isString((value as any).id) &&
-                isString((value as any).name) &&
-                ((value as any).inputJSON === undefined || isString((value as any).inputJSON))
+                isString(value.id) &&
+                isString(value.name) &&
+                (value.inputJSON === undefined || isString(value.inputJSON))
             )
         case 'tool_result':
             return (
-                isString((value as any).toolUseID) &&
-                ((value as any).resultJSON === undefined || isString((value as any).resultJSON))
+                isString(value.toolUseID) &&
+                (value.resultJSON === undefined || isString(value.resultJSON))
             )
         case 'server_tool_use':
             return (
-                isString((value as any).name) &&
-                ((value as any).inputJSON === undefined || isString((value as any).inputJSON))
+                isString(value.name) &&
+                (value.inputJSON === undefined || isString(value.inputJSON))
             )
         case 'server_web_search_result':
             return (
-                ((value as any).query === undefined || isString((value as any).query)) &&
-                ((value as any).resultJSON === undefined || isString((value as any).resultJSON))
+                (value.query === undefined || isString(value.query)) &&
+                (value.resultJSON === undefined || isString(value.resultJSON))
             )
         default:
             return false
@@ -330,9 +344,10 @@ function isAssistantContentItem(value: unknown): boolean {
 
 // Message guards (extension -> webview)
 export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkflow {
-    if (!isBaseWorkflowMessage(value)) return false
-    const msg = value as any
-    switch (msg.type) {
+    const msgType = getMessageType(value)
+    if (!msgType) return false
+    const msg = value as UnknownRecord
+    switch (msgType) {
         case 'workflow_loaded':
             return isWorkflowPayloadDTO(msg.data)
         case 'workflow_saved':
@@ -356,104 +371,104 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
         case 'node_output_chunk':
             return (
                 isObject(msg.data) &&
-                isString((msg.data as any).nodeId) &&
-                isString((msg.data as any).chunk) &&
-                (((msg.data as any).stream as any) === 'stdout' ||
-                    ((msg.data as any).stream as any) === 'stderr')
+                isString(msg.data.nodeId) &&
+                isString(msg.data.chunk) &&
+                (msg.data.stream === 'stdout' ||
+                    msg.data.stream === 'stderr')
             )
         case 'token_count':
             return (
                 isObject(msg.data) &&
-                typeof (msg.data as any).count === 'number' &&
-                isString((msg.data as any).nodeId)
+                typeof msg.data.count === 'number' &&
+                isString(msg.data.nodeId)
             )
         case 'node_assistant_content':
             return (
                 isObject(msg.data) &&
-                isString((msg.data as any).nodeId) &&
-                ((msg.data as any).threadID === undefined || isString((msg.data as any).threadID)) &&
-                ((msg.data as any).mode === undefined ||
-                    (msg.data as any).mode === 'workflow' ||
-                    (msg.data as any).mode === 'single-node') &&
-                Array.isArray((msg.data as any).content) &&
-                (msg.data as any).content.every(isAssistantContentItem)
+                isString(msg.data.nodeId) &&
+                (msg.data.threadID === undefined || isString(msg.data.threadID)) &&
+                (msg.data.mode === undefined ||
+                    msg.data.mode === 'workflow' ||
+                    msg.data.mode === 'single-node') &&
+                Array.isArray(msg.data.content) &&
+                msg.data.content.every(isAssistantContentItem)
             )
         case 'subflow_node_execution_status':
             return (
                 isObject(msg.data) &&
-                isString((msg.data as any).subflowId) &&
-                isNodeExecutionPayload((msg.data as any).payload)
+                isString(msg.data.subflowId) &&
+                isNodeExecutionPayload(msg.data.payload)
             )
         case 'subflow_node_assistant_content':
             return (
                 isObject(msg.data) &&
-                isString((msg.data as any).subflowId) &&
-                isString((msg.data as any).nodeId) &&
-                ((msg.data as any).threadID === undefined || isString((msg.data as any).threadID)) &&
-                ((msg.data as any).mode === undefined ||
-                    (msg.data as any).mode === 'workflow' ||
-                    (msg.data as any).mode === 'single-node') &&
-                Array.isArray((msg.data as any).content) &&
-                (msg.data as any).content.every(isAssistantContentItem)
+                isString(msg.data.subflowId) &&
+                isString(msg.data.nodeId) &&
+                (msg.data.threadID === undefined || isString(msg.data.threadID)) &&
+                (msg.data.mode === undefined ||
+                    msg.data.mode === 'workflow' ||
+                    msg.data.mode === 'single-node') &&
+                Array.isArray(msg.data.content) &&
+                msg.data.content.every(isAssistantContentItem)
             )
         case 'node_sub_agent_content':
             return (
                 isObject(msg.data) &&
-                isString((msg.data as any).nodeId) &&
-                isString((msg.data as any).subThreadID) &&
-                isString((msg.data as any).agentType) &&
-                ['running', 'done', 'error', 'cancelled'].includes((msg.data as any).status) &&
-                ((msg.data as any).parentThreadID === undefined ||
-                    isString((msg.data as any).parentThreadID)) &&
-                Array.isArray((msg.data as any).content) &&
-                (msg.data as any).content.every(isAssistantContentItem)
+                isString(msg.data.nodeId) &&
+                isString(msg.data.subThreadID) &&
+                isString(msg.data.agentType) &&
+                ['running', 'done', 'error', 'cancelled'].includes(msg.data.status as string) &&
+                (msg.data.parentThreadID === undefined ||
+                    isString(msg.data.parentThreadID)) &&
+                Array.isArray(msg.data.content) &&
+                msg.data.content.every(isAssistantContentItem)
             )
         case 'subflow_node_sub_agent_content':
             return (
                 isObject(msg.data) &&
-                isString((msg.data as any).subflowId) &&
-                isString((msg.data as any).nodeId) &&
-                isString((msg.data as any).subThreadID) &&
-                isString((msg.data as any).agentType) &&
-                ['running', 'done', 'error', 'cancelled'].includes((msg.data as any).status) &&
-                ((msg.data as any).parentThreadID === undefined ||
-                    isString((msg.data as any).parentThreadID)) &&
-                Array.isArray((msg.data as any).content) &&
-                (msg.data as any).content.every(isAssistantContentItem)
+                isString(msg.data.subflowId) &&
+                isString(msg.data.nodeId) &&
+                isString(msg.data.subThreadID) &&
+                isString(msg.data.agentType) &&
+                ['running', 'done', 'error', 'cancelled'].includes(msg.data.status as string) &&
+                (msg.data.parentThreadID === undefined ||
+                    isString(msg.data.parentThreadID)) &&
+                Array.isArray(msg.data.content) &&
+                msg.data.content.every(isAssistantContentItem)
             )
         case 'models_loaded':
             return Array.isArray(msg.data)
         case 'provide_custom_nodes':
-            return Array.isArray(msg.data) && (msg.data as any[]).every(isWorkflowNodeDTO)
+            return Array.isArray(msg.data) && msg.data.every(isWorkflowNodeDTO)
         case 'storage_scope': {
             if (msg.data === undefined) return false
             if (!isObject(msg.data)) return false
-            const scope = (msg.data as any).scope
+            const scope = msg.data.scope
             if (scope !== 'workspace' && scope !== 'user') return false
             if (
-                'basePath' in (msg.data as any) &&
-                (msg.data as any).basePath !== undefined &&
-                !isString((msg.data as any).basePath)
+                'basePath' in msg.data &&
+                msg.data.basePath !== undefined &&
+                !isString(msg.data.basePath)
             ) {
                 return false
             }
             return true
         }
         case 'subflow_saved':
-            return isObject(msg.data) && isString((msg.data as any).id)
+            return isObject(msg.data) && isString(msg.data.id)
         case 'provide_subflow': {
             const d = msg.data
             if (!isObject(d)) return false
-            if (!isString((d as any).id) || !isString((d as any).title) || !isString((d as any).version))
+            if (!isString(d.id) || !isString(d.title) || !isString(d.version))
                 return false
-            const g = (d as any).graph
+            const g = d.graph
             if (!isObject(g)) return false
-            const nodes = (g as any).nodes
-            const edges = (g as any).edges
+            const nodes = g.nodes
+            const edges = g.edges
             if (!Array.isArray(nodes) || !nodes.every(isWorkflowNodeDTO)) return false
             if (!Array.isArray(edges) || !edges.every(isEdgeDTO)) return false
-            const inputs = (d as any).inputs
-            const outputs = (d as any).outputs
+            const inputs = d.inputs
+            const outputs = d.outputs
             if (!Array.isArray(inputs) || !Array.isArray(outputs)) return false
             return true
         }
@@ -462,9 +477,9 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
             if (!Array.isArray(arr)) return false
             for (const item of arr) {
                 if (!isObject(item)) return false
-                if (!isString((item as any).id) || !isString((item as any).version)) return false
+                if (!isString(item.id) || !isString(item.version)) return false
                 // title is optional, default to empty string if missing
-                if ('title' in item && !isString((item as any).title)) return false
+                if ('title' in item && !isString(item.title)) return false
             }
             return true
         }
@@ -472,9 +487,9 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
             const d = msg.data
             return (
                 isObject(d) &&
-                isString((d as any).nodeId) &&
-                isString((d as any).oldId) &&
-                isString((d as any).newId)
+                isString(d.nodeId) &&
+                isString(d.oldId) &&
+                isString(d.newId)
             )
         }
         case 'clipboard_paste':

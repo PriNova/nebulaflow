@@ -1,6 +1,5 @@
 import * as path from 'node:path'
 import * as vscode from 'vscode'
-import type { ExtensionToWorkflow } from '../Core/Contracts/Protocol'
 import { getCustomNodes, initializeHost } from '../DataAccess/fs'
 import { VSCodeHost, VSCodeMessagePort } from '../Shared/Host/VSCodeHost'
 import type { IHostEnvironment } from '../Shared/Host/index'
@@ -101,11 +100,11 @@ export function activate(context: vscode.ExtensionContext): void {
                         {
                             type: 'provide_custom_nodes',
                             data: toProtocol({ nodes, edges: [] }).nodes!,
-                        } as ExtensionToWorkflow,
+                        },
                         { strict: isDev }
                     )
                     const info = readStorageScope(host)
-                    await safePost(port, { type: 'storage_scope', data: info } as ExtensionToWorkflow, {
+                    await safePost(port, { type: 'storage_scope', data: info }, {
                         strict: isDev,
                     })
                 } catch {}

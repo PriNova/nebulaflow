@@ -104,6 +104,7 @@ async function runParallelWholeGraph(
     options: ParallelOptions | undefined,
     outerAbortSignal: AbortSignal | undefined
 ): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     const { onStatus, runNode } = callbacks
 
     const concurrency = options?.concurrency ?? Number.POSITIVE_INFINITY
@@ -158,7 +159,7 @@ async function runParallelWholeGraph(
         // Treat missing parents (excluded by inactivity) as disabled for dependency purposes
         const parentDisabled = parent ? parent.data?.active === false : true
         const parentIsBypassIncluded =
-            parent && includedIds.has(e.source) && (parent as any)?.data?.bypass === true
+            parent && includedIds.has(e.source) && parent.data.bypass === true
         if ((!seedIds.has(e.source) || parentIsBypassIncluded) && !parentDisabled) {
             inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1)
         }
@@ -201,7 +202,7 @@ async function runParallelWholeGraph(
             const n = nodeIndex.get(sid)
             ctx.nodeOutputs.set(sid, val)
             // Mark included seeded nodes as disabled so they never start
-            if ((n as any)?.data?.bypass !== true) {
+            if (n && n.data.bypass !== true) {
                 ctx.disabledNodes?.add(sid)
             }
         }
@@ -258,7 +259,7 @@ async function runParallelWholeGraph(
         let progressed = false
         while (ready.length > 0) {
             const node = ready[0]
-            if ((node as any)?.data?.bypass === true) {
+            if (node.data.bypass === true) {
                 // Consume from ready
                 ready.shift()
                 // Mark as started/completed for status consumers
@@ -275,7 +276,7 @@ async function runParallelWholeGraph(
                         nodeId: node.id,
                         status: 'completed',
                         result: asText,
-                        ...(Array.isArray(seeded) ? { multi: seeded as string[] } : {}),
+                        ...(Array.isArray(seeded) ? { multi: seeded } : {}),
                     })
                 } catch {}
 
@@ -285,7 +286,7 @@ async function runParallelWholeGraph(
                     processIfElseCompletion(
                         node.id,
                         decision,
-                        ctx.conditionalOutEdges || new Map(),
+                        ctx.conditionalOutEdges || new Map<string, { true: string[]; false: string[] }>(),
                         inDegree,
                         ctx.disabledNodes || new Set(),
                         activeEdges,
@@ -329,7 +330,7 @@ async function runParallelWholeGraph(
     const runningByType = new Map<NodeType, number>()
     const inflight: Array<{ nodeId: string; type: NodeType; promise: Promise<TaskResult> }> = []
 
-    let failed = false
+    let _failed = false
 
     // Helper to check pause state
     const isPaused = (): boolean => options?.pause?.isPaused?.() === true
@@ -366,8 +367,8 @@ async function runParallelWholeGraph(
                             nodeId: node.id,
                             status: 'completed',
                             result: asText,
-                            ...(Array.isArray((res as any).result)
-                                ? { multi: (res as any).result as string[] }
+                            ...(Array.isArray(res.result)
+                                ? { multi: res.result }
                                 : {}),
                         })
                     } catch {
@@ -382,7 +383,7 @@ async function runParallelWholeGraph(
                         processIfElseCompletion(
                             node.id,
                             decision,
-                            ctx.conditionalOutEdges || new Map(),
+                            ctx.conditionalOutEdges || new Map<string, { true: string[]; false: string[] }>(),
                             inDegree,
                             ctx.disabledNodes || new Set(),
                             activeEdges,
@@ -415,7 +416,7 @@ async function runParallelWholeGraph(
                     } catch {}
                     remaining -= 1
                 } else {
-                    failed = true
+                    _failed = true
                     try {
                         await onStatus({ nodeId: node.id, status: 'error', result: res.error })
                     } catch {}
@@ -560,7 +561,7 @@ async function executeWorkflowWithLoopsHybrid(
         ctx.nodeOutputs.set(sid, val)
         if (includedIds.has(sid)) {
             const n = nodeIndex.get(sid)
-            if ((n as any)?.data?.bypass !== true) {
+            if (n && n.data.bypass !== true) {
                 ctx.disabledNodes?.add(sid)
             }
         }
@@ -706,6 +707,7 @@ async function executeWorkflowSequential(
     options?: ParallelOptions,
     outerAbortSignal?: AbortSignal
 ): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     const { onStatus, runNode } = callbacks
     const onError: 'fail-fast' | 'continue-subgraph' = options?.onError ?? 'fail-fast'
 
@@ -797,8 +799,8 @@ async function executeWorkflowSequential(
 
         if (res.status === 'ok') {
             const asText = toResultString(res.result)
-            const maybeMulti = Array.isArray((res as any).result)
-                ? { multi: (res as any).result as string[] }
+            const maybeMulti = Array.isArray(res.result)
+                ? { multi: res.result }
                 : {}
             await onStatus({
                 nodeId: node.id,
@@ -858,6 +860,7 @@ async function runLoopBlock(
     onError: 'fail-fast' | 'continue-subgraph',
     combinedSignal: AbortSignal
 ): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     const { onStatus, runNode } = callbacks
     const runNodeWithStandardHandling = async (
         node: WorkflowNodes
@@ -865,8 +868,8 @@ async function runLoopBlock(
         const res = await startNode(node, runNode, ctx, combinedSignal)
         if (res.status === 'ok') {
             const asText = toResultString(res.result)
-            const maybeMulti = Array.isArray((res as any).result)
-                ? { multi: (res as any).result as string[] }
+            const maybeMulti = Array.isArray(res.result)
+                ? { multi: res.result }
                 : {}
             await onStatus({
                 nodeId: node.id,
@@ -968,6 +971,7 @@ async function runParallelSegment(
     combinedSignal: AbortSignal,
     abortAll: () => void
 ): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     const { onStatus, runNode } = callbacks
     if (segmentNodes.length === 0) return
 
@@ -1066,8 +1070,8 @@ async function runParallelSegment(
 
                 if (res.status === 'ok') {
                     const asText = toResultString(res.result)
-                    const maybeMulti = Array.isArray((res as any).result)
-                        ? { multi: (res as any).result as string[] }
+                    const maybeMulti = Array.isArray(res.result)
+                        ? { multi: res.result }
                         : {}
 
                     try {
@@ -1234,7 +1238,7 @@ interface ConditionalEdgeInfo {
 function buildConditionalEdges(nodes: WorkflowNodes[], edges: Edge[]): ConditionalEdgeInfo {
     const conditionalOutEdges = new Map<string, { true: string[]; false: string[] }>()
     const conditionalInPlaceholders = new Map<string, number>()
-    const nodeIndex = new Map(nodes.map(n => [n.id, n]))
+    const _nodeIndex = new Map(nodes.map(n => [n.id, n]))
 
     // For each IF/ELSE node, collect its outgoing edges by handle
     for (const node of nodes) {
@@ -1357,7 +1361,7 @@ async function startNode(
 ): Promise<TaskResult> {
     try {
         // Short-circuit if bypass is enabled and result is seeded
-        if ((node as any)?.data?.bypass === true) {
+        if (node.data.bypass === true) {
             const seeded = ctx.nodeOutputs.get(node.id)
             const result = seeded ?? ''
             ctx.nodeOutputs.set(node.id, result)
