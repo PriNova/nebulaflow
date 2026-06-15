@@ -1,7 +1,7 @@
 {
     "name": "nebulaflow",
     "displayName": "NebulaFlow Workflow Editor",
-    "version": "0.2.16",
+    "version": "0.3.0",
     "publisher": "prinova",
     "author": "prinova",
     "repository": {

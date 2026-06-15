@@ -2,11 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.3.0]
 
 ### Fixed
 
 - Fixed: Replaced bracket-notation property access (`window['port']`, `window['request']`) with dot notation in `server/NodeHost.ts` to satisfy Biome's `useLiteralKeys` rule — no behavioral change.
+- Fixed: Resolved 2390 ESLint errors across 96 files after ESLint migration.
 
 ### Added
 
@@ -43,6 +44,8 @@ All notable changes to this project will be documented in this file.
 - Removed: `@prinova/amp-sdk` dependency and vendored tarball (`vendor/amp-sdk/amp-sdk.tgz`).
 - Removed: `workflow/Core/toolUtils.ts` (Amp-era tool name resolver).
 - Removed: OpenRouter display-title helper `getOpenRouterDisplayTitle` from `LLMIntegration/register.ts`.
+
+## [Unreleased]
 
 ## [NebulaFlow 0.2.14]
 
