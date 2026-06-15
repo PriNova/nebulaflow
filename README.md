@@ -6,15 +6,15 @@ A VS Code extension for visually designing and running developer workflows. Buil
 
 ## Project Focus: LLM Node
 
-The LLM node runs via the Amp SDK and OpenRouter SDK. The editor acts as a visual wrapper around the SDK: it builds prompts from upstream node outputs and executes them with the SDK.
+The LLM node runs via the pi coding-agent SDK (`@earendil-works/pi-agent-core` + `@earendil-works/pi-ai`). The editor builds prompts from upstream node outputs and executes them with pi's `PiAgent` API.
 
-- SDK distribution: NebulaFlow vendors the SDK as `@prinova/amp-sdk` from a local tarball under `vendor/amp-sdk/`. No local path linking is required.
-- Auth: Set `AMP_API_KEY` in your environment for Amp SDK and `OPENROUTER_API_KEY` for OpenRouter SDK so the LLM node can execute via the SDK.
+- SDK integration: NebulaFlow integrates pi SDK via the `PiIntegration` module (`workflow/PiIntegration/`), replacing the previous Amp SDK.
+- Auth: Set `AMP_API_KEY` (legacy fallback) or the pi SDK's API key environment variable so the LLM node can execute.
 
 ### Workspace LLM configuration (`.nebulaflow/settings.json`)
 
-- NebulaFlow can pass additional Amp SDK settings via a workspace-local JSON file at `.nebulaflow/settings.json` in the first workspace folder.
-- The file should contain an `nebulaflow.settings` object that maps 1:1 to Amp SDK settings keys.
+- NebulaFlow can pass pi SDK settings via a workspace-local JSON file at `.nebulaflow/settings.json` in the first workspace folder.
+- The file should contain a `nebulaflow.settings` object that maps to pi SDK settings keys.
 
 Example:
 
@@ -22,14 +22,12 @@ Example:
 {
   "nebulaflow": {
     "settings": {
-      "openrouter.key": "sk-or-...",
       "internal.primaryModel": "openrouter/xiaomi/mimo-v2-flash:free"
     }
   }
 }
 ```
 
-- `openrouter.key` configures the OpenRouter API key used by the SDK (the SDK will also read the `OPENROUTER_API_KEY` environment variable if set).
 - `internal.primaryModel` provides a workspace-wide default model for LLM nodes.
 - `openrouter.models` can be used to specify per-model configuration including `provider` for routing, `maxOutputTokens`, `contextWindow`, `isReasoning`, and `reasoning_effort`:
 
@@ -43,7 +41,7 @@ Example:
           "provider": "z-ai",
           "maxOutputTokens": 131000,
           "contextWindow": 200000,
-          "temperatur": 0.5
+          "temperature": 0.5
         },
         {
           "model": "openrouter/openai/gpt-5.2-codex",
@@ -58,8 +56,8 @@ Example:
   }
 }
 ```
-- Per-node model selection in the Property Editor (Model combobox) always wins over the workspace default. If a node has no model, NebulaFlow falls back to `nebulaflow.settings["internal.primaryModel"]`, and if that is unset it falls back to the built-in default (`openai/gpt-5.1`).
-- The Model combobox is populated from the Amp SDK `listModels()` API and also includes the configured workspace default (if not already present) and any OpenRouter models defined in `openrouter.models` settings, grouped by provider prefix (for example `openrouter/...`).
+- Per-node model selection in the Property Editor (Model combobox) always wins over the workspace default. If a node has no model, NebulaFlow falls back to `nebulaflow.settings["internal.primaryModel"]`, and if that is unset it falls back to pi's built-in default.
+- The Model combobox is populated from pi's `listPiModels()` API and includes any OpenRouter models defined in `openrouter.models` settings.
 
 - **Category Label Display**: User-facing category names map to improved labels in the sidebar node palette ([WorkflowSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/WorkflowSidebar.tsx#L44-L50)):
   - `llm` → `Agents`
@@ -70,8 +68,9 @@ Example:
 
 ### LLM Node and Chat Continuation
 
-- LLM nodes run via the vendored Amp SDK (`@prinova/amp-sdk`) and OpenRouter SDK, building prompts from upstream node outputs and executing them inside a thread so later runs can reuse the same conversation.
+- LLM nodes run via the pi coding-agent SDK (`@earendil-works/pi-agent-core`), building prompts from upstream node outputs and executing them inside a thread via pi's `PiAgent` API so later runs can reuse the same conversation.
 - When an LLM node has an active `threadID`, the Right Sidebar shows a small chat panel that lets you send follow-up messages to that node; replies append to the existing assistant history and stream back into the Playbox, while drafts are scoped to the current execution run and cleared on workflow reset.
+- pi tools (`read`, `bash`, `edit`, `write`, `ls`, `find`, `grep`) are available to LLM nodes via the `PiIntegration` module.
 
 ### Shell Node (CLI)
 
@@ -86,9 +85,11 @@ Example:
 
 ### Visual Workflow Editor
 
-- Node types: CLI, LLM, Preview, Text Input, Loop Start/End, Accumulator, Variable, If/Else
-- Custom Nodes to store recuring node tasks into reusable units
+- Node types: CLI, LLM, Preview, Text Input, Loop Start/End, Accumulator, Variable, If/Else, Subflow, Subflow Input/Output
+- Custom Nodes to store recurring node tasks into reusable units
 - Support Sub-Flows to group nodes into reusable units
+- Web-only deployment target via WebSocket bridge server for standalone browser use
+- Mobile-responsive layout for small-screen and non-VSCode environments
 - Graph execution with ordered edges, token counting for previews, and abortion support
 - Shell node enhancements:
   - Script mode (multiline) via in-memory stdin (no temp files)
@@ -149,10 +150,10 @@ If you see a message about missing webview assets, run `npm run build` or start 
   - `npm run watch:webview`
 - Typecheck (extension + webview types):
   - `npm run typecheck`
-- Lint/Format (Biome):
+- Lint/Format (ESLint):
   - Check: `npm run check`
   - Lint: `npm run lint`
-  - Auto-fix: `npm run biome` (also aliased as `npm run format`)
+  - Auto-fix: `npm run lint:fix`
 
 ## Electron Build (Standalone App)
 
@@ -204,12 +205,11 @@ npm run pack:electron -- --mac
   "watch:ext": "node scripts/bundle-ext.mjs --watch",
   "watch": "node scripts/dev-watch.mjs",
   "typecheck": "tsc -p . && tsc -p workflow/Web/tsconfig.json",
-  "biome": "biome check --apply --error-on-warnings .",
-  "format": "npm run biome",
-  "check": "npm run -s typecheck && npm run -s biome",
-  "lint": "npm run biome",
-  "build": "npm run -s typecheck && npm run -s build:webview && npm run -s build:ext",
-  "package:vsix": "npm run -s build && rm -f dist/${npm_package_name}-${npm_package_version}.vsix && vsce package --out dist/${npm_package_name}-${npm_package_version}.vsix"
+  "check": "npm run typecheck && npm run lint",
+  "lint": "eslint .",
+  "lint:fix": "eslint --fix .",
+  "build": "npm run typecheck && npm run build:webview && npm run build:ext",
+  "package:vsix": "npm run build && rm -f dist/${npm_package_name}-${npm_package_version}.vsix && vsce package --out dist/${npm_package_name}-${npm_package_version}.vsix"
 }
 ```
 
@@ -241,13 +241,17 @@ npm run pack:electron -- --mac
 │  │  ├ Core/                    # Execution logic (engine, graph sorting)
 │  │  └ Shared/                  # Execution utilities
 │  ├ WorkflowPersistence/        # Workspace persistence
-│  ├ LLMIntegration/             # LLM node SDK integration
+│  ├ PiIntegration/              # pi coding-agent SDK integration (models, tools, images)
+│  ├ LLMIntegration/             # LLM node SDK integration (legacy)
 │  ├ Library/                    # Custom nodes library
 │  ├ Subflows/                   # Sub-flow management
 │  └ Shared/                     # Shared infrastructure
-│     ├ Host/                    # Host services
+│     ├ Host/                    # Host services (VSCode, Electron, WebSocket bridge)
 │     ├ Infrastructure/          # Base infrastructure
 │     └ LLM/                     # Shared LLM utilities
+├ web/                          # Browser-only deployment target
+├ server/                       # WebSocket bridge server for web target
+├ electron/                     # Electron standalone desktop app
 ```
 
 ## Architecture
@@ -297,23 +301,22 @@ Execution flow:
 
 ## Troubleshooting
 
-- LLM node error "Amp SDK not available":
-  - The SDK is vendored.
-- LLM node error "AMP_API_KEY is not set":
-  - Set the environment variable before launching: `export AMP_API_KEY=<your-key>` or add to `.env`
+- LLM node error "API key is not set":
+  - Set the pi SDK API key environment variable before launching, or use the legacy `AMP_API_KEY` fallback.
 - Webview assets don't load:
   - Run `npm run build` or start the Run and Debug configuration (which starts the watcher)
 - Type errors:
   - Run `npm run typecheck` and address diagnostics
 - Lint/format issues:
-  - Run `npm run check` or `npm run biome`
+  - Run `npm run check` or `npm run lint:fix`
 
 ## Contributing
 
 - TypeScript strict mode; extension uses CommonJS; webview uses ESM + React
-- Formatting and linting via Biome (`npm run check`, `npm run biome`)
+- Formatting and linting via ESLint (`npm run check`, `npm run lint:fix`)
 - Keep core helpers pure; put side-effects at the boundaries (webview/application/data access)
 - Prefer explicit type imports and small functions
+- Node.js built-in imports must use the `node:` protocol (e.g., `import * as fs from 'node:fs'`)
 
 ## License
 
