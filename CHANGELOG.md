@@ -6,11 +6,43 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Fixed: Replaced bracket-notation property access (`window['port']`, `window['request']`) with dot notation in `server/NodeHost.ts` to satisfy Biome's `useLiteralKeys` rule — no behavioral change.
+
 ### Added
+
+- Added: ESLint-based linting pipeline as a Termux-compatible replacement for Biome (Biome prebuilt binaries require glibc; Termux uses bionic). See `eslint.config.mjs`.
+  - `typescript-eslint` with type-aware rules across extension (`tsconfig.json`) and webview (`workflow/Web/tsconfig.json`) targets.
+  - `eslint-plugin-jsx-a11y` for accessibility linting (mirrors Biome `a11y/*`).
+  - `eslint-plugin-react-hooks` for `exhaustive-deps` and `rules-of-hooks` (mirrors Biome react rules).
+  - `dot-notation` rule mirrors Biome `useLiteralKeys`.
+  - npm scripts `lint`, `lint:fix`, and `check` now use ESLint instead of Biome.
+- Added: Keyboard accessibility (`onKeyDown`, `role="button"`, `tabIndex={0}`) on sidebar backdrop overlays in `LeftSidebarContainer.tsx` and `RightSidebarContainer.tsx` so Enter/Space collapses the sidebar — previously only `onClick` was wired.
+- Added: `PiIntegration` module (`workflow/PiIntegration/`) replacing the Amp SDK integration with pi coding-agent SDK (`@earendil-works/pi-agent-core` + `@earendil-works/pi-ai`).
+  - `pi-models.ts`: model discovery from pi's built-in registry (`listPiModels`).
+  - `pi-tools.ts`: tool name constants (`PI_TOOL_NAMES`) for pi's tool set (`read`, `bash`, `edit`, `write`, `ls`, `find`, `grep`).
+  - `image-utils.ts`: shared image attachment helpers for pi's image input format.
+- Added: Web-only deployment target (`web/`) with WebSocket bridge server (`server/bridge-server.ts`, `server/WebSocketPort.ts`) and browser entrypoint (`web/web-init.tsx`) so the NebulaFlow webview can run standalone in a browser outside VS Code.
+- Added: Mobile-responsive layout hook (`useResponsiveLayout.ts`) and CSS variable fallbacks in `vscode-dark-modern.css` for small-screen and non-VSCode environments.
 
 ### Changed
 
+- Changed: Replaced Amp SDK (`@prinova/amp-sdk`) with pi coding-agent SDK (`@earendil-works/pi-agent-core` + `@earendil-works/pi-ai`) across the LLM execution stack.
+  - `computeLLMAmpSettings` renamed to `computePiAgentSettings` (legacy alias kept for existing callers).
+  - Amp-era settings keys (`amp.dangerouslyAllowAll`, `amp.commands.*`) replaced with pi equivalents (`pi.dangerouslyAllowAll`).
+  - `get_models` handler in `LLMIntegration/register.ts` now calls pi's `listPiModels()` instead of Amp's `listModels()`.
+  - OpenRouter display-title logic (`getOpenRouterDisplayTitle`) removed; pi models carry their own display titles.
+  - `run-llm.ts` LLM runner rewritten for pi's `PiAgent` / `PiAgentOptions` API including thread continuations, tool construction, and image attachments.
+- Changed: Migrated tool name normalization from Amp-era aliases to pi names. `toolNames.ts` now maps Amp aliases (`Read`, `Bash`, `edit_file`, `create_file`, `Grep`, `glob`, `list_directory`) to pi equivalents. `toolUtils.ts` removed.
+- Changed: Webview builds now include a `WebSocketMessagePort` implementation for browser targets; `NodeHost.ts` provides the corresponding bridge server and is selected via the `VITE_TARGET`/`VITE_BRIDGE_URL` env vars.
+- Changed: Merged consecutive LLM text/thinking deltas into single sidebar assistant items to reduce visual noise in the RightSidebar during streaming.
+- Changed: `@prinova/amp-sdk` removed from `dependencies`; vendored `vendor/amp-sdk/amp-sdk.tgz` deleted. Legacy `AMP_API_KEY` env var still accepted as fallback for `piAgentApiKey`.
+- Changed: Removed Biome npm scripts (`biome`, `format`); replaced with ESLint equivalents.
+
 ### Removed
+
+- Removed: `@prinova/amp-sdk` dependency and vendored tarball (`vendor/amp-sdk/amp-sdk.tgz`).
+- Removed: `workflow/Core/toolUtils.ts` (Amp-era tool name resolver).
+- Removed: OpenRouter display-title helper `getOpenRouterDisplayTitle` from `LLMIntegration/register.ts`.
 
 ## [NebulaFlow 0.2.14]
 
