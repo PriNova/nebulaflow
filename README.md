@@ -1,8 +1,11 @@
-# NebulaFlow Workflow Editor (VS Code Extension)
+# NebulaFlow Workflow Editor
 
-A VS Code extension for visually designing and running developer workflows. Build graphs using node types (CLI, LLM, control-flow, preview, variables), execute them inside VS Code, and persist workflows/custom nodes per workspace.
+NebulaFlow is a visual editor for designing and running developer workflows as node graphs. It supports VS Code, a standalone Electron desktop application, and a browser/WebSocket target.
 
 ![UI Screenshot](assets/screenshot.png)
+
+> [!NOTE]
+> **Electron beta ready:** The standalone desktop target is ready for beta testing. Windows packaging and the core editor, IPC, persistence, local execution, and pi model discovery flows have been validated. Beta status means it is suitable for testing and feedback, but it is not yet a stable production release.
 
 ## Project Focus: LLM Node
 
@@ -107,8 +110,8 @@ Example:
 
 ## Requirements
 
-- VS Code ≥ 1.90.0
-- Node.js ≥ 18 and npm ≥ 9
+- VS Code ≥ 1.90.0 for the extension target
+- Node.js ≥ 22.19.0 and npm
 - macOS, Linux, or Windows
 
 ## Quick Start (Development)
@@ -118,8 +121,6 @@ Example:
 ```bash
 git clone https://github.com/PriNova/nebulaflow
 cd nebulaflow
-```
-
 npm install
 ```
 
@@ -155,63 +156,85 @@ If you see a message about missing webview assets, run `npm run build` or start 
   - Lint: `npm run lint`
   - Auto-fix: `npm run lint:fix`
 
-## Electron Build (Standalone App)
+## Electron Desktop App (Beta)
 
-NebulaFlow can also be built as a standalone Electron application.
+The Electron target runs NebulaFlow as a standalone desktop application without requiring VS Code. It uses the same workflow editor and execution runtime as the extension target.
 
-### Development
+Windows packaging is currently validated. Linux and macOS targets are configured, but should be tested on their native operating systems before distribution.
 
-Run the Electron app in development mode (with hot reload for the webview):
+### Run from source
+
+Install dependencies, build the webview and Electron main process, then start Electron:
 
 ```bash
+npm install
 npm run start:electron
 ```
 
-### Building
+`start:electron` performs the required webview and Electron builds before launching the app.
 
-To build the Electron main process:
+### Build without starting
 
 ```bash
+npm run build:webview
 npm run build:electron
 ```
 
-### Packaging
+Compiled Electron files are written under `dist/electron`, while shared renderer assets are written under `dist/webviews`.
 
-To package the application for distribution (creates an executable in `dist/release`):
+### Create a Windows beta package
 
-**Linux (AppImage):**
+Run this command on Windows:
+
 ```bash
+npm run pack:electron -- --win
+```
+
+Artifacts are created under `dist/release`:
+
+- `dist/release/win-unpacked/NebulaFlow.exe` — unpacked application for direct smoke testing
+- `dist/release/NebulaFlow Setup <version>.exe` — NSIS installer
+
+### Create Linux or macOS packages
+
+Run the appropriate command on the target operating system:
+
+```bash
+# Linux AppImage
 npm run pack:electron -- --linux
-```
 
-**Windows (Zip):**
-```bash
-npm run zip:win
-```
-(This builds an unpacked win32-x64 application and zips it, bypassing the need for Wine on Linux)
-
-**macOS (DMG):**
-```bash
+# macOS DMG
 npm run pack:electron -- --mac
 ```
 
+Platform signing and installer requirements are environment-specific. Building on the target operating system is recommended.
+
+### Validate an Electron beta build
+
+Before distributing a beta package, run:
+
+```bash
+npm run check
+npm run build
+npm run build:web
+npm run pack:electron -- --win
+```
+
+Then start `dist/release/win-unpacked/NebulaFlow.exe` and verify the editor, workflow storage, model discovery, and one local workflow operation.
+
 ## Scripts
 
-```jsonc
-{
-  "build:webview": "vite build --config workflow/Web/vite.config.mts",
-  "watch:webview": "vite build --watch --config workflow/Web/vite.config.mts --mode development",
-  "build:ext": "node scripts/bundle-ext.mjs",
-  "watch:ext": "node scripts/bundle-ext.mjs --watch",
-  "watch": "node scripts/dev-watch.mjs",
-  "typecheck": "tsc -p . && tsc -p workflow/Web/tsconfig.json",
-  "check": "npm run typecheck && npm run lint",
-  "lint": "eslint .",
-  "lint:fix": "eslint --fix .",
-  "build": "npm run typecheck && npm run build:webview && npm run build:ext",
-  "package:vsix": "npm run build && rm -f dist/${npm_package_name}-${npm_package_version}.vsix && vsce package --out dist/${npm_package_name}-${npm_package_version}.vsix"
-}
-```
+Key scripts:
+
+- `npm run build` — typecheck and build the VS Code extension and shared webview
+- `npm run build:web` — build the standalone browser target
+- `npm run start:electron` — build and start the Electron app from source
+- `npm run build:electron` — compile the Electron main and preload processes
+- `npm run pack:electron -- --win` — create the Windows unpacked app and installer
+- `npm run pack:electron -- --linux` — create the Linux AppImage
+- `npm run pack:electron -- --mac` — create the macOS DMG
+- `npm run package:vsix` — build and package the VS Code extension
+- `npm run check` — run TypeScript and ESLint checks
 
 ## Project Structure
 
