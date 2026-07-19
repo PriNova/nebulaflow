@@ -1,56 +1,110 @@
-# AGENTS – NebulaFlow Editor Quick Guide
+# AGENTS — NebulaFlow Contributor Guide
 
-## Amp (`/home/prinova/CodeProjects/upstreamAmp`)
+## Project Overview
 
-- Amp is an agentic coding app: the LLM inference core makes decisions; builtin tools execute repo‑aware actions (editing, refactoring, generation, planning).
-- The same core runs across CLI/VS Code/Desktop/Web; clients provide platform glue.
+- NebulaFlow is a visual editor for building and running LLM and CLI workflows as node graphs.
+- Supported hosts share the same workflow UI and runtime:
+  - VS Code extension
+  - Electron desktop application (beta; Windows packaging validated)
+  - Browser client connected to a local WebSocket bridge
+- LLM nodes use the pi SDK packages `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`, and `@earendil-works/pi-coding-agent`. Amp is no longer the primary SDK; `AMP_API_KEY` remains only as a legacy credential fallback.
 
-## Amp SDK (`/home/prinova/CodeProjects/upstreamAmp/sdk`)
+## Required Environment
 
-- Amp SDK spins up the Amp core in-process for Node, with threads, builtin tools, MCP integration, and optional custom tools.
-- You get simple run APIs (including streaming), tool approvals, system‑prompt overrides, and settings to shape model/tools behavior.
+- Node.js `>=22.19.0` and npm.
+- VS Code `>=1.90.0` for extension development.
+- Install dependencies with `npm install`.
+- Provider credentials use `<PROVIDER>_API_KEY` environment variables. LLM execution also checks `AMP_API_KEY` as a legacy fallback, then `OPENROUTER_API_KEY`.
+- Workspace LLM settings may be supplied through `.nebulaflow/settings.json` under `nebulaflow.settings`.
+- Never commit API keys or other secrets.
 
-## NebulaFlow (this project `/home/prinova/CodeProjects/nebulaflow`)
+## Commands
 
-- NebulaFlow is a VS Code extension that lets you design and run LLM+CLI workflows as node graphs in a webview UI (React + React Flow).
-- Execution is orchestrated in the extension: LLM nodes run via Amp SDK, CLI nodes via shell, with approvals, resume, and partial graph execution.
+- Full validation: `npm run check` (root, webview, and Electron TypeScript checks followed by ESLint).
+- Full extension build: `npm run build`.
+- Webview: `npm run build:webview` or `npm run watch:webview`.
+- Extension bundle: `npm run build:ext` or `npm run watch:ext`.
+- Combined development watcher: `npm run watch`.
+- Lint: `npm run lint`; fix lint/format issues with `npm run lint:fix` or `npm run format`.
+- Automated tests are currently unavailable. `package.json` declares `test:subflows`, but its referenced runner is absent; do not treat that script as validation until fixed.
+- VSIX package: `npm run package:vsix`.
+- Browser target: `npm run build:web` or `npm run start:web`.
+- Electron target: `npm run start:electron`, `npm run build:electron`, or `npm run dev:electron`.
+- Windows Electron package: `npm run pack:win`; zipped package: `npm run zip:win`.
+
+Run `npm run check` after code changes. Run the smallest relevant build as well; use `npm run build` before packaging or broad integration changes.
+
+## Architecture and Key Paths
+
+- `src/extension.ts`: thin VS Code activation entry point.
+- `workflow/Application/register.ts`: VS Code panel creation and application registration.
+- `workflow/Application/workflow-session.ts`: message routing, session lifecycle, approvals, and cancellation.
+- `workflow/Core/`: shared models, protocol contracts, guards, and validation.
+- `workflow/DataAccess/`: filesystem persistence and shell execution adapters.
+- `workflow/WorkflowExecution/`: graph scheduler, execution state, handlers, and per-node runners.
+- `workflow/WorkflowExecution/Application/node-runners/run-llm.ts`: pi Agent execution, model selection, tools, streaming, approval, and timeout handling.
+- `workflow/PiIntegration/`: pi model discovery, coding tools, and image helpers.
+- `workflow/WorkflowPersistence/`, `workflow/Library/`, and `workflow/Subflows/`: persistence feature slices.
+- `workflow/Shared/Host/`: host abstraction and VS Code adapter.
+- `workflow/Web/`: shared React + `@xyflow/react` workflow editor built by Vite.
+- `workflow/Web/services/Protocol.ts`: webview protocol boundary.
+- `workflow/Web/components/nodes/Nodes.tsx`: node registry and defaults.
+- `workflow/Web/components/sidebar/`: node palette, property editor, and sidebars.
+- `electron/`: Electron main process, preload, and host adapter.
+- `web/` and `server/`: standalone browser client and WebSocket bridge.
+
+The codebase uses feature-oriented slices. Keep pure graph and transformation logic in `Core`; orchestration in `Application`; filesystem, shell, host, and SDK side effects at infrastructure boundaries.
+
+## Build Outputs
+
+- VS Code extension entry: `dist/src/extension.js`.
+- Shared workflow webview: `dist/webviews/`.
+- Browser application: `dist/web/`.
+- Electron TypeScript output: `dist/electron/`.
+- Packaged Electron artifacts: `dist/release/`.
+
+Do not hand-edit generated files under `dist/`.
 
 ## Coding Conventions
 
-- **Node.js Imports** - Always use the `node:` protocol for Node.js built-in modules (e.g., `import * as fs from 'node:fs'` instead of `'fs'`).
+- Write source code and documentation in English.
+- TypeScript strict mode is enabled. Prefer precise types, type-only imports, and runtime validation at external boundaries.
+- Avoid `any`; when SDK boundaries require it, keep the exception narrow and documented.
+- Use the `node:` protocol for Node.js built-ins, for example `import * as fs from 'node:fs'`.
+- Use `lowerCamelCase` for variables/functions and `PascalCase` for components/types.
+- Keep functions small where practical. Keep core helpers pure and isolate side effects.
+- Handle rejected promises and narrow caught errors before reading error properties.
+- Surface host-facing failures through the host abstraction or VS Code notifications. Return sanitized error text; do not expose secrets.
+- Follow existing ESLint rules in `eslint.config.mjs`. ESLint is the active linter; Biome is not the primary lint/format workflow.
+- Avoid brittle documentation such as source line numbers and historical version-specific UI notes.
 
-## Build and Linting
+## UI and Protocol Changes
 
-- Build: `npm run build` (webview + extension). Parts: `webview/vite.config.mts`, `tsconfig.json`.
-  - SDK Sync: Builds auto-sync the upstream SDK via `sync:sdk` in the `prebuild` hook; manual linking not required. To force, run `npm i /home/prinova/CodeProjects/upstreamAmp/sdk`.
-- Webview only: `npm run build:webview`. Extension only: `npm run build:ext` (uses esbuild to bundle extension + SDK).
-- Webview watch: `npm run watch:webview`.
-- Typecheck: `npm run check` (TS 5.x; extends `@sourcegraph/tsconfig`).
-- Lint: Biome configured (no ESLint/Prettier). `npm run lint` or `npm run check` (typecheck + Biome preferred over Typecheck). Auto-fix with `npm run biome`.
-- Format: `npm run format` (Biome).
-- Tests: not configured. Single-test N/A. If added (e.g., Vitest), run: `npx vitest run path -t "name"`.
+When adding or changing a node type, check all affected boundaries:
 
-- Extension entry: `src/extension.ts` (registers `nebulaFlow.openWorkflow`, hosts webview, handles protocol).
-- Protocol (ext side): `workflow/Core/Contracts/Protocol.ts` (node/edge types, message contracts).
-- Execution (ext side): `workflow/WorkflowExecution/Application/handlers/ExecuteWorkflow.ts` (graph execution, node handlers, LLM/CLI/preview logic).
-- LLM node: `workflow/WorkflowExecution/Application/handlers/ExecuteWorkflow.ts` lines 750–820 (`executeLLMNode` path); requires `AMP_API_KEY` env var; workflows stream events and approvals via the slice.
-- Webview app: React + @xyflow/react under `workflow/Web/` via Vite; entry `workflow/Web/workflow.html` + `workflow/Web/index.tsx`.
-- Nodes/graph: `workflow/Web/components/nodes/Nodes.tsx` (NodeType, default workflow, nodeTypes); LLM node UI in `workflow/Web/components/nodes/LLM_Node.tsx`.
-- Webview protocol mirror: `workflow/Web/services/WorkflowProtocol.ts`.
-- Sidebar: `workflow/Web/components/WorkflowSidebar.tsx` (categories, node palette, property editor); v0.1.4+ Property Editor displays as static header using `accordion.module.css` styling (no collapse/expand toggle, content driven by node selection state); v0.1.6+ Category labels render via `displayCategoryLabel` helper (lines 49–55) mapping `llm` → `Agents`, `text-format` → `Text`, others unchanged.
-- TS config: strict; ES2022; CJS for extension; `jsx: react-jsx`; extends `@sourcegraph/tsconfig`. `noUnusedLocals` is currently disabled to avoid breaking the build; enable it once unused locals are cleaned up. Webview builds via Vite React plugin.
-- Imports: extension uses `import * as vscode` + Node builtins; webview uses ESM React TS; prefer explicit type imports.
-- Naming: lowerCamelCase vars/fns; PascalCase components/types; enums like `NodeType`.
-- Errors: show user via `vscode.window.showErrorMessage`; avoid unhandled rejections; return sanitized strings.
-- Formatting: Biome formats code; run `npm run format`. Keep functions small/pure in core helpers; side-effects at boundaries (webview/engine).
-- Editor rules: none found (.cursor, .cursorrules, CLAUDE.md, .windsurfrules, .clinerules, .goosehints, Copilot instructions).
-- VS Code: engines `>=1.90.0`; main `dist/extension.js`; webview output `dist/webviews`. Run: `npm i && npm run build`, launch in VS Code.
-- Amp SDK reference implementation: `/home/prinova/CodeProjects/upstreamAmp/sdk` with the root at `/home/prinova/CodeProjects/upstreamAmp`
-- LLM node dev: set `AMP_API_KEY` env var before F5. Errors: "Amp SDK not available" → link SDK; "AMP_API_KEY is not set" → set env; timeout/abort handled gracefully.
+1. Shared model and DTO definitions in `workflow/Core/models.ts` and `workflow/Core/Contracts/Protocol.ts`.
+2. Runtime guards/converters.
+3. Node runner and dispatch in `workflow/WorkflowExecution/Application/`.
+4. UI component and registry in `workflow/Web/components/nodes/`.
+5. Property editor and palette entries under `workflow/Web/components/sidebar/`.
+6. Persistence compatibility for existing workflow JSON.
+7. User and API documentation under `docs/`.
 
-## Structured Docs
+Keep extension and webview protocol changes backward-compatible when practical. Validate untrusted WebSocket, persisted JSON, and webview payloads at their boundaries.
 
-Codebase reconstruction artifacts live under global overlay:
-`~/.pi/agent/workspaces/--data-data-com.termux-files-home-CodeProjects-nebulaflow--/docs/agent/api/repo/`
+## Persistence and Security
 
-Key artifacts: `architecture.yaml`, `data-model.yaml`, `invariants.yaml`, `dependency-rules.yaml`, `design-issues.yaml`, `risk-register.yaml`, `agent-operating-guide.yaml`.
+- Storage scope is configurable as `user` or `workspace`; default is `user`.
+- Storage lives beneath `.nebulaflow/`, including `workflows/`, `nodes/`, and `subflows/`.
+- `nebulaFlow.globalStoragePath` can override the user-scope base directory.
+- CLI safe mode applies command restrictions; advanced mode removes protections and must be treated as unsafe.
+- Preserve approval and abort behavior when changing CLI or LLM execution.
+- Do not log credentials, personal data, complete sensitive prompts, or unnecessarily large tool payloads.
+
+## Development Workflow
+
+- For VS Code debugging, use the `Launch Extension (Desktop)` configuration in `.vscode/launch.json`; it starts the webview watcher before F5 launch.
+- For Electron changes, validate the shared webview plus Electron TypeScript build. Smoke-test packaged behavior when host integration is affected.
+- For browser/bridge changes, run the bridge and browser client together with `npm run start:web`.
+- For runtime-sensitive changes, verify behavior using streamed status/output, host logs, or a focused temporary diagnostic. Remove temporary diagnostics before delivery unless intentionally retained behind a debug flag.
+- Check `git status --short` before finishing. Do not overwrite unrelated user changes.
