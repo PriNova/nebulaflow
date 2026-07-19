@@ -58,15 +58,15 @@ The extension provides the following configuration options:
 
 ### Environment Variables
 
-#### `AMP_API_KEY` (Required for LLM nodes)
+#### Provider authentication
 
-- **Purpose**: Authentication for Amp SDK (LLM provider)
+- **Purpose**: Authentication for pi SDK (LLM provider)
 - **Usage**: Required for LLM node execution
 - **How to set**: Add to your shell profile or VS Code environment
 
 #### `OPENROUTER_API_KEY` (Optional)
 
-- **Purpose**: Authentication for OpenRouter SDK (alternative LLM provider)
+- **Purpose**: Authentication for pi OpenRouter provider (alternative LLM provider)
 - **Usage**: Optional integration for additional LLM models
 - **How to set**: Add to your shell profile or VS Code environment
 
@@ -257,7 +257,7 @@ interface WorkflowStateDTO {
 ### Node Types
 
 #### LLM Nodes
-- Uses Amp SDK or OpenRouter SDK
+- Uses pi SDK
 - Streams assistant content
 - Supports tool calls and function calling
 - Maintains conversation history
@@ -311,13 +311,13 @@ When `context.extensionMode === vscode.ExtensionMode.Development`:
 
 ### Common Errors
 
-#### "Amp SDK not available"
-- **Cause**: Amp SDK not properly linked
-- **Solution**: Run `npm i /home/prinova/CodeProjects/upstreamAmp/sdk`
+#### "pi SDK not available"
+- **Cause**: Project dependencies are not installed or the extension bundle is stale.
+- **Solution**: Run `npm install` and `npm run build`.
 
-#### "AMP_API_KEY is not set"
-- **Cause**: Environment variable missing
-- **Solution**: Set `AMP_API_KEY` in your environment
+#### "No authenticated pi model is available"
+- **Cause**: The selected pi provider has no valid authentication.
+- **Solution**: Configure pi `/login`, `~/.pi/agent/auth.json`, or the provider's environment variable.
 
 #### "Failed to load webview assets"
 - **Cause**: Build artifacts missing
@@ -332,20 +332,20 @@ Errors are reported to users via:
 
 ## API Integration
 
-### Amp SDK Integration
+### pi SDK Integration
 
-The extension integrates with the Amp SDK for LLM operations:
+The extension integrates with the pi SDK for LLM operations:
 
 ```typescript
-import { AmpClient } from '@prinova/amp-sdk'
+import { ModelRuntime } from '@earendil-works/pi-coding-agent'
 
-const client = new AmpClient({
-    apiKey: process.env.AMP_API_KEY,
-    // Additional configuration
-})
+const modelRuntime = await ModelRuntime.create({ allowModelNetwork: false })
+const availableModels = modelRuntime.getAvailableSnapshot()
 ```
 
-### OpenRouter SDK Integration
+`ModelRuntime` resolves pi credentials, custom models, cached catalogs, and provider request routing.
+
+### OpenRouter Provider Integration
 
 Optional integration for alternative LLM providers:
 
@@ -377,7 +377,7 @@ dist/webviews/workflow.html         # Webview entry point
 
 ### For Workflow Designers
 
-1. **Environment Variables**: Set `AMP_API_KEY` before using LLM nodes
+1. **Environment Variables**: Configure pi provider authentication before using LLM nodes
 2. **Approval**: Be cautious with CLI nodes that modify system state
 3. **Testing**: Test workflows in preview mode first
 4. **Version Control**: Store workflows in version control (git)
@@ -398,9 +398,9 @@ dist/webviews/workflow.html         # Webview entry point
 
 ### LLM Nodes Fail
 
-1. Verify `AMP_API_KEY` is set
+1. Verify authentication for the selected pi provider
 2. Check network connectivity
-3. Review Amp SDK documentation
+3. Review pi SDK documentation
 
 ### CLI Nodes Fail
 

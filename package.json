@@ -100,9 +100,9 @@
         }
     },
     "dependencies": {
-        "@earendil-works/pi-agent-core": "^0.79.10",
-        "@earendil-works/pi-ai": "^0.79.10",
-        "@earendil-works/pi-coding-agent": "^0.79.10",
+        "@earendil-works/pi-agent-core": "0.80.10",
+        "@earendil-works/pi-ai": "0.80.10",
+        "@earendil-works/pi-coding-agent": "0.80.10",
         "@radix-ui/react-accordion": "^1.1.2",
         "@radix-ui/react-checkbox": "^1.0.4",
         "@radix-ui/react-label": "^2.0.2",

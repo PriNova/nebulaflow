@@ -5,9 +5,9 @@ LLM (Large Language Model) nodes, also called **Agent nodes**, allow you to inte
 ## Configuration
 
 ### Model Selection
-- **Model**: Choose from available models (e.g., `openai/gpt-5.1`, `anthropic/claude-3-opus`). The model list is loaded from the Amp SDK and OpenRouter.
+- **Model**: Choose from available models (e.g., `openai/gpt-5.1`, `anthropic/claude-3-opus`). The model list is loaded from the pi SDK and OpenRouter.
 - **Default Model**: If no model is selected, the default is `openai/gpt-5.1` (GPT-5.1).
-- **Model Resolution**: The selected model ID is normalized via the Amp SDK's `resolveModel` function. If resolution fails, the raw ID is used.
+- **Model Resolution**: The selected model ID is normalized via the pi SDK's `resolveModel` function. If resolution fails, the raw ID is used.
 
 ### Prompt (Content)
 - **Prompt**: The main user prompt that is sent to the LLM. This is the `content` field of the node.
@@ -16,7 +16,7 @@ LLM (Large Language Model) nodes, also called **Agent nodes**, allow you to inte
 
 ### System Prompt Override
 - **Optional**: You can override the default system prompt for this node.
-- **Default**: If not set, the Amp SDK's default system prompt is used.
+- **Default**: If not set, the pi SDK's default system prompt is used.
 - **Editing**: Click "Edit system prompt..." to open a text editor.
 
 ### Reasoning Effort
@@ -153,9 +153,9 @@ Data → LLM (Analyze) → Condition → LLM (Report) → End
 ## Troubleshooting
 
 ### Model Not Available
-- Check API key configuration (`AMP_API_KEY` environment variable).
+- Check pi authentication for the selected provider.
 - Verify model name spelling.
-- Ensure the model is supported by the Amp SDK or OpenRouter.
+- Ensure the model is supported by the pi SDK or OpenRouter.
 - Check API rate limits.
 
 ### Poor Output Quality
@@ -176,13 +176,13 @@ Data → LLM (Analyze) → Condition → LLM (Report) → End
 - Verify API endpoint.
 - Consider model response time.
 
-### Amp SDK Not Available
-- Ensure the Amp SDK is installed (`@prinova/amp-sdk`).
+### pi SDK Not Available
+- Ensure project dependencies are installed with `npm install`.
 - The extension bundles the SDK; if missing, run `npm install` in the extension directory.
 
-### AMP_API_KEY Not Set
-- Set the `AMP_API_KEY` environment variable before launching VS Code.
-- The LLM node requires this key to authenticate with the Amp service.
+### No Authenticated Pi Model
+- Configure pi `/login`, `auth.json`, or the selected provider environment variable before launching VS Code.
+- The LLM node requires valid authentication for its selected provider.
 
 ## Integration with Other Nodes
 

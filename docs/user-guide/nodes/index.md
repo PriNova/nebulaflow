@@ -9,7 +9,7 @@ NebulaFlow provides several types of nodes that you can use to build workflows. 
 - **Inputs**: Previous node output (text or data)
 - **Outputs**: Generated text from the LLM
 - **Configuration**:
-  - Model selection (via OpenRouter or Amp SDK)
+  - Model selection (via OpenRouter or pi SDK)
   - Prompt template with variable substitution
   - System prompt template
   - Reasoning effort (minimal, low, medium, high)

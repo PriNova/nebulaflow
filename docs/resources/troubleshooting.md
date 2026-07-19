@@ -15,31 +15,31 @@ This guide covers common errors and solutions when using NebulaFlow. If you enco
 
 ## Common Errors
 
-### "Amp SDK not available"
+### "pi SDK not available"
 
-**Symptom**: Error message "Amp SDK not available" when executing an LLM node.
+**Symptom**: Error message "pi SDK not available" when executing an LLM node.
 
-**Cause**: The Amp SDK is not properly linked or missing from the extension's dependencies.
+**Cause**: The pi SDK is not properly linked or missing from the extension's dependencies.
 
 **Solution**:
 1. **If installed from source**: Run `npm install` in the extension directory (`/home/prinova/CodeProjects/nebulaflow`) to ensure dependencies are installed.
 2. **If building from source**: Run `npm run build` to bundle the SDK.
 3. **If using a pre‑built extension**: Ensure the `.vsix` file is complete; try reinstalling the extension from the marketplace.
-4. **Verify SDK location**: Check that `node_modules/@prinova/amp-sdk` exists. If missing, run `npm install /home/prinova/CodeProjects/upstreamAmp/sdk`.
+4. **Verify SDK location**: Check that the pi packages exist under `node_modules/@earendil-works/`. If missing, run `npm install`.
 
-### "AMP_API_KEY is not set"
+### "No authenticated pi model is available"
 
-**Symptom**: Error message "AMP_API_KEY is not set" when executing an LLM node.
+**Symptom**: Error message "No authenticated pi model is available" when executing an LLM node.
 
-**Cause**: The environment variable for the Amp SDK is not set in the VS Code process environment.
+**Cause**: The environment variable for the pi SDK is not set in the VS Code process environment.
 
 **Solution**:
-1. Set the `AMP_API_KEY` environment variable in your shell before launching VS Code:
+1. Set the `OPENAI_API_KEY` environment variable in your shell before launching VS Code:
    ```bash
-   export AMP_API_KEY="your-api-key-here"
+   export OPENAI_API_KEY="your-api-key-here"
    ```
 2. **Restart VS Code** after setting the variable (environment changes are not picked up automatically).
-3. **Using a `.env` file**: Create a `.env` file in your workspace root with `AMP_API_KEY=your-api-key-here`. Ensure the workspace folder is open.
+3. **Using a `.env` file**: Create a `.env` file in your workspace root with `OPENAI_API_KEY=your-api-key-here`. Ensure the workspace folder is open.
 4. **Check variable scope**: If you use a terminal profile or shell configuration (`.bashrc`, `.zshrc`), make sure the variable is exported.
 
 ### "CLI Node execution failed"
@@ -117,9 +117,9 @@ This guide covers common errors and solutions when using NebulaFlow. If you enco
 **Symptom**: LLM node returns an error about model not available or invalid API key.
 
 **Solution**:
-1. **Verify API key**: Ensure `AMP_API_KEY` is set correctly (see above).
-2. **Check model name**: Verify the selected model is supported by the Amp SDK or OpenRouter.
-3. **OpenRouter configuration**: For OpenRouter models, ensure `OPENROUTER_API_KEY` is set or configured in `.nebulaflow/settings.json`.
+1. **Verify API key**: Ensure `OPENAI_API_KEY` is set correctly (see above).
+2. **Check model name**: Verify the selected model is supported by the pi SDK or OpenRouter.
+3. **OpenRouter configuration**: For OpenRouter models, authenticate OpenRouter through pi `/login`, `auth.json`, or `OPENROUTER_API_KEY`.
 4. **API rate limits**: Wait a few minutes and try again; check the provider's rate limits.
 
 ### CLI node fails to execute commands
@@ -159,8 +159,8 @@ This guide covers common errors and solutions when using NebulaFlow. If you enco
 **Symptom**: LLM node fails because the selected model is not available.
 
 **Solution**:
-1. **Check API key**: Ensure `AMP_API_KEY` is set correctly.
-2. **Verify model name**: Spelling must match exactly (case‑sensitive). Check the Amp SDK or OpenRouter documentation for supported models.
+1. **Check API key**: Ensure `OPENAI_API_KEY` is set correctly.
+2. **Verify model name**: Spelling must match exactly (case‑sensitive). Check the pi SDK or OpenRouter documentation for supported models.
 3. **API rate limits**: Wait and retry; some providers have rate limits.
 4. **Network connectivity**: Ensure you can reach the API endpoint.
 
@@ -191,21 +191,21 @@ This guide covers common errors and solutions when using NebulaFlow. If you enco
 **Solution**:
 1. **Increase timeout**: Set a higher `timeoutSec` in the node properties.
 2. **Check network connectivity**: Ensure your internet connection is stable.
-3. **Verify API endpoint**: The Amp SDK or OpenRouter endpoint should be reachable.
+3. **Verify API endpoint**: The pi SDK or OpenRouter endpoint should be reachable.
 4. **Consider model response time**: Some models are slower; choose a faster model if possible.
 
-### Amp SDK not available (LLM node)
+### pi SDK not available (LLM node)
 
-**Symptom**: Error "Amp SDK not available" specifically for LLM nodes.
+**Symptom**: Error "pi SDK not available" specifically for LLM nodes.
 
 **Solution**:
-1. **Install SDK**: Run `npm install /home/prinova/CodeProjects/upstreamAmp/sdk` in the extension directory.
+1. **Install SDK**: Run `npm install` in the extension directory.
 2. **Restart VS Code**: After installation, reload the window.
-3. **Check node_modules**: Verify `node_modules/@prinova/amp-sdk` exists.
+3. **Check node_modules**: Verify the pi packages exist under `node_modules/@earendil-works/`.
 
-### AMP_API_KEY not set (LLM node)
+### No authenticated pi model is available
 
-**Symptom**: Error "AMP_API_KEY is not set" for LLM nodes.
+**Symptom**: Error "No authenticated pi model is available" for LLM nodes.
 
 **Solution**:
 1. Set the environment variable before launching VS Code.
@@ -257,7 +257,7 @@ This guide covers common errors and solutions when using NebulaFlow. If you enco
 **Symptom**: Clicking "Execute" does nothing.
 
 **Solution**:
-1. **Check API keys**: Ensure `AMP_API_KEY` is set (for LLM nodes).
+1. **Check API keys**: Ensure `OPENAI_API_KEY` is set (for LLM nodes).
 2. **Verify connections**: All nodes must have proper connections (edges) from their dependencies.
 3. **Node validation**: Check each node's configuration for errors (highlighted in red).
 4. **Start node**: Ensure there is at least one node with no incoming edges (a start node).

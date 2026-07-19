@@ -7,7 +7,7 @@ NebulaFlow is a VS Code extension that lets you design and run LLM+CLI workflows
 
 ### What are the main features?
 - **Visual Workflow Design**: Drag and drop nodes to create complex workflows
-- **LLM Integration**: Connect to LLM nodes for intelligent processing using Amp SDK and OpenRouter SDK
+- **LLM Integration**: Connect to LLM nodes for intelligent processing using pi SDK
 - **CLI Execution**: Run shell commands as part of your workflow
 - **Conditional Logic**: Add decision points and branching logic with If/Else nodes
 - **Loop Support**: Create iterative workflows for repetitive tasks with Loop Start and Loop End nodes
@@ -17,7 +17,7 @@ NebulaFlow is a VS Code extension that lets you design and run LLM+CLI workflows
 - **Variables & Accumulators**: Store and manipulate data across workflow execution
 
 ### Is NebulaFlow free?
-Yes, NebulaFlow is open-source and free to use. However, you may incur costs from LLM providers (Amp SDK, OpenRouter) depending on your usage.
+Yes, NebulaFlow is open-source and free to use. However, you may incur costs from LLM providers (pi SDK, OpenRouter) depending on your usage.
 
 ## Installation & Setup
 
@@ -39,18 +39,18 @@ See the [Installation Guide](../getting-started/installation.md) for detailed in
 ### How do I set up API keys for LLM nodes?
 NebulaFlow supports two LLM providers:
 
-1. **Amp SDK** (default):
-   - Set the `AMP_API_KEY` environment variable in your terminal or shell configuration
-   - Example: `export AMP_API_KEY="your-api-key-here"`
+1. **pi SDK** (default):
+   - Set the `OPENAI_API_KEY` environment variable in your terminal or shell configuration
+   - Example: `export OPENAI_API_KEY="your-api-key-here"`
 
-2. **OpenRouter SDK** (optional):
+2. **pi OpenRouter provider** (optional):
    - Set the `OPENROUTER_API_KEY` environment variable
    - Example: `export OPENROUTER_API_KEY="your-api-key-here"`
 
 **Important**: Environment variables must be set before launching VS Code, or you must restart VS Code after setting them.
 
-### Where do I get an Amp API key?
-Visit the [Amp SDK documentation](https://github.com/PriNova/amp-sdk) for instructions on obtaining an API key.
+### Where do I get an OpenAI API key?
+Visit the [pi SDK documentation](https://github.com/PriNova/amp-sdk) for instructions on obtaining an API key.
 
 ### Where do I get an OpenRouter API key?
 Visit the [OpenRouter website](https://openrouter.ai/) to sign up and obtain an API key.
@@ -70,7 +70,7 @@ See the [Quick Start Guide](../getting-started/quick-start.md) for a step-by-ste
 NebulaFlow provides the following node types:
 
 **Agent Nodes:**
-- **LLM Node**: Interact with Large Language Models (requires AMP_API_KEY)
+- **LLM Node**: Interact with Large Language Models (requires configured pi provider authentication)
 
 **Shell Nodes:**
 - **CLI Node**: Execute shell commands (requires approval for execution)
@@ -125,16 +125,16 @@ Use the **Accumulator Node** to combine text from multiple inputs. The accumulat
 
 ## Troubleshooting
 
-### "Amp SDK not available" error
-This means the Amp SDK is not properly linked. Try:
-1. Run `npm install /home/prinova/CodeProjects/upstreamAmp/sdk` in the extension directory
+### "pi SDK not available" error
+This means the pi SDK is not properly linked. Try:
+1. Run `npm install` in the extension directory
 2. Restart VS Code
 3. Check that the SDK is installed in `node_modules/@ampcode/sdk`
 
-### "AMP_API_KEY is not set" error
+### "No authenticated pi model is available" error
 The LLM node requires an API key. Set the environment variable:
 ```bash
-export AMP_API_KEY="your-api-key-here"
+export OPENAI_API_KEY="your-api-key-here"
 ```
 Then restart VS Code.
 

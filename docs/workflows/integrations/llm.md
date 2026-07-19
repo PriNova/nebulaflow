@@ -2,153 +2,31 @@
 
 ## Overview
 
-NebulaFlow integrates with Large Language Models (LLMs) via the **Amp SDK** and **OpenRouter SDK**. This guide covers configuration, usage, and best practices for LLM nodes.
+NebulaFlow integrates with Large Language Models (LLMs) via the **pi SDK** and **pi OpenRouter provider**. This guide covers configuration, usage, and best practices for LLM nodes.
 
-## Providers
+## Providers and Authentication
 
-### Amp SDK (Primary)
+NebulaFlow uses pi's shared `ModelRuntime` for built-in providers, custom providers, OAuth, API keys, and model catalogs.
 
-The **Amp SDK** is the primary LLM provider for NebulaFlow.
+Configure authentication through pi `/login`, `~/.pi/agent/auth.json`, or the selected provider's standard environment variable. Examples include `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `OPENROUTER_API_KEY`.
 
-**Features:**
-- Native integration
-- Tool calling support
-- Conversation history
-- Streaming responses
-- Safety controls
+Pi configuration locations:
 
-**Requirements:**
-- Amp API key
-- Network access to Amp service
+- `~/.pi/agent/settings.json`: global model defaults.
+- `<workspace>/.pi/settings.json`: project model-default overrides.
+- `~/.pi/agent/auth.json`: API keys and OAuth credentials.
+- `~/.pi/agent/models.json`: custom providers and models.
 
-### OpenRouter SDK (Alternative)
-
-**OpenRouter SDK** provides access to multiple LLM providers through a single API.
-
-**Features:**
-- Multiple model providers (Anthropic, OpenAI, Google, etc.)
-- Unified API
-- Model routing
-- Cost optimization
-
-**Requirements:**
-- OpenRouter API key
-- Network access to OpenRouter service
-
-## Configuration
-
-### Environment Variables
-
-#### Amp SDK
-
-```bash
-export AMP_API_KEY="your_amp_api_key_here"
-```
-
-**Required:** Yes (for LLM nodes)
-
-**How to get:**
-1. Sign up at Amp service
-2. Generate API key in dashboard
-3. Add to your environment
-
-#### OpenRouter SDK
-
-```bash
-export OPENROUTER_API_KEY="your_openrouter_api_key_here"
-```
-
-**Required:** No (optional)
-
-**How to get:**
-1. Sign up at OpenRouter
-2. Generate API key
-3. Add to your environment
-
-### Workspace Settings
-
-Create `.nebulaflow/settings.json` in your workspace root:
+Example pi settings:
 
 ```json
 {
-  "nebulaflow": {
-    "settings": {
-      "amp.dangerouslyAllowAll": false,
-      "amp.experimental.commandApproval.enabled": true,
-      "amp.commands.allowlist": ["git", "npm", "node"],
-      "amp.commands.strict": true,
-      "internal.primaryModel": "openrouter/anthropic/claude-3-5-sonnet",
-      "openrouter.key": "sk-or-...",
-      "openrouter.models": [
-        {
-          "model": "openrouter/anthropic/claude-3-5-sonnet",
-          "provider": "anthropic",
-          "maxOutputTokens": 4096,
-          "contextWindow": 200000
-        },
-        {
-          "model": "openrouter/openai/gpt-5.2-codex",
-          "provider": "openai",
-          "maxOutputTokens": 8192,
-          "contextWindow": 128000
-        }
-      ]
-    }
-  }
+  "defaultProvider": "openrouter",
+  "defaultModel": "anthropic/claude-sonnet-4"
 }
 ```
 
-### Amp SDK Settings
-
-The Amp SDK supports various settings that can be configured:
-
-| Setting | Type | Description | Default |
-|---------|------|-------------|---------|
-| `amp.dangerouslyAllowAll` | boolean | Bypass safety checks | `false` |
-| `amp.experimental.commandApproval.enabled` | boolean | Enable command approval | `true` |
-| `amp.commands.allowlist` | string[] | Allowed commands | `[]` |
-| `amp.commands.strict` | boolean | Strict command validation | `true` |
-| `internal.primaryModel` | string | Default model ID | - |
-| `openrouter.models` | array | OpenRouter model configs | `[]` |
-
-### OpenRouter Model Configuration
-
-Configure OpenRouter models in workspace settings:
-
-```json
-{
-  "nebulaflow": {
-    "settings": {
-      "openrouter.models": [
-        {
-          "model": "openrouter/anthropic/claude-3-5-sonnet",
-          "provider": "anthropic",
-          "maxOutputTokens": 4096,
-          "contextWindow": 200000,
-          "isReasoning": false,
-          "reasoning_effort": "medium"
-        },
-        {
-          "model": "openrouter/openai/gpt-5.2-codex",
-          "provider": "openai",
-          "maxOutputTokens": 8192,
-          "contextWindow": 128000,
-          "isReasoning": true,
-          "reasoning_effort": "high"
-        }
-      ]
-    }
-  }
-}
-```
-
-**Configuration options:**
-- `model`: Full model ID
-- `provider`: Provider name (for routing)
-- `maxOutputTokens`: Maximum tokens to generate
-- `contextWindow`: Context window size
-- `isReasoning`: Whether model supports reasoning
-- `reasoning_effort`: Default reasoning effort level
+A model selected directly on an LLM node takes priority over pi's configured default. The model selector shows models authenticated and available through `ModelRuntime`.
 
 ## LLM Node Configuration
 
@@ -263,7 +141,7 @@ interface LLMNode {
 
 Models are loaded from two sources:
 
-1. **Amp SDK models** - Built-in models from Amp
+1. **pi SDK models** - Built-in models from Amp
 2. **OpenRouter models** - Configured in workspace settings
 
 ### Viewing Available Models
@@ -275,7 +153,7 @@ Models are loaded from two sources:
 
 ### Model ID Format
 
-**Amp SDK models:**
+**pi SDK models:**
 - `gpt-4o`
 - `gpt-4o-mini`
 - `claude-3-5-sonnet`
@@ -287,7 +165,7 @@ Models are loaded from two sources:
 
 ### Model Resolution
 
-The selected model ID is normalized via the Amp SDK's `resolveModel` function. If resolution fails, the raw ID is used.
+The selected model ID is normalized via the pi SDK's `resolveModel` function. If resolution fails, the raw ID is used.
 
 ## Prompt Engineering
 
@@ -379,7 +257,7 @@ Tool calling allows LLMs to invoke external functions or tools.
 
 ### Tool Name Resolution
 
-Tools are automatically resolved via the Amp SDK:
+Tools are automatically resolved via the pi SDK:
 
 ```typescript
 // Tools are normalized to official names
@@ -515,7 +393,7 @@ LLM nodes stream responses in real-time:
 ### Error Handling
 
 **Common errors:**
-- `AMP_API_KEY not set` - Set environment variable
+- No authenticated pi model - configure pi `/login`, `auth.json`, or the provider environment variable
 - `Model not found` - Check model ID
 - `Rate limit exceeded` - Wait and retry
 - `Network error` - Check connectivity
@@ -563,7 +441,7 @@ LLM nodes stream responses in real-time:
 **Never commit API keys:**
 ```bash
 # Good: Environment variables
-export AMP_API_KEY="your_key"
+export OPENAI_API_KEY="your_key"
 
 # Bad: Hardcoded in workflows
 # content: "Use key: sk-..."
@@ -592,22 +470,22 @@ export AMP_API_KEY="your_key"
 
 ### Common Issues
 
-#### "Amp SDK not available"
+#### "pi SDK not available"
 
 **Cause:** SDK not properly linked
 
 **Solution:**
 ```bash
-npm i /home/prinova/CodeProjects/upstreamAmp/sdk
+npm install
 ```
 
-#### "AMP_API_KEY is not set"
+#### "No authenticated pi model is available"
 
 **Cause:** Environment variable missing
 
 **Solution:**
 ```bash
-export AMP_API_KEY="your_amp_api_key_here"
+export OPENAI_API_KEY="your_openai_api_key_here"
 ```
 
 #### "Model not found"
@@ -703,7 +581,7 @@ Text Node (query)
 
 ### General
 
-1. **Set AMP_API_KEY** - Required for execution
+1. **Configure provider authentication** through pi `/login`, `auth.json`, or a provider environment variable.
 2. **Choose appropriate models** - Balance cost vs capability
 3. **Use reasoning effort** - Optimize for your use case
 4. **Test with small prompts** - Verify behavior before scaling

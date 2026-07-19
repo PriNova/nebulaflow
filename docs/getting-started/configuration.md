@@ -2,64 +2,57 @@
 
 This guide covers how to configure NebulaFlow for your environment, workspace, and individual workflows. Configuration includes environment variables, VS Code settings, workspace-specific settings, and node-level settings.
 
-## Environment Variables
+## Pi Authentication and Models
 
-Environment variables are used for API keys and debugging flags. They can be set in your shell, in a `.env` file in your workspace root, or in your system environment.
+NebulaFlow uses pi's standard model runtime and configuration files.
 
-### Required for LLM Nodes
+### Credentials
 
-- **`AMP_API_KEY`**: Required for the Amp SDK (LLM node execution). Set this to your Amp API key.
-- **`OPENROUTER_API_KEY`**: Optional for OpenRouter SDK integration. Set this if you want to use OpenRouter models.
+Configure credentials using one of these pi-supported methods:
 
-### Optional Debugging & Behavior Flags
+1. Run pi and use `/login` to store an API key or OAuth credential.
+2. Store credentials in `~/.pi/agent/auth.json`.
+3. Set the selected provider's environment variable, such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENROUTER_API_KEY`.
 
-- **`NEBULAFLOW_DEBUG_LLM`**: Set to `1` to enable verbose logging for LLM node execution (warns on errors reading workspace settings).
-- **`NEBULAFLOW_DISABLE_HYBRID_PARALLEL`**: When truthy, disables hybrid parallel execution (affects looped graphs).
-- **`NEBULAFLOW_FILTER_PAUSE_SEEDS`**: When truthy, filters pause seeds in certain resume scenarios.
-- **`NEBULAFLOW_SHELL_MAX_OUTPUT`**: Maximum characters to capture from shell command output (default: `1000000`). Truncates output if exceeded.
+Do not store credentials in workflow files, `.nebulaflow/`, or source-controlled settings.
 
-### Setting Environment Variables
+### Model Configuration
 
-**Linux/macOS (temporary):**
-```bash
-export AMP_API_KEY="your_amp_api_key_here"
-export OPENROUTER_API_KEY="your_openrouter_api_key_here"  # optional
+| Purpose | Location |
+|---|---|
+| Global defaults | `~/.pi/agent/settings.json` |
+| Project overrides | `<workspace>/.pi/settings.json` |
+| Credentials | `~/.pi/agent/auth.json` |
+| Custom providers and models | `~/.pi/agent/models.json` |
+| Cached dynamic catalogs | `~/.pi/agent/models-store.json` |
+
+Example global or project pi settings:
+
+```json
+{
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-5.1"
+}
 ```
 
-**Linux/macOS (permanent):**
-Add the lines to your shell profile file (e.g., `~/.bashrc`, `~/.zshrc`, `~/.profile`):
-```bash
-export AMP_API_KEY="your_amp_api_key_here"
-export OPENROUTER_API_KEY="your_openrouter_api_key_here"
-```
+### Model Selection Priority
 
-**Windows (PowerShell):**
-```powershell
-$env:AMP_API_KEY="your_amp_api_key_here"
-$env:OPENROUTER_API_KEY="your_openrouter_api_key_here"
-```
+1. Model selected on the LLM node.
+2. Authenticated project/global pi default.
+3. Authenticated built-in fallback.
 
-**Windows (Command Prompt):**
-```cmd
-set AMP_API_KEY=your_amp_api_key_here
-set OPENROUTER_API_KEY=your_openrouter_api_key_here
-```
+The Model combobox shows models currently available through pi `ModelRuntime`. Define custom providers and models in pi's `models.json` rather than NebulaFlow workspace settings.
 
-**Note:** Environment variables set in a terminal session only apply to that session. For permanent changes, set them system-wide or use a `.env` file in your workspace (see below).
+## NebulaFlow Environment Variables
 
-### Using a `.env` File
-
-You can also place a `.env` file in your workspace root (or the first workspace folder). NebulaFlow will read environment variables from this file when the extension activates.
-
-Create a file named `.env` in your workspace:
-```
-AMP_API_KEY=your_amp_api_key_here
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-```
+- **`PI_OFFLINE`**: Disables the background pi model-catalog network refresh.
+- **`NEBULAFLOW_DISABLE_HYBRID_PARALLEL`**: Disables hybrid parallel execution when truthy.
+- **`NEBULAFLOW_FILTER_PAUSE_SEEDS`**: Filters pause seeds in supported resume scenarios when truthy.
+- **`NEBULAFLOW_SHELL_MAX_OUTPUT`**: Maximum shell-output characters to capture; default `1000000`.
 
 ## VS Code Settings
 
-NebulaFlow provides VS Code configuration options that can be set in the Settings UI (Ctrl+, or Cmd+,) or in `.vscode/settings.json`.
+NebulaFlow provides VS Code configuration options through the Settings UI or `.vscode/settings.json`.
 
 ### `nebulaFlow.storageScope`
 
@@ -67,16 +60,14 @@ NebulaFlow provides VS Code configuration options that can be set in the Setting
 - **Enum**: `["workspace", "user"]`
 - **Default**: `user`
 - **Description**: Where NebulaFlow stores workflows and custom nodes.
-  - `user`: Global storage in your user folder (default).
-  - `workspace`: Storage in the current workspace (`.nebulaflow/` directory).
+  - `user`: Global storage in your user folder.
+  - `workspace`: Storage in the current workspace under `.nebulaflow/`.
 
 ### `nebulaFlow.globalStoragePath`
 
 - **Type**: `string`
 - **Default**: `""`
-- **Description**: Absolute path for global storage. If empty, uses your home directory. Content is stored under `.nebulaflow/`.
-
-### Example `.vscode/settings.json`
+- **Description**: Optional absolute path for user-scope NebulaFlow storage.
 
 ```json
 {
@@ -84,74 +75,6 @@ NebulaFlow provides VS Code configuration options that can be set in the Setting
   "nebulaFlow.globalStoragePath": "/path/to/custom/storage"
 }
 ```
-
-## Workspace Configuration
-
-You can configure LLM settings per workspace by creating a `.nebulaflow/settings.json` file in your workspace root. This file can contain Amp SDK settings, model configurations, and more.
-
-### File Location
-
-The file must be placed in the first workspace folder at `.nebulaflow/settings.json`.
-
-### Structure
-
-The file must contain a `nebulaflow.settings` object that maps directly to Amp SDK settings keys.
-
-```json
-{
-  "nebulaflow": {
-    "settings": {
-      "openrouter.key": "sk-or-...",
-      "internal.primaryModel": "openrouter/xiaomi/mimo-v2-flash:free"
-    }
-  }
-}
-```
-
-### Common Settings Keys
-
-- **`openrouter.key`**: OpenRouter API key (overrides `OPENROUTER_API_KEY` environment variable).
-- **`internal.primaryModel`**: Workspace-wide default model for LLM nodes (used when a node has no model selected).
-- **`openrouter.models`**: Array of model configurations for OpenRouter models (see example below).
-- **`amp.dangerouslyAllowAll`**: Boolean to auto-approve all tool calls (use with caution).
-- **`tools.disable`**: Array of tool names to disable (e.g., `["bash"]`).
-- **`reasoning.effort`**: Default reasoning effort for LLM nodes (`minimal`, `low`, `medium`, `high`).
-
-### Example: OpenRouter Models Configuration
-
-```json
-{
-  "nebulaflow": {
-    "settings": {
-      "openrouter.models": [
-        {
-          "model": "openrouter/z-ai/glm-4.7-flash",
-          "provider": "z-ai",
-          "maxOutputTokens": 131000,
-          "contextWindow": 200000,
-          "temperature": 0.5
-        },
-        {
-          "model": "openrouter/openai/gpt-5.2-codex",
-          "provider": "openai",
-          "isReasoning": true,
-          "reasoning_effort": "medium",
-          "maxOutputTokens": 128000,
-          "contextWindow": 400000
-        }
-      ]
-    }
-  }
-}
-```
-
-### Model Selection Priority
-
-1. **Node-level model**: Selected in the Property Editor (Model combobox).
-2. **Workspace default**: `internal.primaryModel` in `.nebulaflow/settings.json`.
-3. **Built-in default**: `openai/gpt-5.1` (if neither of the above is set).
-
-The Model combobox is populated from the Amp SDK `listModels()` API and also includes the configured workspace default and any OpenRouter models defined in `openrouter.models`.
 
 ## Node Configuration
 
@@ -241,16 +164,16 @@ The storage location is determined by `nebulaFlow.storageScope` and `nebulaFlow.
 
 ## Troubleshooting Configuration
 
-### "AMP_API_KEY is not set" error
+### "No authenticated pi model is available" error
 
 - Ensure the environment variable is set before launching VS Code.
 - If using a `.env` file, verify it's in the correct workspace folder and contains the variable.
 
 ### LLM node fails with model errors
 
-- Verify `AMP_API_KEY` is set correctly.
+- Verify pi authentication for the selected provider.
 - Check that the selected model is available in your Amp account.
-- For OpenRouter models, ensure `OPENROUTER_API_KEY` is set or configured in `.nebulaflow/settings.json`.
+- For OpenRouter models, authenticate OpenRouter through pi `/login`, `auth.json`, or `OPENROUTER_API_KEY`.
 
 ### CLI node fails to execute commands
 

@@ -29,7 +29,7 @@ This guide covers setting up the development environment, building the project, 
 The extension requires API keys for LLM nodes. Set these in your shell before launching VS Code:
 
 ```bash
-export AMP_API_KEY="your-amp-key"
+export OPENAI_API_KEY="your-openai-key"
 export OPENROUTER_API_KEY="your-openrouter-key"
 ```
 
@@ -37,7 +37,7 @@ Alternatively, add them to a `.env` file in the project root (ignored by Git). T
 
 ### SDK Vendoring
 
-The Amp SDK is vendored as a tarball in `vendor/amp-sdk/amp-sdk.tgz` and referenced as a file dependency in `package.json`. No external linking is required; `npm install` will copy the SDK into `node_modules/@prinova/amp-sdk`. The build process bundles the SDK directly into the extension.
+The pi SDK packages are pinned npm dependencies in `package.json`. Run `npm install`; the extension build bundles the SDK into the host runtime.
 
 ## Build System
 
@@ -112,7 +112,7 @@ NebulaFlow uses **Biome** for linting and formatting.
 
 - **Extension debugging**: Use the VS Code debugger (F5). Set breakpoints in `src/extension.ts` or `workflow/` files.
 - **Webview debugging**: Open the webview developer tools (Help → Toggle Developer Tools in the VS Code window).
-- **Environment variables**: Ensure `AMP_API_KEY` and `OPENROUTER_API_KEY` are set before launching the extension host.
+- **Environment variables**: Ensure `OPENAI_API_KEY` and `OPENROUTER_API_KEY` are set before launching the extension host.
 - **Optional environment variables**: `NEBULAFLOW_SHELL_MAX_OUTPUT` (max shell output chars), `NEBULAFLOW_DEBUG_LLM` (enable LLM debug logging), `NEBULAFLOW_FILTER_PAUSE_SEEDS` (filter pause seeds).
 
 ### Testing
@@ -208,8 +208,8 @@ You can run the same steps locally to verify your changes.
 
 | Issue | Solution |
 |-------|----------|
-| **Amp SDK not available** | The SDK is vendored; ensure `vendor/amp-sdk/amp-sdk.tgz` exists. |
-| **AMP_API_KEY is not set** | Set the environment variable before launching VS Code. |
+| **pi SDK not available** | Run `npm install` and rebuild the extension. |
+| **No authenticated pi model** | Configure pi `/login`, `auth.json`, or the selected provider environment variable. |
 | **Webview assets don’t load** | Run `npm run build` or start the webview watcher (`npm run watch:webview`). |
 | **Type errors** | Run `npm run typecheck` and fix diagnostics. |
 | **Lint/format issues** | Run `npm run check` or `npm run biome`. |

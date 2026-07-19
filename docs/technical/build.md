@@ -173,7 +173,7 @@ dist/
 
 2. Set environment variables:
    ```bash
-   export AMP_API_KEY="your-amp-key"
+   export OPENAI_API_KEY="your-openai-key"
    export OPENROUTER_API_KEY="your-openrouter-key"
    ```
 
@@ -203,8 +203,8 @@ dist/
 | **Type errors** | Run `npm run typecheck` and fix diagnostics. |
 | **Lint/format issues** | Run `npm run check` or `npm run biome`. |
 | **Extension fails to load** | Check VS Code version ≥ 1.90.0; reload the window. |
-| **Amp SDK not available** | The SDK is vendored; ensure `vendor/amp-sdk/amp-sdk.tgz` exists. |
-| **AMP_API_KEY is not set** | Set the environment variable before launching VS Code. |
+| **pi SDK not available** | Run `npm install` and rebuild the extension. |
+| **No authenticated pi model** | Configure pi `/login`, `auth.json`, or the selected provider environment variable. |
 | **Build hangs** | Kill any hanging processes and restart the build. |
 
 ## CI/CD Build Process
@@ -230,7 +230,7 @@ You can run the same steps locally to verify your changes before pushing.
 
 ### Runtime Dependencies
 
-- `@prinova/amp-sdk`: Amp SDK (vendored)
+- `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`, and `@earendil-works/pi-coding-agent`: pi SDK
 - `@xyflow/react`: React Flow for graph visualization
 - `react`, `react-dom`: UI framework
 - Various UI components (Radix UI, lucide-react, etc.)

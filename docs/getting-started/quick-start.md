@@ -6,7 +6,7 @@ This guide will help you create your first NebulaFlow workflow in under 5 minute
 
 - VS Code 1.90.0 or later
 - NebulaFlow extension installed
-- (Optional) Amp API key and OpenRouter API key for LLM functionality
+- (Optional) OpenAI API key and OpenRouter API key for LLM functionality
 
 ## Step 1: Install the Extension
 
@@ -91,7 +91,7 @@ Congratulations! You've created your first NebulaFlow workflow. Now explore:
 - Look for error messages in the execution log
 
 **Issue**: LLM node fails
-- Ensure AMP_API_KEY is set in your environment
+- Configure authentication for the selected pi provider
 - Check that the selected model is available
 - Verify the prompt is properly formatted
 

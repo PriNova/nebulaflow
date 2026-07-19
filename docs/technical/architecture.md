@@ -59,7 +59,7 @@ Requests flow through four logical stages: Entry → Application → Core → In
 1. **Entry**: VS Code command `nebulaFlow.openWorkflow` creates a webview panel. The webview sends an `execute_workflow` message.
 2. **Application**: `ExecuteWorkflow.ts` handler validates nodes/edges, sets up execution context, and delegates to the scheduler.
 3. **Core**: Pure functions evaluate inputs (`evalTemplate`), combine outputs (`combineParentOutputsByConnectionOrder`), and manage state (loop states, accumulator values).
-4. **Infra**: `executeCLINode` runs shell commands via `child_process`; `executeLLMNode` calls Amp SDK; `safePost` sends messages to the webview.
+4. **Infra**: `executeCLINode` runs shell commands via `child_process`; `executeLLMNode` calls pi SDK; `safePost` sends messages to the webview.
 
 ### Code References
 
@@ -96,7 +96,7 @@ Each node type has a dedicated runner that handles execution, error handling, an
 | Node Type | Runner File | Key Responsibilities |
 |-----------|-------------|----------------------|
 | CLI | `run-cli.ts` | Spawn shell process, stream stdout/stderr, handle approval |
-| LLM | `run-llm.ts` | Call Amp/OpenRouter SDK, stream assistant content, manage chat history |
+| LLM | `run-llm.ts` | Call Amp/pi OpenRouter provider, stream assistant content, manage chat history |
 | If/Else | `run-if-else.ts` | Evaluate condition, route execution path |
 | Loop Start/End | `run-loop-start.ts`, `run-loop-end.ts` | Manage iteration count, loop variable |
 | Input/Text | `run-input.ts` | Provide static text input |
@@ -169,8 +169,8 @@ The extension is bundled using esbuild. Configuration: `scripts/build-extension.
 
 **Build Process**:
 1. `npm run build:ext` → esbuild bundles extension + SDK into `dist/extension.js`.
-2. SDK sync: `sync:sdk` script copies Amp SDK from upstream location.
-3. Environment variables: `AMP_API_KEY`, `OPENROUTER_API_KEY` are required at runtime.
+2. SDK sync: `sync:sdk` script copies pi SDK from upstream location.
+3. Environment variables: authentication for the selected pi provider is required at runtime.
 
 ### Full Build
 
@@ -191,7 +191,7 @@ Biome is configured for linting and formatting. Commands:
 
 ### Debugging
 
-1. Set `AMP_API_KEY` environment variable.
+1. Set `OPENAI_API_KEY` environment variable.
 2. Launch VS Code extension host (F5).
 3. Open NebulaFlow panel.
 4. Test workflows with LLM/CLI nodes.

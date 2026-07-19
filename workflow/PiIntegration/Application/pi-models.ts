@@ -1,7 +1,9 @@
-// Type-only imports from pi ESM packages cause TS1541 in CJS context.
-// We use dynamic import() for values; types are used via declaration merging.
+import { getPiModelRuntime } from './pi-model-runtime'
 
-interface PiModelInfo {
+// Type-only imports from pi ESM packages cause TS1541 in CJS context.
+// Runtime values are loaded through dynamic import().
+
+export interface PiModelInfo {
     id: string
     provider: string
     name: string
@@ -14,27 +16,12 @@ interface PiModelInfo {
  * Uses dynamic import to handle pi's ESM packages from CJS context.
  */
 export async function listPiModels(): Promise<Array<{ id: string; provider: string; title: string }>> {
-    const { getModels, getProviders } = await import('@earendil-works/pi-ai')
-    const providers = getProviders()
-    const models: Array<{ id: string; provider: string; title: string }> = []
-
-    for (const provider of providers) {
-        const providerModels = getModels(provider) as unknown as PiModelInfo[]
-        for (const model of providerModels) {
-            // pi model objects store id and provider separately.
-            // Combine them so downstream code (ModelSelector grouping,
-            // resolvePiModel) treats the full qualified key as the id.
-            // Carry provider for reliable ModelSelector grouping.
-            // Example: provider="openai", model.id="gpt-5.1" → id="openai/gpt-5.1"
-            models.push({
-                id: `${model.provider}/${model.id}`,
-                provider: model.provider,
-                title: model.name,
-            })
-        }
-    }
-
-    return models
+    const modelRuntime = await getPiModelRuntime()
+    return modelRuntime.getAvailableSnapshot().map((model) => ({
+        id: `${model.provider}/${model.id}`,
+        provider: model.provider,
+        title: model.name,
+    }))
 }
 
 /**
@@ -44,22 +31,17 @@ export async function listPiModels(): Promise<Array<{ id: string; provider: stri
  * Returns undefined if no match is found.
  */
 export async function resolvePiModel(modelKey: string): Promise<PiModelInfo | undefined> {
-    const { getModels, getProviders } = await import('@earendil-works/pi-ai')
-    const providers = getProviders()
-
-    // Map legacy provider prefixes to pi's actual provider keys
+    const modelRuntime = await getPiModelRuntime()
     const key = normalizeLegacyProviderPrefix(modelKey)
+    const separator = key.indexOf('/')
 
-    for (const provider of providers) {
-        const providerModels = getModels(provider) as unknown as PiModelInfo[]
-        const found = providerModels.find(
-            (m) =>
-                m.id === key ||
-                `${m.provider}/${m.id}` === key
-        )
-        if (found) return found
+    if (separator > 0) {
+        const provider = key.slice(0, separator)
+        const modelId = key.slice(separator + 1)
+        return modelRuntime.getModel(provider, modelId)
     }
-    return undefined
+
+    return modelRuntime.getModels().find((model) => model.id === key)
 }
 
 /**

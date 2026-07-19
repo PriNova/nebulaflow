@@ -192,7 +192,7 @@ NEBULAFLOW_DEBUG_LLM=1
 
 **Symptom**: Clicking "Execute" does nothing
 **Causes**:
-- Missing API key (`AMP_API_KEY` not set)
+- Missing authentication for the selected pi provider
 - Invalid workflow structure (missing connections)
 - Node validation errors
 

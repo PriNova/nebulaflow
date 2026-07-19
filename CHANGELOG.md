@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Upgraded `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`, and `@earendil-works/pi-coding-agent` to `0.80.10`.
+- Added one shared cache-first pi `ModelRuntime` for model discovery, custom providers, provider authentication, and LLM request routing.
+- LLM nodes now use pi global/project model defaults and pi-native `auth.json`, `models.json`, environment-variable, and OAuth resolution.
+
+### Removed
+
+- Removed NebulaFlow's manual `getApiKey` callback and workspace `api_key_<provider>` credential lookup.
+- Removed `.nebulaflow/settings.json` as an LLM model and credential configuration source.
+
 ## [0.3.0]
 
 ### Fixed
@@ -36,7 +49,7 @@ All notable changes to this project will be documented in this file.
 - Changed: Migrated tool name normalization from Amp-era aliases to pi names. `toolNames.ts` now maps Amp aliases (`Read`, `Bash`, `edit_file`, `create_file`, `Grep`, `glob`, `list_directory`) to pi equivalents. `toolUtils.ts` removed.
 - Changed: Webview builds now include a `WebSocketMessagePort` implementation for browser targets; `NodeHost.ts` provides the corresponding bridge server and is selected via the `VITE_TARGET`/`VITE_BRIDGE_URL` env vars.
 - Changed: Merged consecutive LLM text/thinking deltas into single sidebar assistant items to reduce visual noise in the RightSidebar during streaming.
-- Changed: `@prinova/amp-sdk` removed from `dependencies`; vendored `vendor/amp-sdk/amp-sdk.tgz` deleted. Legacy `AMP_API_KEY` env var still accepted as fallback for `piAgentApiKey`.
+- Changed: `@prinova/amp-sdk` removed from `dependencies`; vendored `vendor/amp-sdk/amp-sdk.tgz` deleted.
 - Changed: Removed Biome npm scripts (`biome`, `format`); replaced with ESLint equivalents.
 
 ### Removed
@@ -44,8 +57,6 @@ All notable changes to this project will be documented in this file.
 - Removed: `@prinova/amp-sdk` dependency and vendored tarball (`vendor/amp-sdk/amp-sdk.tgz`).
 - Removed: `workflow/Core/toolUtils.ts` (Amp-era tool name resolver).
 - Removed: OpenRouter display-title helper `getOpenRouterDisplayTitle` from `LLMIntegration/register.ts`.
-
-## [Unreleased]
 
 ## [NebulaFlow 0.2.14]
 

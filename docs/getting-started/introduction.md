@@ -7,7 +7,7 @@ NebulaFlow is a VS Code extension that enables you to design and run LLM+CLI wor
 ## Key Features
 
 - **Visual Workflow Design**: Drag and drop nodes to create complex workflows
-- **LLM Integration**: Connect to LLM nodes for intelligent processing using Amp SDK and OpenRouter SDK
+- **LLM Integration**: Connect to LLM nodes for intelligent processing using pi SDK
 - **CLI Execution**: Run shell commands as part of your workflow
 - **Conditional Logic**: Add decision points and branching logic with If/Else nodes
 - **Loop Support**: Create iterative workflows for repetitive tasks with Loop Start and Loop End nodes
@@ -31,14 +31,14 @@ NebulaFlow consists of two main components:
 1. **VS Code Extension**: Runs in VS Code, manages the webview interface and workflow execution
 2. **Webview UI**: React-based interface using React Flow for visual graph editing
 
-The extension uses the Amp SDK and OpenRouter SDK for LLM operations and executes CLI commands through the Node.js child_process API. Execution is orchestrated in the extension with streaming output, approval system, and real-time event handling.
+The extension uses the pi SDK for LLM operations and executes CLI commands through the Node.js child_process API. Execution is orchestrated in the extension with streaming output, approval system, and real-time event handling.
 
 ## Available Nodes
 
 NebulaFlow provides the following node types:
 
 ### Agent Nodes
-- **LLM Node**: Interact with Large Language Models (requires AMP_API_KEY)
+- **LLM Node**: Interact with Large Language Models (requires configured pi provider authentication)
 
 ### Shell Nodes
 - **CLI Node**: Execute shell commands (requires approval for execution)

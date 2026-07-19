@@ -9,7 +9,7 @@ NebulaFlow is a VS Code extension that provides a visual workflow editor for LLM
 1. **VS Code Extension** (`src/extension.ts`): Runs in VS Code, manages the webview interface, and orchestrates workflow execution
 2. **Webview UI** (`workflow/Web/`): React-based interface using React Flow for visual graph editing
 
-The extension uses the Amp SDK and OpenRouter SDK for LLM operations and executes CLI commands through the Node.js child_process API. Execution is orchestrated in the extension with streaming output, approval system, and real-time event handling.
+The extension uses the pi SDK for LLM operations and executes CLI commands through the Node.js child_process API. Execution is orchestrated in the extension with streaming output, approval system, and real-time event handling.
 
 ## Vertical Slice Architecture (VSA)
 
@@ -60,7 +60,7 @@ Example: Executing a workflow
 - **Entry**: `nebulaFlow.openWorkflow` command → webview sends `execute_workflow` message
 - **Application**: `ExecuteWorkflow.ts` handler validates nodes/edges, sets up execution context
 - **Core**: Pure functions evaluate inputs, combine outputs, manage state
-- **Infra**: `executeCLINode` runs shell commands, `executeLLMNode` calls Amp SDK
+- **Infra**: `executeCLINode` runs shell commands, `executeLLMNode` calls pi SDK
 
 ## Execution Model
 
@@ -105,7 +105,7 @@ NebulaFlow provides the following node types (defined in `workflow/Core/models.t
 ### Agent Nodes
 - **LLM Node** (`NodeType.LLM`): Interact with Large Language Models
   - Configuration: model selection, reasoning effort, system prompt, attachments
-  - Integration: Amp SDK (primary), OpenRouter SDK (optional)
+  - Integration: pi SDK (primary), pi OpenRouter provider (optional)
   - Streaming: Assistant content chunks, tool calls, thinking tokens
 
 ### Shell Nodes
@@ -191,8 +191,8 @@ The extension and webview communicate using a custom workflow message protocol d
 
 ### Environment Variables
 
-- **AMP_API_KEY**: Required for LLM node execution (Amp SDK)
-- **OPENROUTER_API_KEY**: Optional for OpenRouter SDK integration
+- **Provider authentication**: Configure the selected provider through pi `/login`, `auth.json`, or its environment variable.
+- **OPENROUTER_API_KEY**: Optional for pi OpenRouter provider integration
 
 ### VS Code Settings
 
@@ -201,7 +201,7 @@ The extension and webview communicate using a custom workflow message protocol d
 
 ### Workflow Settings
 
-- **Model Selection**: Via Amp SDK or OpenRouter (configured per LLM node)
+- **Model Selection**: Via pi SDK or OpenRouter (configured per LLM node)
 - **Node Configuration**: Each node type has specific settings (prompts, commands, conditions, etc.)
 - **Approval Settings**: CLI nodes can be configured to require approval or auto-execute (unsafe)
 
@@ -217,8 +217,8 @@ The extension and webview communicate using a custom workflow message protocol d
 - **Vite**: Build tool for webview bundle
 
 ### SDK Integrations
-- **Amp SDK**: Primary LLM provider (requires API key)
-- **OpenRouter SDK**: Alternative LLM provider (optional)
+- **pi SDK**: Primary LLM provider (requires API key)
+- **pi OpenRouter provider**: Alternative LLM provider (optional)
 
 ### Development Dependencies
 - **TypeScript**: Type checking
@@ -238,7 +238,7 @@ The extension and webview communicate using a custom workflow message protocol d
 - **Formatting**: `npm run format` (Biome)
 
 ### Debugging
-1. Set `AMP_API_KEY` environment variable
+1. Set `OPENAI_API_KEY` environment variable
 2. Launch VS Code extension host (F5)
 3. Open NebulaFlow panel
 4. Test workflows with LLM/CLI nodes

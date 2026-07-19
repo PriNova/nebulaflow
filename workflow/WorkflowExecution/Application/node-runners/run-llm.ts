@@ -16,14 +16,13 @@ import {
 } from '../../../Core/models'
 import type { IMessagePort } from '../../../Shared/Host/index'
 import { safePost } from '../../../Shared/Infrastructure/messaging/safePost'
-import { readNebulaflowSettingsFromWorkspaceRoots } from '../../../Shared/Infrastructure/nebulaflow-settings'
 import { DEFAULT_PI_MODEL_ID } from '../../../Shared/LLM/default-model'
 import { combineParentOutputsByConnectionOrder } from '../../Core/execution/combine'
 import { replaceIndexedInputs } from '../../Core/execution/inputs'
 import type { IndexedExecutionContext } from '../handlers/ExecuteWorkflow'
+import { getPiModelRuntime } from '../../../PiIntegration/Application/pi-model-runtime'
 import { buildPiTools } from '../../../PiIntegration/Application/pi-tools'
 import { imageFromFile, imageFromURL } from '../../../PiIntegration/utils/image-utils'
-import { resolvePiModel } from '../../../PiIntegration/Application/pi-models'
 
 const DEFAULT_LLM_TIMEOUT_MS = 300_000
 
@@ -113,16 +112,62 @@ export function resolveAttachmentFilePath(
 // Model resolution from node config
 // ---------------------------------------------------------------------------
 
-async function resolveModelForNode(
-    node: WorkflowNodes
-): Promise<{ model: unknown; modelKey: string }> {
+async function resolveModelForNode(node: WorkflowNodes, cwd: string) {
+    const modelRuntime = await getPiModelRuntime()
     const llmNode = node as LLMNode
-    const modelId = llmNode.data.model?.id
-    const piModel = modelId ? await resolvePiModel(modelId) : undefined
-    return {
-        model: piModel,
-        modelKey: modelId ?? DEFAULT_PI_MODEL_ID,
+    const selectedModelId = llmNode.data.model?.id?.trim()
+
+    if (selectedModelId) {
+        const selectedModel = resolveRuntimeModel(modelRuntime, selectedModelId)
+        if (!selectedModel) {
+            throw new Error(`Selected model is not available: ${selectedModelId}`)
+        }
+        return selectedModel
     }
+
+    const { SettingsManager } = await import('@earendil-works/pi-coding-agent')
+    const settings = SettingsManager.create(cwd)
+    const defaultProvider = settings.getDefaultProvider()
+    const defaultModel = settings.getDefaultModel()
+    const defaultModelKey = defaultModel && defaultProvider && !defaultModel.includes('/')
+        ? `${defaultProvider}/${defaultModel}`
+        : defaultModel
+    const configuredDefault = defaultModelKey
+        ? resolveRuntimeModel(modelRuntime, defaultModelKey)
+        : undefined
+    const availableModels = modelRuntime.getAvailableSnapshot()
+
+    if (configuredDefault && availableModels.some(
+        (model) => model.provider === configuredDefault.provider && model.id === configuredDefault.id
+    )) {
+        return configuredDefault
+    }
+
+    const builtInDefault = resolveRuntimeModel(modelRuntime, DEFAULT_PI_MODEL_ID)
+    if (builtInDefault && availableModels.some(
+        (model) => model.provider === builtInDefault.provider && model.id === builtInDefault.id
+    )) {
+        return builtInDefault
+    }
+
+    const firstAvailable = availableModels[0]
+    if (firstAvailable) return firstAvailable
+
+    throw new Error(
+        'No authenticated pi model is available. Configure a provider with pi /login, ' +
+        '~/.pi/agent/auth.json, or a provider API-key environment variable.'
+    )
+}
+
+function resolveRuntimeModel(
+    modelRuntime: Awaited<ReturnType<typeof getPiModelRuntime>>,
+    modelKey: string
+) {
+    const separator = modelKey.indexOf('/')
+    if (separator > 0) {
+        return modelRuntime.getModel(modelKey.slice(0, separator), modelKey.slice(separator + 1))
+    }
+    return modelRuntime.getModels().find((model) => model.id === modelKey)
 }
 
 // ---------------------------------------------------------------------------
@@ -215,13 +260,12 @@ export async function runLLMCore(args: LLMRunArgs): Promise<string> {
 
     try {
         // Dynamic import pi SDK (ESM packages from CJS context)
-        const [{ Agent }, { streamSimple }] = await Promise.all([
+        const [{ Agent }, modelRuntime] = await Promise.all([
             import('@earendil-works/pi-agent-core'),
-            import('@earendil-works/pi-ai'),
+            getPiModelRuntime(),
         ])
-
-        // Resolve model
-        const { model: piModel, modelKey: _modelKey } = await resolveModelForNode(node)
+        const cwd = workspaceRoots[0] ?? process.cwd()
+        const piModel = await resolveModelForNode(node, cwd)
 
         // Resolve images
         const images = await resolveLLMAttachmentsToImages(node, workspaceRoots)
@@ -233,17 +277,7 @@ export async function runLLMCore(args: LLMRunArgs): Promise<string> {
         const dangerouslyAllowAll: boolean = llmNode.data.dangerouslyAllowAll === true
         const reasoningEffort: string = llmNode.data.reasoningEffort ?? 'medium'
 
-        // Read NebulaFlow workspace settings
-        const nebulaflowWorkspaceSettings = await readNebulaflowSettingsFromWorkspaceRoots(
-            workspaceRoots,
-            {
-                warnOnError: process.env.NEBULAFLOW_DEBUG_LLM === '1',
-                debugTag: 'WorkflowExecution/run-llm',
-            }
-        )
-
         // Build tools
-        const cwd = workspaceRoots[0] ?? process.cwd()
         const tools = await buildPiTools({
             cwd,
             disabledTools,
@@ -255,26 +289,9 @@ export async function runLLMCore(args: LLMRunArgs): Promise<string> {
         const trimmedSystemPrompt = rawSystemPrompt.trim()
         const systemPrompt = trimmedSystemPrompt.length > 0 ? rawSystemPrompt : undefined
 
-        // Get API key for the model's provider
-        // eslint-disable-next-line @typescript-eslint/require-await
-        const getApiKey = async (provider: string): Promise<string | undefined> => {
-            // 1. Check env vars
-            const envKey = process.env[`${provider.toUpperCase().replace(/-/g, '_')}_API_KEY`]
-                ?? process.env.AMP_API_KEY // legacy Amp fallback
-                ?? process.env.OPENROUTER_API_KEY
-            if (envKey) return envKey
-
-            // 2. Check NebulaFlow workspace settings
-            const wsKey = nebulaflowWorkspaceSettings[`api_key_${provider}`] as string | undefined
-            if (wsKey) return wsKey
-
-            return undefined
-        }
-
-        // Create the pi Agent
+        // ModelRuntime owns provider authentication and request routing.
         const agent = new Agent({
-            streamFn: streamSimple,
-            getApiKey,
+            streamFn: modelRuntime.streamSimple.bind(modelRuntime),
             toolExecution: 'parallel',
         })
 
@@ -284,10 +301,7 @@ export async function runLLMCore(args: LLMRunArgs): Promise<string> {
         if (systemPrompt) {
             agent.state.systemPrompt = systemPrompt
         }
-        if (piModel) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-            agent.state.model = piModel as any
-        }
+        agent.state.model = piModel
 
         // Map pi thinking levels
         const thinkingLevelMap: Record<string, 'off' | 'minimal' | 'low' | 'medium' | 'high'> = {

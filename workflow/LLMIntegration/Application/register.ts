@@ -1,7 +1,5 @@
-import type { ExtensionToWorkflow } from '../../Core/models'
 import type { IHostEnvironment, IMessagePort } from '../../Shared/Host/index'
 import { safePost } from '../../Shared/Infrastructure/messaging/safePost'
-import { readNebulaflowSettingsFromHost } from '../../Shared/Infrastructure/nebulaflow-settings'
 import { listPiModels } from '../../PiIntegration/Application/pi-models'
 
 export type SliceEnv = {
@@ -22,41 +20,13 @@ export function registerHandlers(router: Router): void {
             if (piModels.length > 0) {
                 console.log('[nebulaflow] get_models: first model', JSON.stringify(piModels[0]))
             }
-            const baseModels = piModels.map((m) => ({ id: m.id, provider: m.provider, title: m.title }))
+            const models = piModels.map((model) => ({
+                id: model.id,
+                provider: model.provider,
+                title: model.title,
+            }))
 
-            const nebulaflowSettings = await readNebulaflowSettingsFromHost(env.host, {
-                warnOnError: env.isDev,
-                debugTag: 'LLMIntegration/register',
-            })
-            // configuredPrimary is read for future use (e.g., highlighting default model)
-            const _configuredPrimary =
-                (nebulaflowSettings['internal.primaryModel'] as string | undefined)?.trim() || undefined
-            const openrouterModels = nebulaflowSettings['openrouter.models'] as
-                | Array<{ model: string }>
-                | undefined
-
-            const extraModels: { id: string; title?: string }[] = []
-
-            if (Array.isArray(openrouterModels)) {
-                for (const entry of openrouterModels) {
-                    if (entry && typeof entry.model === 'string') {
-                        const modelId = entry.model
-                        if (
-                            !baseModels.some((m) => m.id === modelId) &&
-                            !extraModels.some((m) => m.id === modelId)
-                        ) {
-                            extraModels.push({
-                                id: modelId,
-                                title: getOpenRouterDisplayTitle(modelId),
-                            })
-                        }
-                    }
-                }
-            }
-
-            const models = [...baseModels, ...extraModels]
-
-            await safePost(env.port, { type: 'models_loaded', data: models } as ExtensionToWorkflow, {
+            await safePost(env.port, { type: 'models_loaded', data: models }, {
                 strict: env.isDev,
             })
         } catch (error) {
@@ -81,17 +51,4 @@ export function registerHandlers(router: Router): void {
             )
         }
     })
-}
-
-/**
- * Transforms an OpenRouter model ID (e.g., "openrouter/anthropic/claude-3-5-sonnet")
- * into a display title (e.g., "claude-3-5-sonnet").
- */
-function getOpenRouterDisplayTitle(modelId: string): string {
-    if (!modelId.startsWith('openrouter/')) {
-        return modelId
-    }
-    const withoutPrefix = modelId.slice('openrouter/'.length)
-    const modelName = withoutPrefix.split('/').pop() ?? withoutPrefix
-    return modelName
 }

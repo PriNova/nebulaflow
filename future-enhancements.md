@@ -37,7 +37,7 @@
 - Why: Ensures the per-node system prompt override remains robust against SDK contract changes, improves type safety and maintainability in core execution paths, and provides a clear foundation for future UX polish without introducing complexity.
 
 
-- Goal: Refine alias behavior and webview tool listing now that tool-name metadata is sourced from the Amp SDK.
+- Goal: Refine alias behavior and webview tool listing now that tool-name metadata is sourced from the pi SDK.
 - What:
 - Clarify or adjust alias precedence between SDK and NebulaFlow-local aliases in [toolNames.ts](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/services/toolNames.ts), documenting that SDK resolution wins when both define the same alias (e.g., `GitDiff`).
 - Decide whether to keep or remove redundant local aliases that duplicate SDK entries (such as `GitDiff`), or clearly mark them as defensive back-compat shims.
@@ -71,19 +71,6 @@ Recommended improvements and optimizations for future implementation.
 - Why: Keeps cross-workflow copy/paste behavior semantically accurate as the protocol evolves, hardens the clipboard path against malformed or huge payloads, and improves type safety and maintainability around assistant content and thread tracking.
 
 ### Default LLM Model – Migration Semantics and Provider Validation
-
-### Workspace Amp Settings & OpenRouter Integration – Follow-ups
-
-- Goal: Harden workspace-level Amp/OpenRouter configuration semantics and reduce noise while keeping current behavior.
-- What:
-- Add runtime type guards around `internal.primaryModel` when reading from `.nebulaflow/settings.json` (both in the LLMIntegration model loader and the LLM runner) so only non-empty strings are accepted and malformed values are ignored instead of throwing.
-- **Add runtime type guards for `openrouter.models` configuration**: Introduce validation to ensure each model entry contains the required `model` field (string) and properly handle optional fields like `provider`, `maxOutputTokens`, `contextWindow`, `isReasoning`, and `reasoning_effort` without breaking if malformed.
-- Decide whether workspace-level `amp.dangerouslyAllowAll` should be able to override node-level Bash gating; if not, clear or ignore this flag in merged settings when Bash tools are disabled so the safety posture remains consistent.
-- Treat missing `.nebulaflow/settings.json` (ENOENT) as a non-warning condition in `readAmpSettingsFromRoot`, reserving warnings for malformed JSON or structurally invalid configs to keep dev logs focused on real misconfigurations.
-- Optionally cache parsed workspace settings per process (or per settings path) to avoid repeated disk reads on every `get_models` and LLM node run, keeping the implementation simple but reducing I/O churn in large workflows.
-- Consider a more compact or highlighted label for the synthetic "Workspace default" model entry (and optional group-top ordering) so it remains visible and readable in narrow model selectors.
-  - Tighten the helper’s return type by introducing a lightweight `AmpSettings` type (e.g., a `Partial` with known keys like `'internal.primaryModel'` and `'openrouter.key'`) while still allowing forward-compatible keys via an index signature.
-- Why: Makes workspace-scoped LLM configuration more robust to user error, clarifies how global allow-all interacts with per-node safety toggles, keeps logs and I/O efficient, and improves type safety and UI clarity around workspace defaults.
 
 ### Electron Workspace & Storage Scope – Follow-ups
 
@@ -389,7 +376,7 @@ Recommended improvements and optimizations for future implementation.
 -   - Consider gating `filterInitialUserMessage` behind the new `mode` hint (for example, only filtering when `mode !== 'single-node'` or when a thread started from a workflow run) if future pure-chat entrypoints are added that start threads without a workflow prompt.
 -   - Introduce a shared `ExecutionMode = 'workflow' | 'single-node'` type (and small `isExecutionMode` helper) in `workflow/Core/Contracts/Protocol.ts` and reuse it across protocol, guards, and `LLMRunArgs` instead of repeating the literal union and manual checks.
 -   - Tighten the `nodeAssistantContent` map typing in the webview (e.g., `Map<string, AssistantContentItem[]>` in `messageHandling.ts` and related hooks) to align with the protocol and the `filterInitialUserMessage` helper, reducing `any[]` usage.
--   - Clarify in `LLMRunArgs` and/or the LLM runner docs that `mode` is a diagnostic/UI hint carried through logs and assistant-content events and does not currently alter Amp SDK behavior, to prevent accidental behavioral divergence between modes.
+-   - Clarify in `LLMRunArgs` and/or the LLM runner docs that `mode` is a diagnostic/UI hint carried through logs and assistant-content events and does not currently alter pi SDK behavior, to prevent accidental behavioral divergence between modes.
 - Why: Keeps the sidebar timeline fix robust as new entrypoints and content types are added, reduces duplication and drift around execution modes, and strengthens type safety around assistant content without changing current behavior.
 
 ### LLM Node Timeline – User Messages and Multimodal Input Follow-ups
@@ -622,7 +609,7 @@ Recommended improvements and optimizations for future implementation.
   - Expand DOMPurify allowed attributes for Markdown to include `id`, `aria-*`, and `data-*` to preserve anchors and accessibility/data hooks in [Markdown.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/Markdown.tsx#L36-L49)
 - Why: Ensures robust navigation for line-anchored links, preserves useful attributes for accessibility and in-page anchors, and keeps sanitizer aligned with supported link schemes without over-restricting content.
 
-### Vendored Amp SDK Flow – Optional Automation and Resilience
+### Vendored pi SDK Flow – Optional Automation and Resilience
 
 - Goal: Streamline updates and add resilience for the new vendored SDK approach
 - What:
@@ -918,9 +905,9 @@ Recommended improvements and optimizations for future implementation.
 - **Why**: Ensures React list keys remain unique if grouping semantics evolve and prevents regressions in the clarified parallel numbering behavior.
 - **Priority**: P2 (robustness; nice-to-have hardening).
 
-### Vendored Amp SDK Bump - Release Validation
+### Vendored pi SDK Bump - Release Validation
 
-- **Goal**: Make refreshes of the vendored Amp SDK bundle low-risk and repeatable.
+- **Goal**: Make refreshes of the vendored pi SDK bundle low-risk and repeatable.
 - **What**: When [amp-sdk.tgz](file:///home/prinova/CodeProjects/nebulaflow/vendor/amp-sdk/amp-sdk.tgz) is updated, document and automate a minimal validation checklist (for example, `npm run check`, a smoke test of representative workflows, and verification of tool catalog wiring) so SDK bumps are consistently exercised before release.
 - **Why**: The vendored SDK is opaque in this repo; a small, explicit validation step reduces the chance of runtime or type-level regressions entering NebulaFlow via SDK upgrades.
 - **Priority**: P1 (release robustness; medium risk if skipped).
@@ -1226,7 +1213,7 @@ Recommended improvements and optimizations for future implementation.
 
 ### LLM Node Reasoning Effort - Server Expectation Confirmation
 - **Goal**: Validate server-side behavior for reasoning effort defaults
-- **What**: Confirm with Amp SDK that it correctly handles the `reasoning.effort` = "medium" default now being sent unconditionally from ExecuteWorkflow.ts on every LLM node execution
+- **What**: Confirm with pi SDK that it correctly handles the `reasoning.effort` = "medium" default now being sent unconditionally from ExecuteWorkflow.ts on every LLM node execution
 - **Why**: Backend now always sets `reasoning.effort` to "medium" as fallback when value is missing or invalid. Server behavior should be validated to ensure no regressions or unexpected interaction with SDK's internal defaults
 - **Priority**: P1 (verification step; ensures backend contract alignment)
 

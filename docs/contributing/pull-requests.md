@@ -220,8 +220,8 @@ Once a maintainer approves your PR and verifies all checks locally, the PR is re
 | **Documentation deployment fails** | Check `mkdocs.yml` syntax and ensure all linked files exist. |
 | **PR branch is out of date** | Merge `main` into your branch: `git merge upstream/main` and push. |
 | **Conflicts with `main`** | Rebase your branch onto `main`: `git rebase upstream/main` and resolve conflicts. |
-| **Amp SDK not available** | Ensure `vendor/amp-sdk/amp-sdk.tgz` exists (see [Development Setup](../technical/development.md)). |
-| **AMP_API_KEY is not set** | Set the environment variable before launching VS Code. |
+| **pi SDK not available** | Run `npm install` and rebuild the extension (see [Development Setup](../technical/development.md)). |
+| **No authenticated pi model** | Configure pi `/login`, `auth.json`, or the selected provider environment variable. |
 | **Webview assets don’t load** | Run `npm run build` or start the webview watcher (`npm run watch:webview`). |
 
 ---

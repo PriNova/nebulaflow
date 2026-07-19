@@ -66,84 +66,23 @@ For more details on development workflow, see [Development Setup](../technical/d
 
 ## Configuration
 
-### Environment Variables
+NebulaFlow uses pi's standard model and credential stores:
 
-NebulaFlow requires environment variables for LLM node functionality:
+- Run pi `/login`, use `~/.pi/agent/auth.json`, or set a provider-specific environment variable.
+- Set global model defaults in `~/.pi/agent/settings.json`.
+- Set project model-default overrides in `<workspace>/.pi/settings.json`.
+- Define custom providers and models in `~/.pi/agent/models.json`.
 
-- **`AMP_API_KEY`**: Required for the Amp SDK (LLM node execution)
-- **`OPENROUTER_API_KEY`**: Optional for OpenRouter SDK integration
+Example pi settings:
 
-#### Setting Environment Variables
-
-**Linux/macOS (temporary):**
-```bash
-export AMP_API_KEY="your_amp_api_key_here"
-export OPENROUTER_API_KEY="your_openrouter_api_key_here"  # optional
-```
-
-**Linux/macOS (permanent):**
-Add the lines to your shell profile file (e.g., `~/.bashrc`, `~/.zshrc`, `~/.profile`):
-```bash
-export AMP_API_KEY="your_amp_api_key_here"
-export OPENROUTER_API_KEY="your_openrouter_api_key_here"
-```
-
-**Windows (PowerShell):**
-```powershell
-$env:AMP_API_KEY="your_amp_api_key_here"
-$env:OPENROUTER_API_KEY="your_openrouter_api_key_here"
-```
-
-**Windows (Command Prompt):**
-```cmd
-set AMP_API_KEY=your_amp_api_key_here
-set OPENROUTER_API_KEY=your_openrouter_api_key_here
-```
-
-**Note:** Environment variables set in a terminal session only apply to that session. For permanent changes, set them system-wide or use a `.env` file in your workspace (see below).
-
-#### Using a `.env` File
-
-You can also place a `.env` file in your workspace root (or the first workspace folder). NebulaFlow will read environment variables from this file when the extension activates.
-
-Create a file named `.env` in your workspace:
-```
-AMP_API_KEY=your_amp_api_key_here
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-```
-
-### VS Code Settings
-
-NebulaFlow provides VS Code configuration options:
-
-- **`nebulaFlow.storageScope`**: Choose where workflows and custom nodes are stored:
-  - `user` (default): Global storage in your user folder
-  - `workspace`: Storage in the current workspace (`.nebulaflow/` directory)
-
-- **`nebulaFlow.globalStoragePath`**: Custom absolute path for global storage (if empty, uses home directory)
-
-To configure:
-1. Open VS Code Settings (Ctrl+, or Cmd+,)
-2. Search for "NebulaFlow"
-3. Adjust the settings as needed
-
-### Workspace LLM Configuration
-
-You can configure LLM settings per workspace by creating a `.nebulaflow/settings.json` file in your workspace root. This file can contain Amp SDK settings, model configurations, and more.
-
-Example `.nebulaflow/settings.json`:
 ```json
 {
-  "nebulaflow": {
-    "settings": {
-      "openrouter.key": "sk-or-...",
-      "internal.primaryModel": "openrouter/xiaomi/mimo-v2-flash:free"
-    }
-  }
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-5.1"
 }
 ```
 
-For detailed configuration options, see [Configuration](configuration.md).
+NebulaFlow storage remains configurable through `nebulaFlow.storageScope` and `nebulaFlow.globalStoragePath` in VS Code settings.
 
 ## Verification
 
@@ -156,21 +95,21 @@ After installation, verify that NebulaFlow is working:
 
 ## Troubleshooting
 
-### "Amp SDK not available" error
+### "pi SDK not available" error
 
-**Cause:** The vendored Amp SDK is not properly linked or missing.
+**Cause:** The vendored pi SDK is not properly linked or missing.
 
 **Solution:**
 - Run `npm install` to ensure dependencies are installed
 - If building from source, run `npm run build` to bundle the SDK
 - If using a pre-built extension, ensure the `.vsix` file is complete
 
-### "AMP_API_KEY is not set" error
+### "No authenticated pi model is available" error
 
-**Cause:** The environment variable for the Amp SDK is not set.
+**Cause:** The environment variable for the pi SDK is not set.
 
 **Solution:**
-- Set the `AMP_API_KEY` environment variable as described in the Configuration section
+- Configure pi `/login`, `auth.json`, or the selected provider environment variable as described in the Configuration section
 - Restart VS Code after setting the variable
 - If using a `.env` file, ensure it's in the correct workspace folder
 
@@ -197,9 +136,9 @@ After installation, verify that NebulaFlow is working:
 **Cause:** Invalid API key or model selection.
 
 **Solution:**
-- Verify `AMP_API_KEY` is set correctly
+- Verify pi authentication for the selected provider
 - Check that the selected model is available in your Amp account
-- For OpenRouter models, ensure `OPENROUTER_API_KEY` is set or configured in `.nebulaflow/settings.json`
+- For OpenRouter models, authenticate OpenRouter through pi `/login`, `auth.json`, or `OPENROUTER_API_KEY`
 
 ### CLI node fails to execute commands
 

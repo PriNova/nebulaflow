@@ -49,7 +49,7 @@ Follow the [Development Setup](../technical/development.md) guide to install dep
 **Quick start:**
 - Install Node.js ≥ 18 and npm ≥ 9
 - Run `npm install`
-- Set `AMP_API_KEY` and optionally `OPENROUTER_API_KEY`
+- Set `OPENAI_API_KEY` and optionally `OPENROUTER_API_KEY`
 - Build with `npm run build`
 
 ## Step 3: Create a Feature Branch
@@ -124,7 +124,7 @@ feat(llm-node): add support for custom model parameters
 
 - Extend LLM node data interface with `modelParams` field
 - Update UI to allow editing model parameters
-- Pass parameters to Amp SDK execution
+- Pass parameters to pi SDK execution
 
 Closes #123
 ```
@@ -173,8 +173,8 @@ For detailed release process, see [Deployment](../technical/deployment.md).
 
 | Issue | Solution |
 |-------|----------|
-| **Amp SDK not available** | Ensure `vendor/amp-sdk/amp-sdk.tgz` exists. |
-| **AMP_API_KEY is not set** | Set the environment variable before launching VS Code. |
+| **pi SDK not available** | Run `npm install` and rebuild the extension. |
+| **No authenticated pi model** | Configure pi `/login`, `auth.json`, or the selected provider environment variable. |
 | **Webview assets don’t load** | Run `npm run build` or start the webview watcher (`npm run watch:webview`). |
 | **Type errors** | Run `npm run typecheck` and fix diagnostics. |
 | **Lint/format issues** | Run `npm run check` or `npm run biome`. |

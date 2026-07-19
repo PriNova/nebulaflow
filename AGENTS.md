@@ -7,15 +7,14 @@
   - VS Code extension
   - Electron desktop application (beta; Windows packaging validated)
   - Browser client connected to a local WebSocket bridge
-- LLM nodes use the pi SDK packages `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`, and `@earendil-works/pi-coding-agent`. Amp is no longer the primary SDK; `AMP_API_KEY` remains only as a legacy credential fallback.
+- LLM nodes use the pi SDK packages `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`, and `@earendil-works/pi-coding-agent` through one shared pi `ModelRuntime`.
 
 ## Required Environment
 
 - Node.js `>=22.19.0` and npm.
 - VS Code `>=1.90.0` for extension development.
 - Install dependencies with `npm install`.
-- Provider credentials use `<PROVIDER>_API_KEY` environment variables. LLM execution also checks `AMP_API_KEY` as a legacy fallback, then `OPENROUTER_API_KEY`.
-- Workspace LLM settings may be supplied through `.nebulaflow/settings.json` under `nebulaflow.settings`.
+- Provider credentials use pi's standard `~/.pi/agent/auth.json` store or provider-specific environment variables. Global and project model defaults come from pi `settings.json`; custom providers come from pi `models.json`.
 - Never commit API keys or other secrets.
 
 ## Commands

@@ -374,7 +374,7 @@ LLM and CLI nodes stream output in chunks:
 
 ### Environment Variables
 
-- `AMP_API_KEY`: Required for LLM nodes
+- Provider credentials: Configure the selected provider through pi `/login`, `auth.json`, or its environment variable.
 - `OPENROUTER_API_KEY`: Alternative LLM provider
 - `NEBULAFLOW_DISABLE_HYBRID_PARALLEL`: Disable hybrid execution (debug)
 

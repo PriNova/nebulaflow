@@ -10,8 +10,8 @@ NebulaFlow provides powerful integration capabilities to connect with external s
 
 Connect to Large Language Models for intelligent processing:
 
-- **Amp SDK** - Primary LLM provider
-- **OpenRouter SDK** - Alternative LLM provider with multiple models
+- **pi SDK** - Primary LLM provider
+- **pi OpenRouter provider** - Alternative LLM provider with multiple models
 
 **Use cases:**
 - Natural language processing
@@ -49,139 +49,22 @@ Connect to external APIs:
 
 ## LLM Integration
 
-### Amp SDK
+### pi ModelRuntime
 
-The **Amp SDK** is the primary LLM provider for NebulaFlow.
+NebulaFlow uses one shared pi `ModelRuntime` for model discovery, provider authentication, custom providers, and LLM request routing.
 
-#### Configuration
+Configure credentials with pi `/login`, `~/.pi/agent/auth.json`, or a provider-specific environment variable such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENROUTER_API_KEY`.
 
-**Environment Variable:**
-```bash
-export AMP_API_KEY="your_amp_api_key_here"
-```
-
-**Workspace Settings:**
-Create `.nebulaflow/settings.json` in your workspace root:
+Configure global model defaults in `~/.pi/agent/settings.json` and project overrides in `<workspace>/.pi/settings.json`:
 
 ```json
 {
-  "nebulaflow": {
-    "settings": {
-      "amp.dangerouslyAllowAll": true,
-      "amp.experimental.commandApproval.enabled": false,
-      "amp.commands.allowlist": ["*"],
-      "amp.commands.strict": false,
-      "internal.primaryModel": "openrouter/anthropic/claude-3-5-sonnet"
-    }
-  }
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-5.1"
 }
 ```
 
-#### Amp SDK Settings
-
-The Amp SDK supports various settings that can be configured:
-
-| Setting | Type | Description |
-|---------|------|-------------|
-| `amp.dangerouslyAllowAll` | boolean | Bypass safety checks (use with caution) |
-| `amp.experimental.commandApproval.enabled` | boolean | Enable command approval workflow |
-| `amp.commands.allowlist` | string[] | List of allowed commands (["*"] for all) |
-| `amp.commands.strict` | boolean | Strict command validation |
-| `internal.primaryModel` | string | Default model ID |
-| `openrouter.models` | array | OpenRouter model configurations |
-
-#### Model Configuration
-
-You can configure multiple models in your workspace settings:
-
-```json
-{
-  "nebulaflow": {
-    "settings": {
-      "openrouter.models": [
-        {
-          "model": "openrouter/anthropic/claude-3-5-sonnet",
-          "provider": "anthropic",
-          "maxOutputTokens": 4096,
-          "contextWindow": 200000
-        },
-        {
-          "model": "openrouter/openai/gpt-5.2-codex",
-          "provider": "openai",
-          "maxOutputTokens": 8192,
-          "contextWindow": 128000
-        }
-      ]
-    }
-  }
-}
-```
-
-#### Using LLM Nodes
-
-1. **Add an LLM node** to your workflow
-2. **Select a model** from the available models list
-3. **Configure the prompt** using template variables
-4. **Connect inputs** from upstream nodes
-5. **Execute** the workflow
-
-**Example:**
-```
-Text Node (input: "What is 2+2?")
-    └── LLM Node (model: gpt-4, prompt: "Calculate: ${1}")
-    └── Preview Node (display result)
-```
-
-### OpenRouter SDK
-
-**OpenRouter SDK** provides access to multiple LLM providers through a single API.
-
-#### Configuration
-
-**Environment Variable:**
-```bash
-export OPENROUTER_API_KEY="your_openrouter_api_key_here"
-```
-
-**Workspace Settings:**
-```json
-{
-  "nebulaflow": {
-    "settings": {
-      "openrouter.key": "sk-or-...",
-      "openrouter.models": [
-        {
-          "model": "openrouter/anthropic/claude-3-5-sonnet",
-          "provider": "anthropic"
-        }
-      ]
-    }
-  }
-}
-```
-
-#### Supported Models
-
-OpenRouter supports models from various providers:
-
-- **Anthropic**: Claude 3.5 Sonnet, Claude 3 Opus
-- **OpenAI**: GPT-4, GPT-4o, GPT-4o mini
-- **Google**: Gemini Pro, Gemini Ultra
-- **Meta**: Llama 3
-- **And many more**
-
-#### Model Selection
-
-Models are loaded automatically when you request them:
-
-1. **Amp SDK models** - Loaded from the Amp SDK
-2. **OpenRouter models** - Loaded from workspace settings
-3. **Custom models** - Added via configuration
-
-**Example model IDs:**
-- `openrouter/anthropic/claude-3-5-sonnet`
-- `openrouter/openai/gpt-4o`
-- `openrouter/google/gemini-pro`
+Define custom providers and models in `~/.pi/agent/models.json`. Node-level model selection overrides pi's configured default.
 
 ### LLM Node Configuration
 
@@ -250,7 +133,7 @@ Use template variables to reference upstream node outputs:
 LLM nodes support tool/function calling:
 
 ```typescript
-// Tools are automatically resolved via Amp SDK
+// Tools are automatically resolved via pi SDK
 // Disabled tools prevent certain capabilities
 disabledTools: ['bash', 'filesystem']
 ```
@@ -282,7 +165,7 @@ attachments: [
 
 ### LLM Integration Best Practices
 
-1. **Set AMP_API_KEY** - Required for execution
+1. **Configure provider authentication** through pi `/login`, `auth.json`, or a provider environment variable.
 2. **Choose appropriate models** - Balance cost vs capability
 3. **Use reasoning effort** - Optimize for your use case
 4. **Test with small prompts** - Verify behavior before scaling
@@ -534,81 +417,17 @@ Connect to REST APIs using CLI nodes with `curl` or similar tools.
 6. **Log requests** - Debug integration issues
 7. **Use HTTPS** - Secure API communication
 
-## Workspace Configuration
+## Pi Configuration
 
-### Settings File
+| Purpose | Location |
+|---|---|
+| Global model defaults | `~/.pi/agent/settings.json` |
+| Project model overrides | `<workspace>/.pi/settings.json` |
+| API keys and OAuth | `~/.pi/agent/auth.json` |
+| Custom providers and models | `~/.pi/agent/models.json` |
+| Dynamic model cache | `~/.pi/agent/models-store.json` |
 
-Configure workspace-specific settings in `.nebulaflow/settings.json`:
-
-```json
-{
-  "nebulaflow": {
-    "settings": {
-      "amp.dangerouslyAllowAll": false,
-      "amp.experimental.commandApproval.enabled": true,
-      "amp.commands.allowlist": ["git", "npm", "node"],
-      "amp.commands.strict": true,
-      "internal.primaryModel": "openrouter/anthropic/claude-3-5-sonnet",
-      "openrouter.key": "sk-or-...",
-      "openrouter.models": [
-        {
-          "model": "openrouter/anthropic/claude-3-5-sonnet",
-          "provider": "anthropic",
-          "maxOutputTokens": 4096,
-          "contextWindow": 200000
-        },
-        {
-          "model": "openrouter/openai/gpt-5.2-codex",
-          "provider": "openai",
-          "maxOutputTokens": 8192,
-          "contextWindow": 128000
-        }
-      ]
-    }
-  }
-}
-```
-
-### Settings Keys
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `amp.dangerouslyAllowAll` | boolean | Bypass Amp safety checks |
-| `amp.experimental.commandApproval.enabled` | boolean | Enable command approval |
-| `amp.commands.allowlist` | string[] | Allowed commands (["*"] for all) |
-| `amp.commands.strict` | boolean | Strict command validation |
-| `internal.primaryModel` | string | Default model ID |
-| `openrouter.key` | string | OpenRouter API key |
-| `openrouter.models` | array | OpenRouter model configurations |
-
-### Environment Variables
-
-#### Required Variables
-
-```bash
-# Amp SDK (Required for LLM nodes)
-export AMP_API_KEY="your_amp_api_key_here"
-
-# OpenRouter SDK (Optional)
-export OPENROUTER_API_KEY="your_openrouter_api_key_here"
-```
-
-#### Optional Variables
-
-```bash
-# Disable hybrid parallel execution
-export NEBULAFLOW_DISABLE_HYBRID_PARALLEL=1
-
-# Set default concurrency
-export NEBULAFLOW_DEFAULT_CONCURRENCY=10
-
-# Set per-type limits
-export NEBULAFLOW_LLM_CONCURRENCY=8
-export NEBULAFLOW_CLI_CONCURRENCY=8
-
-# Set maximum safe iterations
-export NEBULAFLOW_MAX_ITERATIONS=1000
-```
+NebulaFlow-specific `.nebulaflow/` storage is reserved for workflows, custom nodes, and subflows. Do not store provider credentials there.
 
 ## Integration Patterns
 
@@ -679,7 +498,7 @@ Text Node (input)
 
 ```bash
 # Good: Use environment variables
-export AMP_API_KEY="your_key"
+export OPENAI_API_KEY="your_key"
 
 # Bad: Hardcoding in workflows
 # content: "curl -H \"Authorization: Bearer sk-...\""
@@ -742,22 +561,22 @@ env: {
 
 ### LLM Integration Issues
 
-#### "Amp SDK not available"
+#### "pi SDK not available"
 
 **Cause:** SDK not properly linked
 
 **Solution:**
 ```bash
-npm i /home/prinova/CodeProjects/upstreamAmp/sdk
+npm install
 ```
 
-#### "AMP_API_KEY is not set"
+#### "No authenticated pi model is available"
 
 **Cause:** Environment variable missing
 
 **Solution:**
 ```bash
-export AMP_API_KEY="your_key"
+export OPENAI_API_KEY="your_key"
 ```
 
 #### "Model not found"
@@ -879,7 +698,7 @@ export AMP_API_KEY="your_key"
 
 ### LLM Integration Best Practices
 
-1. **Set AMP_API_KEY** - Required for execution
+1. **Configure provider authentication** through pi `/login`, `auth.json`, or a provider environment variable.
 2. **Choose appropriate models** - Balance cost vs capability
 3. **Use reasoning effort** - Optimize for your use case
 4. **Test with small prompts** - Verify behavior before scaling

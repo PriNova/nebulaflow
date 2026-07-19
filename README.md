@@ -11,56 +11,20 @@ NebulaFlow is a visual editor for designing and running developer workflows as n
 
 The LLM node runs via the pi coding-agent SDK (`@earendil-works/pi-agent-core` + `@earendil-works/pi-ai`). The editor builds prompts from upstream node outputs and executes them with pi's `PiAgent` API.
 
-- SDK integration: NebulaFlow integrates pi SDK via the `PiIntegration` module (`workflow/PiIntegration/`), replacing the previous Amp SDK.
-- Auth: Set `AMP_API_KEY` (legacy fallback) or the pi SDK's API key environment variable so the LLM node can execute.
+- SDK integration: `workflow/PiIntegration/` owns one shared pi `ModelRuntime` for model discovery, provider authentication, custom models, and request routing.
+- Authentication: use pi `/login`, `~/.pi/agent/auth.json`, or the selected provider's standard API-key environment variable.
 
-### Workspace LLM configuration (`.nebulaflow/settings.json`)
+### Pi model configuration
 
-- NebulaFlow can pass pi SDK settings via a workspace-local JSON file at `.nebulaflow/settings.json` in the first workspace folder.
-- The file should contain a `nebulaflow.settings` object that maps to pi SDK settings keys.
+NebulaFlow uses pi's standard configuration stores:
 
-Example:
+- `~/.pi/agent/settings.json`: global `defaultProvider` and `defaultModel`.
+- `<workspace>/.pi/settings.json`: project overrides for pi settings.
+- `~/.pi/agent/auth.json`: API keys and OAuth credentials created by pi `/login`.
+- `~/.pi/agent/models.json`: custom providers and models.
+- `~/.pi/agent/models-store.json`: cached dynamic provider catalogs.
 
-```jsonc
-{
-  "nebulaflow": {
-    "settings": {
-      "internal.primaryModel": "openrouter/xiaomi/mimo-v2-flash:free"
-    }
-  }
-}
-```
-
-- `internal.primaryModel` provides a workspace-wide default model for LLM nodes.
-- `openrouter.models` can be used to specify per-model configuration including `provider` for routing, `maxOutputTokens`, `contextWindow`, `isReasoning`, and `reasoning_effort`:
-
-```jsonc
-{
-  "nebulaflow": {
-    "settings": {
-      "openrouter.models": [
-        {
-          "model": "openrouter/z-ai/glm-4.7-flash",
-          "provider": "z-ai",
-          "maxOutputTokens": 131000,
-          "contextWindow": 200000,
-          "temperature": 0.5
-        },
-        {
-          "model": "openrouter/openai/gpt-5.2-codex",
-          "provider": "openai",
-          "isReasoning": true,
-          "reasoning_effort": "medium",
-          "maxOutputTokens": 128000,
-          "contextWindow": 400000
-        }
-      ]
-    }
-  }
-}
-```
-- Per-node model selection in the Property Editor (Model combobox) always wins over the workspace default. If a node has no model, NebulaFlow falls back to `nebulaflow.settings["internal.primaryModel"]`, and if that is unset it falls back to pi's built-in default.
-- The Model combobox is populated from pi's `listPiModels()` API and includes any OpenRouter models defined in `openrouter.models` settings.
+A model selected in the LLM node Property Editor takes priority. Without a node selection, NebulaFlow uses pi's project/global default when authenticated, then an authenticated built-in fallback. The Model combobox shows models available through the shared pi `ModelRuntime`.
 
 - **Category Label Display**: User-facing category names map to improved labels in the sidebar node palette ([WorkflowSidebar.tsx](file:///home/prinova/CodeProjects/nebulaflow/workflow/Web/components/sidebar/WorkflowSidebar.tsx#L44-L50)):
   - `llm` → `Agents`
@@ -324,8 +288,8 @@ Execution flow:
 
 ## Troubleshooting
 
-- LLM node error "API key is not set":
-  - Set the pi SDK API key environment variable before launching, or use the legacy `AMP_API_KEY` fallback.
+- LLM node reports that no authenticated model is available:
+  - Run pi `/login`, configure `~/.pi/agent/auth.json`, or set the selected provider's API-key environment variable before launching NebulaFlow.
 - Webview assets don't load:
   - Run `npm run build` or start the Run and Debug configuration (which starts the watcher)
 - Type errors:

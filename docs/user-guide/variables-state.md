@@ -125,7 +125,7 @@ CLI nodes can also define static environment variables with template substitutio
 ```
 
 ### System Environment Variables
-The extension can read system environment variables (like `AMP_API_KEY`) for configuration, but these are not available in template expressions.
+The extension can read system environment variables (like `OPENAI_API_KEY`) for configuration, but these are not available in template expressions.
 
 ## Examples
 

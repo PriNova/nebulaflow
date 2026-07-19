@@ -232,7 +232,7 @@ git push origin v0.2.14
 These must be set in the user's environment, not during build:
 
 ```bash
-export AMP_API_KEY="your-amp-key"
+export OPENAI_API_KEY="your-openai-key"
 export OPENROUTER_API_KEY="your-openrouter-key"
 ```
 

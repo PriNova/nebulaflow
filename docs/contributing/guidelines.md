@@ -47,7 +47,7 @@ For detailed setup instructions, see the [Development Guide](../technical/develo
    ```
 3. Set environment variables (required for LLM nodes):
    ```bash
-   export AMP_API_KEY="your-amp-key"
+   export OPENAI_API_KEY="your-openai-key"
    export OPENROUTER_API_KEY="your-openrouter-key"  # optional
    ```
 4. Build the project:
@@ -169,7 +169,7 @@ feat(llm-node): add support for custom model parameters
 
 - Extend LLM node data interface with `modelParams` field
 - Update UI to allow editing model parameters
-- Pass parameters to Amp SDK execution
+- Pass parameters to pi SDK execution
 
 Closes #123
 ```

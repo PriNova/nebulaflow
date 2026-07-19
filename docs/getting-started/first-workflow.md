@@ -6,7 +6,7 @@ This guide walks you through running and understanding your first NebulaFlow wor
 
 - NebulaFlow extension installed (see [Installation](installation.md))
 - A Git repository with some uncommitted changes (optional, but recommended to see the workflow in action)
-- Amp API key set in your environment variables (for LLM functionality)
+- Authentication configured for at least one pi provider (for LLM functionality)
 
 ## Step 1: Open the Workflow Editor
 
@@ -167,7 +167,7 @@ For more detailed guides, see:
 
 ### LLM node fails
 
-- Verify `AMP_API_KEY` is set in your environment
+- Verify authentication for the selected pi provider
 - Check the model selection in the node configuration
 - Look for error messages in the execution log
 

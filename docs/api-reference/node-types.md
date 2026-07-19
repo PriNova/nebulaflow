@@ -66,7 +66,7 @@ These nodes handle reusable workflow components:
 **Category:** Execution
 
 #### Description
-Interacts with Large Language Models using Amp SDK or OpenRouter SDK. Supports streaming, tool calls, and conversation history.
+Interacts with Large Language Models using pi SDK. Supports streaming, tool calls, and conversation history.
 
 #### Configuration
 

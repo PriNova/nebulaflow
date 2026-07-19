@@ -7,7 +7,7 @@ This glossary defines key terms used in NebulaFlow documentation and the extensi
 **Approval**  
 A security feature that requires user confirmation before executing potentially dangerous operations, such as CLI commands. Approval requests appear as VS Code notifications.
 
-**Amp SDK**  
+**pi SDK**
 The Amp Software Development Kit, used by NebulaFlow to interact with LLM providers. It provides APIs for creating LLM sessions, streaming responses, and handling tool calls.
 
 **Accumulator Node**  
@@ -46,7 +46,7 @@ See **Text Node**.
 ## L
 
 **LLM Node**  
-A node that interacts with Large Language Models. It sends a prompt (optionally with images) to an LLM provider (Amp SDK or OpenRouter) and streams the response.
+A node that interacts with Large Language Models. It sends a prompt (optionally with images) to an LLM provider (pi SDK or OpenRouter) and streams the response.
 
 **Loop Node**  
 A pair of nodes (**Loop Start** and **Loop End**) that enable iterative processing. The Loop Start node defines the iteration variable and maximum iterations; the Loop End node marks the end of each iteration.
