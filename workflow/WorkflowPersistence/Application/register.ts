@@ -3,6 +3,7 @@ import type { WorkflowPayloadDTO } from '../../Core/Contracts/Protocol'
 import { ConfigurationTarget, type IHostEnvironment, type IMessagePort } from '../../Shared/Host/index'
 import { safePost } from '../../Shared/Infrastructure/messaging/safePost'
 import { setActiveWorkflowUri } from '../../Shared/Infrastructure/workspace'
+import { publishStorageContext, readStorageScope } from './storage-context'
 
 export type SliceEnv = {
     port: IMessagePort
@@ -13,15 +14,6 @@ export type SliceEnv = {
 
 export type Router = Map<string, (_message: unknown, env: SliceEnv) => Promise<void> | void>
 
-function readStorageScope(host: IHostEnvironment): { scope: 'workspace' | 'user'; basePath?: string } {
-    const scope =
-        host.workspace.getConfiguration<string>('nebulaFlow.storageScope', 'user') === 'workspace'
-            ? 'workspace'
-            : 'user'
-    const basePath = host.workspace.getConfiguration<string>('nebulaFlow.globalStoragePath', '')
-    return { scope, basePath }
-}
-
 export function registerHandlers(router: Router): void {
     // get_storage_scope
     router.set('get_storage_scope', async (_message, env) => {
@@ -31,24 +23,42 @@ export function registerHandlers(router: Router): void {
         })
     })
 
-    // toggle_storage_scope
-    router.set('toggle_storage_scope', async (_message, env) => {
-        const current =
-            env.host.workspace.getConfiguration<string>('nebulaFlow.storageScope', 'user') ===
-            'workspace'
-                ? 'workspace'
-                : 'user'
-        const next = current === 'workspace' ? 'user' : 'workspace'
-        const target = env.host.workspace.workspaceFolders?.length
+    const setStorageScope = async (
+        requestedScope: 'workspace' | 'user',
+        env: SliceEnv
+    ): Promise<void> => {
+        if (requestedScope === 'workspace' && env.host.workspace.workspaceFolders.length === 0) {
+            const selectedFolder = await env.host.workspace.selectWorkspaceFolder?.()
+            if (!selectedFolder) {
+                await safePost(
+                    env.port,
+                    { type: 'storage_scope', data: readStorageScope(env.host) },
+                    { strict: env.isDev }
+                )
+                return
+            }
+        }
+
+        const target = env.host.workspace.workspaceFolders.length
             ? ConfigurationTarget.Workspace
             : ConfigurationTarget.Global
-        await env.host.workspace.updateConfiguration('nebulaFlow.storageScope', next, target)
-        // Configuration change listener in host (VS Code) will trigger refresh
-        // However, for Electron host (which lacks the listener), we must manually trigger the update
-        const info = readStorageScope(env.host)
-        await safePost(env.port, { type: 'storage_scope', data: info }, {
-            strict: env.isDev,
-        })
+        await env.host.workspace.updateConfiguration(
+            'nebulaFlow.storageScope',
+            requestedScope,
+            target
+        )
+        await publishStorageContext(env.host, env.port, env.isDev)
+    }
+
+    router.set('set_storage_scope', async (message, env) => {
+        const requestedScope = (message as { data: { scope: 'workspace' | 'user' } }).data.scope
+        await setStorageScope(requestedScope, env)
+    })
+
+    // Backward compatibility for older webview bundles.
+    router.set('toggle_storage_scope', async (_message, env) => {
+        const current = readStorageScope(env.host).scope
+        await setStorageScope(current === 'workspace' ? 'user' : 'workspace', env)
     })
 
     // save_workflow

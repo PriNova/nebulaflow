@@ -8,6 +8,7 @@ import type { ExtensionToWorkflow } from '../../Core/models'
 import { deleteCustomNode, getCustomNodes, renameCustomNode, saveCustomNode } from '../../DataAccess/fs'
 import type { IHostEnvironment, IMessagePort } from '../../Shared/Host/index'
 import { safePost } from '../../Shared/Infrastructure/messaging/safePost'
+import { readStorageScope } from '../../WorkflowPersistence/Application/storage-context'
 
 export type SliceEnv = {
     port: IMessagePort
@@ -16,15 +17,6 @@ export type SliceEnv = {
     updatePanelTitle: (uri?: string) => void
 }
 export type Router = Map<string, (message: unknown, env: SliceEnv) => Promise<void> | void>
-
-function readStorageScope(host: IHostEnvironment): { scope: 'workspace' | 'user'; basePath?: string } {
-    const scope =
-        host.workspace.getConfiguration<string>('nebulaFlow.storageScope', 'user') === 'workspace'
-            ? 'workspace'
-            : 'user'
-    const basePath = host.workspace.getConfiguration('nebulaFlow.globalStoragePath', '')
-    return { scope, basePath }
-}
 
 export function registerHandlers(router: Router): void {
     router.set('save_customNode', async (message: unknown, env: SliceEnv) => {

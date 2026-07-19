@@ -1,5 +1,4 @@
 import * as fs from 'node:fs/promises'
-import * as os from 'node:os'
 import * as path from 'node:path'
 import { BrowserWindow, Menu, MenuItem, app, dialog, ipcMain, protocol } from 'electron'
 import {
@@ -8,6 +7,7 @@ import {
 } from '../../workflow/Application/workflow-session'
 import { initializeHost } from '../../workflow/DataAccess/fs'
 import { initializeWorkspace } from '../../workflow/Shared/Infrastructure/workspace'
+import { publishStorageContext } from '../../workflow/WorkflowPersistence/Application/storage-context'
 import { ElectronHost, ElectronMessagePort, ElectronWorkspace } from './ElectronHost'
 
 protocol.registerSchemesAsPrivileged([
@@ -35,6 +35,7 @@ function createWindow() {
     initializeWorkspace(host)
 
     const port = new ElectronMessagePort(mainWindow.webContents, ipcMain)
+    const isDev = process.env.NODE_ENV === 'development'
 
     const menu = new Menu()
     menu.append(
@@ -51,30 +52,12 @@ function createWindow() {
                         })
                         if (!result.canceled && result.filePaths.length > 0) {
                             const folder = result.filePaths[0]
-                            if (host.workspace instanceof ElectronWorkspace) {
-                                host.workspace.setWorkspaceFolder(folder)
+                            if (
+                                host.workspace instanceof ElectronWorkspace &&
+                                (await host.workspace.setWorkspaceFolder(folder))
+                            ) {
                                 mainWindow.title = `NebulaFlow - ${folder}`
-                                // Notify webview about change if needed, or just let next operations use new root.
-                                // Ideally we should trigger a "storage_scope" refresh if currently in workspace mode.
-                                // We can reuse the same mechanism as toggle:
-                                port.postMessage({
-                                    type: 'storage_scope',
-                                    data: {
-                                        scope:
-                                            host.workspace.getConfiguration<string>(
-                                                'nebulaFlow.storageScope',
-                                                'user'
-                                            ) === 'workspace'
-                                                ? 'workspace'
-                                                : 'user',
-                                        basePath: host.workspace.getConfiguration<string>(
-                                            'nebulaFlow.globalStoragePath',
-                                            ''
-                                        ),
-                                    },
-                                })
-                                // Also trigger custom nodes refresh as they might be in the new workspace
-                                port.postMessage({ type: 'refresh_custom_nodes' })
+                                await publishStorageContext(host, port, isDev)
                             }
                         }
                     },
@@ -118,8 +101,6 @@ function createWindow() {
     )
     Menu.setApplicationMenu(menu)
 
-    const isDev = process.env.NODE_ENV === 'development'
-
     setupWorkflowMessageHandling(host, port, isDev, uri => {
         if (mainWindow) {
             // Check if workspace mode is active and use absolute path if available
@@ -128,7 +109,7 @@ function createWindow() {
                 host.workspace.workspaceFolders.length > 0
             ) {
                 const wsRoot = host.workspace.workspaceFolders[0]
-                if (wsRoot && wsRoot !== os.homedir()) {
+                if (wsRoot) {
                     mainWindow.title = `NebulaFlow - ${wsRoot}`
                     return
                 }
@@ -146,7 +127,7 @@ function createWindow() {
 
     if (host.workspace instanceof ElectronWorkspace && host.workspace.workspaceFolders.length > 0) {
         const wsRoot = host.workspace.workspaceFolders[0]
-        if (wsRoot && wsRoot !== os.homedir()) {
+        if (wsRoot) {
             mainWindow.title = `NebulaFlow - ${wsRoot}`
         }
     }

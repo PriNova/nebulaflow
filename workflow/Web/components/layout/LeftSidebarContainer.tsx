@@ -3,9 +3,8 @@ import type { WorkflowNodes } from '@nodes/Nodes'
 import { LeftSidebar } from '@sidebar/LeftSidebar'
 import { Menu } from 'lucide-react'
 import type React from 'react'
-import type { ExtensionToWorkflow, WorkflowToExtension } from '../../services/Protocol'
+import type { StorageScopeInfo } from '../../services/Protocol'
 import { Button } from '../../ui/shadcn/ui/button'
-import type { GenericVSCodeWrapper } from '../../utils/vscode'
 
 const COLLAPSED_WIDTH = 36 // px
 const HANDLE_THICKNESS = '6px'
@@ -22,9 +21,9 @@ interface LeftSidebarContainerProps {
     customNodes: WorkflowNodes[]
     subflows: Array<{ id: string; title: string; version: string }>
     nodeErrors: Map<string, string>
-    storageScope: 'workspace' | 'user'
+    storageScope: StorageScopeInfo | null
     isTogglingScope: boolean
-    vscodeAPI: GenericVSCodeWrapper<WorkflowToExtension, ExtensionToWorkflow>
+    onSetStorageScope: (scope: 'workspace' | 'user') => void
     setLeftCollapsed: React.Dispatch<React.SetStateAction<boolean>>
     onSave: () => void
     onLoad: () => void
@@ -63,7 +62,7 @@ export const LeftSidebarContainer: React.FC<LeftSidebarContainerProps> = ({
     nodeErrors,
     storageScope,
     isTogglingScope,
-    vscodeAPI,
+    onSetStorageScope,
     setLeftCollapsed,
     onSave,
     onLoad,
@@ -167,9 +166,7 @@ export const LeftSidebarContainer: React.FC<LeftSidebarContainerProps> = ({
                         nodeErrors={nodeErrors}
                         storageScope={storageScope}
                         isTogglingScope={isTogglingScope}
-                        onToggleStorageScope={() => {
-                            vscodeAPI.postMessage({ type: 'toggle_storage_scope' })
-                        }}
+                        onSetStorageScope={onSetStorageScope}
                     />
                 )}
             </div>

@@ -12,6 +12,7 @@ export type {
     SubflowDefinitionDTO,
     WorkflowToExtension,
     ExtensionToWorkflow,
+    StorageScopeInfo,
     // Individual event types for discriminated union narrowing
     WorkflowLoadedEvent,
     WorkflowSavedEvent,

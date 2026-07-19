@@ -69,6 +69,9 @@ export interface IWorkspace {
     getConfiguration<T>(section: string, defaultValue?: T): T
 
     updateConfiguration(section: string, value: unknown, target: ConfigurationTarget): Promise<void>
+
+    /** Select a workspace folder when the host does not provide one implicitly. */
+    selectWorkspaceFolder?(): Promise<string | undefined>
 }
 
 /**

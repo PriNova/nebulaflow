@@ -112,30 +112,63 @@ export class ElectronWindow implements IWindow {
 }
 
 export class ElectronWorkspace implements IWorkspace {
-    private config: any = {}
-    private configPath: string
-    private _workspaceFolder: string
+    private config: Record<string, unknown> = {}
+    private readonly configPath: string
+    private workspaceFolder: string | undefined
 
     constructor() {
         this.configPath = path.join(app.getPath('userData'), 'config.json')
-        this._workspaceFolder = os.homedir()
         this.loadConfig()
     }
 
-    setWorkspaceFolder(folderPath: string) {
-        this._workspaceFolder = folderPath
-        this.config.lastWorkspaceFolder = folderPath
-        void this.saveConfig()
+    async setWorkspaceFolder(folderPath: string): Promise<boolean> {
+        const resolvedPath = path.resolve(folderPath)
+        if (!this.isValidWorkspaceFolder(resolvedPath)) return false
+
+        this.workspaceFolder = resolvedPath
+        this.config.lastWorkspaceFolder = resolvedPath
+        await this.saveConfig()
+        return true
     }
 
-    private loadConfig() {
+    async selectWorkspaceFolder(): Promise<string | undefined> {
+        const result = await dialog.showOpenDialog({
+            properties: ['openDirectory'],
+            defaultPath: this.workspaceFolder ?? os.homedir(),
+        })
+        const selectedPath = result.canceled ? undefined : result.filePaths[0]
+        if (!selectedPath || !(await this.setWorkspaceFolder(selectedPath))) return undefined
+        return this.workspaceFolder
+    }
+
+    private isValidWorkspaceFolder(folderPath: string): boolean {
         try {
-            if (fsSync.existsSync(this.configPath)) {
-                const data = fsSync.readFileSync(this.configPath, 'utf-8')
-                this.config = JSON.parse(data)
-                if (this.config.lastWorkspaceFolder) {
-                    this._workspaceFolder = this.config.lastWorkspaceFolder
+            return path.isAbsolute(folderPath) && fsSync.statSync(folderPath).isDirectory()
+        } catch {
+            return false
+        }
+    }
+
+    private loadConfig(): void {
+        try {
+            if (!fsSync.existsSync(this.configPath)) return
+
+            const data: unknown = JSON.parse(fsSync.readFileSync(this.configPath, 'utf-8'))
+            if (typeof data !== 'object' || data === null || Array.isArray(data)) return
+            this.config = data as Record<string, unknown>
+
+            const lastWorkspaceFolder = this.config.lastWorkspaceFolder
+            if (
+                typeof lastWorkspaceFolder === 'string' &&
+                this.isValidWorkspaceFolder(lastWorkspaceFolder)
+            ) {
+                this.workspaceFolder = path.resolve(lastWorkspaceFolder)
+            } else {
+                delete this.config.lastWorkspaceFolder
+                if (this.config['nebulaFlow.storageScope'] === 'workspace') {
+                    this.config['nebulaFlow.storageScope'] = 'user'
                 }
+                void this.saveConfig()
             }
         } catch {
             this.config = {}
@@ -149,11 +182,7 @@ export class ElectronWorkspace implements IWorkspace {
     }
 
     get workspaceFolders(): readonly string[] {
-        // Electron app doesn't have a "workspace" concept in the same way.
-        // Return user home or empty?
-        // Or allow opening a folder?
-        // For now, return empty or a specific configured folder.
-        return [this._workspaceFolder]
+        return this.workspaceFolder ? [this.workspaceFolder] : []
     }
 
     get globalStoragePath(): string {
@@ -166,7 +195,7 @@ export class ElectronWorkspace implements IWorkspace {
         return (this.config[section] ?? defaultValue) as T
     }
 
-    async updateConfiguration(section: string, value: any, target: ConfigurationTarget): Promise<void> {
+    async updateConfiguration(section: string, value: unknown, _target: ConfigurationTarget): Promise<void> {
         this.config[section] = value
         await this.saveConfig()
     }

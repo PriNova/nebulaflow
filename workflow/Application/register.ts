@@ -1,11 +1,9 @@
 import * as path from 'node:path'
 import * as vscode from 'vscode'
-import { getCustomNodes, initializeHost } from '../DataAccess/fs'
+import { initializeHost } from '../DataAccess/fs'
 import { VSCodeHost, VSCodeMessagePort } from '../Shared/Host/VSCodeHost'
-import type { IHostEnvironment } from '../Shared/Host/index'
-import { safePost } from '../Shared/Infrastructure/messaging/safePost'
 import { initializeWorkspace, setActiveWorkflowUri } from '../Shared/Infrastructure/workspace'
-import { toProtocolPayload as toProtocol } from './messaging/converters' // Alias to avoid name collision if needed
+import { publishStorageContext } from '../WorkflowPersistence/Application/storage-context'
 import {
     cancelAllActiveWorkflows,
     cleanupSession,
@@ -18,15 +16,6 @@ function formatPanelTitle(uri?: string): string {
     }
     const filename = path.basename(uri)
     return `NebulaFlow — ${filename}`
-}
-
-function readStorageScope(host: IHostEnvironment): { scope: 'workspace' | 'user'; basePath?: string } {
-    const scope =
-        host.workspace.getConfiguration<string>('nebulaFlow.storageScope', 'user') === 'workspace'
-            ? 'workspace'
-            : 'user'
-    const basePath = host.workspace.getConfiguration('nebulaFlow.globalStoragePath', '')
-    return { scope, basePath }
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -94,19 +83,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 e.affectsConfiguration('nebulaFlow.globalStoragePath')
             ) {
                 try {
-                    const nodes = await getCustomNodes()
-                    await safePost(
-                        port,
-                        {
-                            type: 'provide_custom_nodes',
-                            data: toProtocol({ nodes, edges: [] }).nodes!,
-                        },
-                        { strict: isDev }
-                    )
-                    const info = readStorageScope(host)
-                    await safePost(port, { type: 'storage_scope', data: info }, {
-                        strict: isDev,
-                    })
+                    await publishStorageContext(host, port, isDev)
                 } catch {}
             }
         })

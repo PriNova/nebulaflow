@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type {
     ExtensionToWorkflow,
     NodeSavedState,
+    StorageScopeInfo,
     WorkflowPayloadDTO,
     WorkflowToExtension,
 } from '../services/Protocol'
@@ -123,10 +124,7 @@ export const Flow: React.FC<{
     const [edges, setEdges] = useState(defaultWorkflow.edges)
     const [isHelpOpen, setIsHelpOpen] = useState(false)
     const [fitRequested, setFitRequested] = useState(false)
-    const [storageScope, setStorageScope] = useState<{
-        scope: 'workspace' | 'user'
-        basePath?: string
-    } | null>(null)
+    const [storageScope, setStorageScope] = useState<StorageScopeInfo | null>(null)
     const [isTogglingScope, setIsTogglingScope] = useState(false)
     // Subflow view stack
     const [viewStack, setViewStack] = useState<Array<{ nodes: WorkflowNodes[]; edges: Edge[] }>>([])
@@ -635,11 +633,10 @@ export const Flow: React.FC<{
         applyClipboardPayload
     )
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        // Re-enable scope toggle once a storage_scope update arrives
+        // Re-enable scope selection once a storage_scope update arrives.
         setIsTogglingScope(false)
-    })
+    }, [storageScope])
 
     const { sidebarWidth, handleMouseDown } = useSidebarResize(256, 200, 600, {
         minCenterGap: MIN_HANDLE_GAP,
@@ -1003,9 +1000,12 @@ export const Flow: React.FC<{
                 customNodes={customNodes}
                 subflows={subflows}
                 nodeErrors={nodeErrors}
-                storageScope={storageScope?.scope || 'user'}
+                storageScope={storageScope}
                 isTogglingScope={isTogglingScope}
-                vscodeAPI={vscodeAPI}
+                onSetStorageScope={scope => {
+                    setIsTogglingScope(true)
+                    vscodeAPI.postMessage({ type: 'set_storage_scope', data: { scope } })
+                }}
                 setLeftCollapsed={setLeftCollapsed}
                 onSave={onSave}
                 onLoad={onLoad}

@@ -3,6 +3,7 @@ import { HelpModal } from '@modals/HelpModal'
 import { CircleHelp, CircleStop, File, Pause, Play, RotateCcw, Save, Trash2 } from 'lucide-react'
 import type React from 'react'
 import { useState } from 'react'
+import type { StorageScopeInfo } from '../../services/Protocol'
 import { Button } from '../../ui/shadcn/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/shadcn/ui/tooltip'
 
@@ -16,9 +17,8 @@ interface SidebarActionsBarProps {
     isExecuting: boolean
     isPaused: boolean
     onPauseToggle: () => void
-    // storage scope toggle
-    storageScope?: 'workspace' | 'user'
-    onToggleStorageScope?: () => void
+    storageScope?: StorageScopeInfo | null
+    onSetStorageScope?: (scope: 'workspace' | 'user') => void
     isTogglingScope?: boolean
 }
 
@@ -32,8 +32,8 @@ export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
     isExecuting,
     isPaused,
     onPauseToggle,
-    storageScope = 'user',
-    onToggleStorageScope,
+    storageScope = null,
+    onSetStorageScope,
     isTogglingScope = false,
 }) => {
     const [isHelpOpen, setIsHelpOpen] = useState(false)
@@ -155,11 +155,23 @@ export const SidebarActionsBar: React.FC<SidebarActionsBarProps> = ({
                         <button
                             type="button"
                             className="tw-text-[11px] tw-px-2 tw-py-[2px] tw-rounded-full tw-border tw-border-[var(--vscode-panel-border)] hover:tw-bg-[var(--vscode-button-secondaryHoverBackground)]"
-                            title="Click to switch between User and Workspace"
-                            onClick={onToggleStorageScope}
-                            disabled={isTogglingScope}
+                            title={
+                                storageScope?.scope === 'workspace'
+                                    ? `Workspace: ${storageScope.workspacePath ?? 'selected folder'}`
+                                    : storageScope?.workspaceAvailable
+                                      ? `User storage. Workspace available: ${storageScope.workspacePath}`
+                                      : 'User storage. Select Workspace to choose a project folder.'
+                            }
+                            onClick={() =>
+                                onSetStorageScope?.(
+                                    storageScope?.scope === 'workspace' ? 'user' : 'workspace'
+                                )
+                            }
+                            disabled={isTogglingScope || !storageScope}
                         >
-                            {storageScope === 'user' ? 'User' : 'Workspace'}
+                            {storageScope?.scope === 'workspace'
+                                ? `Workspace: ${storageScope.workspaceName ?? 'Folder'}`
+                                : 'User'}
                         </button>
                     </div>
                 </div>

@@ -5,6 +5,7 @@ import type { AssistantContentItem } from '../../../Core/models'
 import type {
     EdgeDTO,
     ExtensionToWorkflow,
+    StorageScopeInfo,
     WorkflowNodeDTO,
     WorkflowPayloadDTO,
     WorkflowToExtension,
@@ -171,9 +172,7 @@ export const useMessageHandler = (
     setIsPaused?: React.Dispatch<React.SetStateAction<boolean>>,
     requestFitOnNextRender: () => void = () => {},
     setCompletedThisRun?: React.Dispatch<React.SetStateAction<Set<string>>>,
-    setStorageScope?: React.Dispatch<
-        React.SetStateAction<{ scope: 'workspace' | 'user'; basePath?: string } | null>
-    >,
+    setStorageScope?: React.Dispatch<React.SetStateAction<StorageScopeInfo | null>>,
     activeSubflowIdRef?: React.MutableRefObject<string | null>,
     onClipboardPaste?: (payload: WorkflowPayloadDTO) => void
 ) => {

@@ -1,6 +1,7 @@
 import type { BaseNodeData, NodeType, WorkflowNodes } from '@nodes/Nodes'
 import { Menu } from 'lucide-react'
 import type React from 'react'
+import type { StorageScopeInfo } from '../../services/Protocol'
 import { Button } from '../../ui/shadcn/ui/button'
 import { SidebarActionsBar } from './SidebarActionsBar'
 import { WorkflowSidebar } from './WorkflowSidebar'
@@ -35,8 +36,8 @@ interface LeftSidebarProps {
     customNodes: WorkflowNodes[]
     subflows: Array<{ id: string; title: string; version: string }>
     nodeErrors?: Map<string, string>
-    storageScope?: 'workspace' | 'user'
-    onToggleStorageScope?: () => void
+    storageScope?: StorageScopeInfo | null
+    onSetStorageScope?: (scope: 'workspace' | 'user') => void
     isTogglingScope?: boolean
 }
 
@@ -61,8 +62,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     customNodes,
     subflows,
     nodeErrors,
-    storageScope = 'user',
-    onToggleStorageScope,
+    storageScope = null,
+    onSetStorageScope,
     isTogglingScope = false,
 }) => {
     return (
@@ -97,7 +98,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 onPauseToggle={onPauseToggle}
                 storageScope={storageScope}
                 isTogglingScope={isTogglingScope}
-                onToggleStorageScope={onToggleStorageScope}
+                onSetStorageScope={onSetStorageScope}
             />
 
             <div className="tw-flex-1 tw-overflow-y-auto tw-min-h-0">

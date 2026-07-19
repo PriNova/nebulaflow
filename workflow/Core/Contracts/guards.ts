@@ -209,6 +209,11 @@ export function isWorkflowToExtension(value: unknown): value is WorkflowToExtens
             return true
         case 'toggle_storage_scope':
             return true
+        case 'set_storage_scope':
+            return (
+                isObject(msg.data) &&
+                (msg.data.scope === 'workspace' || msg.data.scope === 'user')
+            )
         case 'calculate_tokens':
             return isObject(msg.data) && isString(msg.data.text) && isString(msg.data.nodeId)
         case 'create_subflow': {
@@ -451,6 +456,12 @@ export function isExtensionToWorkflow(value: unknown): value is ExtensionToWorkf
                 !isString(msg.data.basePath)
             ) {
                 return false
+            }
+            if (typeof msg.data.workspaceAvailable !== 'boolean') return false
+            for (const key of ['workspacePath', 'workspaceName'] as const) {
+                if (key in msg.data && msg.data[key] !== undefined && !isString(msg.data[key])) {
+                    return false
+                }
             }
             return true
         }

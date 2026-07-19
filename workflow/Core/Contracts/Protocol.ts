@@ -170,6 +170,11 @@ interface ToggleStorageScopeCommand extends BaseWorkflowMessage {
     type: 'toggle_storage_scope'
 }
 
+interface SetStorageScopeCommand extends BaseWorkflowMessage {
+    type: 'set_storage_scope'
+    data: { scope: 'workspace' | 'user' }
+}
+
 interface ResetResultsCommand extends BaseWorkflowMessage {
     type: 'reset_results'
 }
@@ -333,9 +338,17 @@ export interface ProvideCustomModelsEvent extends BaseWorkflowMessage {
     data: WorkflowNodeDTO[]
 }
 
+export interface StorageScopeInfo {
+    scope: 'workspace' | 'user'
+    basePath?: string
+    workspaceAvailable: boolean
+    workspacePath?: string
+    workspaceName?: string
+}
+
 interface StorageScopeEvent extends BaseWorkflowMessage {
     type: 'storage_scope'
-    data: { scope: 'workspace' | 'user'; basePath?: string }
+    data: StorageScopeInfo
 }
 
 // Subflow events
@@ -415,6 +428,7 @@ export type WorkflowToExtension =
     | GetCustomNodesCommand
     | GetStorageScopeCommand
     | ToggleStorageScopeCommand
+    | SetStorageScopeCommand
     | ResetResultsCommand
     | ClearWorkflowCommand
     | CreateSubflowCommand
